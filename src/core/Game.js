@@ -1,7 +1,8 @@
 import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
-import { stopDelayBase, winAnimDelayMultiplier } from '../config/animationSettings.js'; // Import necessary settings
+// Import stagger constant
+import { stopDelayBase, winAnimDelayMultiplier, REEL_STOP_STAGGER } from '../config/animationSettings.js';
 import { state, updateState, initGameState } from './GameState.js';
 import { Reel } from './Reel.js';
 import { createButton } from '../ui/ButtonFactory.js';
@@ -123,15 +124,8 @@ export class Game {
         const titleStyle = {
              fontFamily: "Impact, Charcoal, sans-serif",
              fontSize: 40,
-             // Define gradient fill explicitly
-             fill: {
-                 gradient: 'linear', // Type of gradient
-                 stops: [ // Array of color stops
-                     { offset: 0, color: 0xffd700 }, // Gold
-                     { offset: 1, color: 0xf1c40f }  // Lighter gold/orange
-                 ],
-                 // Optional: angle, stops etc. Default is vertical.
-             },
+             // Try array of colors again, maybe type checker was fixed?
+             fill: [0xffd700, 0xf1c40f],
              stroke: { color: "#8B0000", width: 3 },
              dropShadow: { color: "#000000", distance: 4, blur: 4, angle: Math.PI / 4, alpha: 0.7 }
             };
@@ -257,42 +251,24 @@ export function startSpinLoop(isTurbo) {
 
     reels.forEach(reel => reel.startSpinning(isTurbo));
 
-    // Schedule the first reel stop
-    const currentStopDelayBase = state.isTurboMode ? 100 : stopDelayBase; // Use state value
-    setTimeout(() => {
-        if (state.isSpinning && state.targetStoppingReelIndex === 0 && reels.length > 0) {
-            reels[0].initiateStop(); // Tell the first reel to start stopping
-        }
-    }, currentStopDelayBase);
-}
+    // Schedule stops for all reels with stagger
+    // Use the stopDelayBase which is now updated by updateAnimationSettings based on turbo state
+    const currentStopDelayBase = stopDelayBase; // Corrected: Use the dynamically updated stopDelayBase
+    const currentStagger = state.isTurboMode ? 0 : REEL_STOP_STAGGER; // No stagger in turbo? Or reduced? Let's use 0 for now.
 
-/**
- * Triggers the stop sequence for the next reel in the chain.
- * Called by a Reel instance when it finishes stopping.
- */
-export function triggerNextReelStop(stoppedReelIndex) {
-    // Only proceed if the reel that just stopped was the one we were waiting for
-    if (stoppedReelIndex === state.targetStoppingReelIndex) {
-        const nextReelIndex = stoppedReelIndex + 1;
-
-        if (nextReelIndex < SETTINGS.NUM_REELS) {
-            const nextReel = reels[nextReelIndex];
-            if (nextReel) {
-                 // Update the target index BEFORE initiating stop
-                updateState({ targetStoppingReelIndex: nextReelIndex });
-                nextReel.initiateStop(); // Initiate stop sequence for the next reel
-                console.log(`Game: Triggering stop for reel ${nextReelIndex}`);
-            } else {
-                 console.error(`Game: Reel ${nextReelIndex} not found.`);
-                 updateState({ targetStoppingReelIndex: -1 }); // Error state, reset?
+    for (let i = 0; i < reels.length; i++) {
+        const reel = reels[i];
+        const delay = currentStopDelayBase + i * currentStagger;
+        setTimeout(() => {
+            // Check if the spin is still active before initiating stop
+            if (state.isSpinning && reel) {
+                reel.initiateStop();
+                console.log(`Game: Initiating stop for reel ${i} after ${delay}ms`);
             }
-        } else {
-            // The last reel just stopped
-            updateState({ targetStoppingReelIndex: -1 }); // Reset target index
-            console.log("Game: Last reel stop triggered.");
-            // The game loop's check for !anyReelMoving will handle calling evaluateWin
-        }
-    } else {
-         console.warn(`Game: Reel ${stoppedReelIndex} stopped, but waiting for ${state.targetStoppingReelIndex}. Ignoring.`);
+        }, delay);
     }
+    // No need to track targetStoppingReelIndex anymore with this approach
+    updateState({ targetStoppingReelIndex: -1 }); // Reset immediately
 }
+
+// Removed triggerNextReelStop function as it's no longer needed

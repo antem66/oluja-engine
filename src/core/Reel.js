@@ -6,7 +6,7 @@ import {
 } from '../config/animationSettings.js'; // Import animation parameters
 import { createSymbolGraphic } from './Symbol.js';
 import { lerpAngle, easeOutQuad } from '../utils/helpers.js';
-import { triggerNextReelStop } from './Game.js'; // Assuming Game will handle triggering next stop
+// Removed import for triggerNextReelStop
 
 export class Reel {
     constructor(reelIndex, strip, appTicker) {
@@ -170,7 +170,7 @@ export class Reel {
                         this.state = 'stopped';
                         needsAlign = true;
                         reelIsActive = false;
-                        triggerNextReelStop(this.reelIndex); // Notify Game to stop next reel
+                        // Removed call to triggerNextReelStop
                     } else {
                         // Initiate Bounce Tween
                         this.state = 'BOUNCING';
@@ -216,7 +216,7 @@ export class Reel {
                             this.state = 'stopped';
                             needsAlign = true;
                             reelIsActive = false; // Mark as stopped
-                            triggerNextReelStop(this.reelIndex); // Notify Game to stop next reel
+                            // Removed call to triggerNextReelStop
                         }
                     }
                 }
