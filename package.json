@@ -1,0 +1,25 @@
+{
+  "name": "heavens-ten-deluxe",
+  "version": "1.0.0",
+  "description": "PixiJS Slot Machine - Heavens Ten Deluxe",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "echo \"Open index.html in your browser to run the game.\"",
+    "dev": "vite"
+  },
+  "keywords": [
+    "pixijs",
+    "slot",
+    "game",
+    "html5"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pixi.js": "^8.9.0"
+  },
+  "devDependencies": {
+    "vite": "^6.2.3"
+  }
+}
