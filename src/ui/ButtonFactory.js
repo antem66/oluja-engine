@@ -349,6 +349,76 @@ class Button extends PIXI.Container {
             this._callback();
         }
         
+        // Add spin animation specifically for the spin button
+        if (this._iconType === 'spin') {
+            // Kill any previous rotation animation
+            gsap.killTweensOf(this);
+            gsap.killTweensOf(this.scale);
+            
+            // Also kill any tweens on the button icon
+            if (this.buttonIcon) {
+                gsap.killTweensOf(this.buttonIcon);
+            }
+            
+            // Create a sequence of animations for a more elaborate effect
+            const tl = gsap.timeline();
+            
+            // Initial quick compression
+            tl.to(this.scale, {
+                x: 0.9, 
+                y: 0.9, 
+                duration: 0.15,
+                ease: "power1.in"
+            });
+            
+            // Spin with slight expansion
+            tl.to(this, {
+                rotation: Math.PI * 2, // Full 360-degree rotation
+                duration: 0.8,
+                ease: "power2.inOut"
+            }, 0.1);
+            
+            // Add a flash effect to the icon
+            if (this.buttonIcon) {
+                // Flash icon to bright white and back
+                tl.to(this.buttonIcon, {
+                    tint: 0xFFFFFF,
+                    alpha: 1.5, // Slight overbright
+                    duration: 0.2,
+                    ease: "sine.in"
+                }, 0.2);
+                
+                // Return to normal
+                tl.to(this.buttonIcon, {
+                    tint: 0xFFFFFF, // Reset to normal white
+                    alpha: 1.0,
+                    duration: 0.3,
+                    ease: "power1.out"
+                }, 0.4);
+            }
+            
+            // Expansion with bounce
+            tl.to(this.scale, {
+                x: 1.1, 
+                y: 1.1, 
+                duration: 0.3,
+                ease: "power2.out"
+            }, 0.5);
+            
+            // Return to normal
+            tl.to(this.scale, {
+                x: 1.0, 
+                y: 1.0, 
+                duration: 0.3,
+                ease: "elastic.out(1.2, 0.5)"
+            }, 0.8);
+            
+            // Reset rotation when complete
+            tl.call(() => {
+                this.rotation = 0;
+            });
+        }
+        
         // Reset states - active state will be set by UIManager when state changes
         if (this.bgDown) this.bgDown.visible = false;
         
