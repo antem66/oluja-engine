@@ -9,7 +9,7 @@ export const MIN_SCATTERS_FOR_FREE_SPINS = 3;
 export const FREE_SPINS_AWARDED = 10;
 export const AUTOPLAY_SPINS_DEFAULT = 10;
 export const BET_PER_LINE_LEVELS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0];
-export const ENABLE_FREE_SPINS = true; // Config flag to enable/disable free spins feature
+export const ENABLE_FREE_SPINS = false; // Config flag to enable/disable free spins feature
 export const normalBgColor = 0x2f4f4f;
 export const freeSpinsBgColor = 0x4b0082;
 

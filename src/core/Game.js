@@ -181,8 +181,9 @@ export class Game {
         createButton("-", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, buttonTextStyle, uiContainer, btnW, btnH).name = "betDecreaseButton";
         createButton("+", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, buttonTextStyle, uiContainer, btnW, btnH).name = "betIncreaseButton";
 
-        // Spin Button
-        createButton("↻", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, { ...buttonTextStyle, fontSize: 40 }, uiContainer, 80, 80, true).name = "spinButton";
+        // Spin Button (Circular with Icon)
+        // Note: Text '↻' and textStyle are now ignored due to iconType='spin'
+        createButton("↻", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
 
         // Turbo Button
         createButton("⚡", 90 + 20, bottomUIY + 55, handlers.toggleTurbo, buttonTextStyle, uiContainer, btnW, btnH).name = "turboButton";
