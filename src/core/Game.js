@@ -21,6 +21,7 @@ import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
 import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManager.js'; // Assuming UIManager exists
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
+import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
 
 // --- Module-level variables ---
 let app = null;
@@ -57,6 +58,17 @@ export class Game {
             } else {
                 throw new Error("Pixi Application or canvas could not be initialized.");
             }
+
+            // --- Asset Loading ---
+            const symbolAssets = SYMBOL_DEFINITIONS.map(def => ({
+                alias: def.id, // Use symbol ID as alias
+                src: `assets/images/${def.id}.png` // Construct path
+            }));
+            // Add other assets if needed (e.g., button textures later)
+            // const uiAssets = [ { alias: 'button_idle', src: 'assets/images/ui/button_idle.png' }, ... ];
+            console.log("Loading assets:", symbolAssets);
+            await PIXI.Assets.load(symbolAssets);
+            console.log("Assets loaded.");
 
             // --- Initialize Core Modules ---
             initFreeSpins(app); // Pass app reference for background changes
@@ -162,7 +174,9 @@ export class Game {
         const panel = new PIXI.Graphics()
             .rect(0, SETTINGS.GAME_HEIGHT - panelHeight, SETTINGS.GAME_WIDTH, panelHeight)
             .fill({ color: 0x1a1a1a, alpha: 0.8 });
-        uiContainer.addChild(panel);
+        if (uiContainer) { // Add check for uiContainer
+            uiContainer.addChild(panel);
+        }
 
         // --- Text Styles ---
         const uiTextStyle = { fontFamily: "Arial, sans-serif", fontSize: 18, fill: 0xdddddd };
@@ -177,19 +191,19 @@ export class Game {
         const bottomUIY = SETTINGS.bottomUIY;
         const btnW = 40, btnH = 40; // Common button size
 
-        // Bet Buttons
-        createButton("-", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, buttonTextStyle, uiContainer, btnW, btnH).name = "betDecreaseButton";
-        createButton("+", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, buttonTextStyle, uiContainer, btnW, btnH).name = "betIncreaseButton";
+        // Bet Buttons (Using iconType)
+        // Pass empty string for text and empty object for style when using iconType
+        createButton("+", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
+        createButton("-", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
 
         // Spin Button (Circular with Icon)
-        // Note: Text '↻' and textStyle are now ignored due to iconType='spin'
-        createButton("↻", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
+        createButton("", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
 
-        // Turbo Button
-        createButton("⚡", 90 + 20, bottomUIY + 55, handlers.toggleTurbo, buttonTextStyle, uiContainer, btnW, btnH).name = "turboButton";
+        // Turbo Button (Using iconType)
+        createButton("", 90 + 20, bottomUIY + 55, handlers.toggleTurbo, {}, uiContainer, btnW, btnH, false, 'turbo').name = "turboButton";
 
-        // Autoplay Button
-        createButton("▶", 150 + 20, bottomUIY + 55, handlers.toggleAutoplay, buttonTextStyle, uiContainer, btnW, btnH).name = "autoplayButton";
+        // Autoplay Button (Using iconType - initial state is 'play')
+        createButton("", 150 + 20, bottomUIY + 55, handlers.toggleAutoplay, {}, uiContainer, btnW, btnH, false, 'autoplay_play').name = "autoplayButton";
 
         // Placeholder/Inactive Buttons
         createButton("$", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 - 50, () => {}, buttonTextStyle, uiContainer, 60, 60, true).alpha = 0.3;

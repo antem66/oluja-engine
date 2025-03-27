@@ -1,9 +1,12 @@
+
 import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
 // Reference to the overlay container (needs initialization)
 let overlayContainer = null;
+let currentOverlayTween = null; // To manage GSAP tween
 let flashElementInterval = null; // Store interval ID for flashing
 
 /**
@@ -65,35 +68,40 @@ export function flashElement(
 /**
  * Displays a temporary message centered on the screen in the overlay container.
  * @param {string} message - The text message to display (use \n for newlines).
- * @param {number} duration - How long to display the message (ms).
+ * @param {number} baseDuration - Base duration to display the message (ms) before fading.
  * @param {function} [callback] - Optional function to call after the message disappears.
  */
-export function showOverlayMessage(message, duration, callback) {
+export function showOverlayMessage(message, baseDuration, callback) {
   if (!overlayContainer) {
       console.error("Notifications: Overlay container not initialized.");
       return;
+  }
+  // Kill previous tween if running
+  if (currentOverlayTween) {
+      currentOverlayTween.kill();
   }
   overlayContainer.removeChildren(); // Clear previous messages
 
   const messageStyle = {
     fontFamily: "Impact, Charcoal, sans-serif",
     fontSize: 60,
-    fill: { // Define gradient fill explicitly
-        gradient: 'linear',
-        stops: [
-            { offset: 0, color: 0xffffff }, // White
-            { offset: 1, color: 0xdddddd }  // Light gray
-        ]
-    },
+    // Use an array for a simple linear gradient (top to bottom)
+    fill: [0xffffff, 0xdddddd],
     stroke: { color: "#333333", width: 4 },
-    dropShadow: { color: "#000", distance: 4, blur: 4 },
-    align: 'center', // Use string literal
+    dropShadow: {
+        color: "#000",
+        distance: 4,
+        blur: 4,
+        angle: Math.PI / 4, // Add default angle
+        alpha: 0.7,        // Add default alpha
+    },
+    align: 'center',
     lineSpacing: 10,
-  };
+  }; // Define style object
 
   const messageText = new PIXI.Text({
     text: message,
-    style: messageStyle,
+    style: messageStyle, // Pass the style object directly
   });
   messageText.anchor.set(0.5);
   messageText.x = GAME_WIDTH / 2;
@@ -101,16 +109,27 @@ export function showOverlayMessage(message, duration, callback) {
 
   overlayContainer.addChild(messageText);
 
-  // Use adjusted duration
-  const displayDuration = duration * winAnimDelayMultiplier;
+  // Use GSAP for fade in, hold, and fade out
+  const displayDurationSeconds = (baseDuration / 1000) * winAnimDelayMultiplier;
+  const fadeDurationSeconds = 0.3 * winAnimDelayMultiplier; // Quick fade
 
-  setTimeout(() => {
-    if (messageText.parent) { // Check if it hasn't been removed already
-        overlayContainer.removeChild(messageText);
-        messageText.destroy(); // Clean up Pixi object
-    }
-    if (callback) {
-        callback(); // Execute callback if provided
-    }
-  }, displayDuration);
+  messageText.alpha = 0; // Start invisible
+
+  currentOverlayTween = gsap.timeline({
+      onComplete: () => {
+          if (messageText.parent) {
+              overlayContainer.removeChild(messageText);
+              messageText.destroy();
+          }
+          if (callback) {
+              callback();
+          }
+          currentOverlayTween = null; // Clear reference
+      }
+  });
+
+  // Correctly place commas in GSAP .to() calls
+  currentOverlayTween.to(messageText, { alpha: 1, duration: fadeDurationSeconds, ease: "power1.inOut" }) // Fade in
+                     .to(messageText, { duration: displayDurationSeconds }) // Hold (vars object is optional if only duration is needed)
+                     .to(messageText, { alpha: 0, duration: fadeDurationSeconds, ease: "power1.inOut" }); // Fade out
 }

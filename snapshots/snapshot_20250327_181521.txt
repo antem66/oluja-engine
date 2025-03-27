@@ -1,0 +1,2648 @@
+<file_content path="./src//ui/InfoOverlay.js">
+// Placeholder import for game state
+import { state } from '../core/GameState.js';
+
+// Reference to the DOM element (needs to be initialized, perhaps in UIManager or Game)
+let infoOverlayElement = null;
+
+/**
+ * Initializes the reference to the info overlay DOM element.
+ * Should be called once during setup.
+ * @param {HTMLElement} element - The DOM element for the info overlay.
+ */
+export function initInfoOverlay(element) {
+    if (!element) {
+        console.error("InfoOverlay: Provided element is invalid.");
+        return;
+    }
+    infoOverlayElement = element;
+    console.log("InfoOverlay initialized with element:", infoOverlayElement);
+}
+
+/**
+ * Updates the content and visibility of the info overlay DOM element
+ * based on the current game state (Autoplay, Free Spins).
+ */
+export function updateInfoOverlay() {
+    if (!infoOverlayElement) {
+        // console.warn("InfoOverlay: Element not initialized yet.");
+        return; // Don't try to update if the element isn't set
+    }
+
+    let txt = "";
+    if (state.isAutoplaying) {
+        txt += `AUTOPLAY: ${state.autoplaySpinsRemaining}<br>`;
+    }
+    if (state.isInFreeSpins) {
+        txt += `FREE SPINS: ${state.freeSpinsRemaining}<br>FS WIN: €${state.totalFreeSpinsWin.toFixed(2)}`;
+    }
+
+    if (txt) {
+        infoOverlayElement.innerHTML = txt;
+        infoOverlayElement.style.display = "block";
+    } else {
+        infoOverlayElement.innerHTML = ""; // Clear content when not needed
+        infoOverlayElement.style.display = "none";
+    }
+}
+</file_content>
+
+<file_content path="./src//ui/ButtonHandlers.js">
+/* global PIXI */ // Might be needed for flashing elements later
+import { BET_PER_LINE_LEVELS } from '../config/gameSettings.js';
+import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
+// Removed unused import: import { updateAnimationSettings } from '../config/animationSettings.js';
+
+// --- Placeholder Imports (Will be replaced with actual module imports later) ---
+// These represent dependencies that need to be resolved once other modules are created.
+import { state, updateState } from '../core/GameState.js'; // Assuming GameState exports state object and update function
+import { updateDisplays, updateAutoplayButtonState, updateTurboButtonState, setButtonsEnabled } from './UIManager.js'; // Assuming UIManager handles UI updates
+import { flashElement } from './Notifications.js'; // Assuming Notifications handles flashing
+import { applyTurboSettings as applyTurbo } from '../features/TurboMode.js'; // Assuming TurboMode handles applying settings
+import { startSpinLoop } from '../core/Game.js'; // Assuming Game handles starting the spin process
+
+// --- Bet Adjustment ---
+
+function changeBet(direction) {
+  // Access state via imported state object
+  if (state.isSpinning || state.isTransitioning || state.isInFreeSpins) return;
+
+  let currentLevelIndex = BET_PER_LINE_LEVELS.indexOf(state.currentBetPerLine);
+
+  // Find closest level if current value isn't exact
+  if (currentLevelIndex === -1) {
+    currentLevelIndex = BET_PER_LINE_LEVELS.findIndex(
+      (lvl) => lvl >= state.currentBetPerLine
+    );
+    if (currentLevelIndex === -1) {
+      currentLevelIndex = BET_PER_LINE_LEVELS.length - 1;
+    } else if (
+      currentLevelIndex > 0 &&
+      BET_PER_LINE_LEVELS[currentLevelIndex] > state.currentBetPerLine
+    ) {
+      currentLevelIndex--;
+    }
+  }
+
+  let newLevelIndex = currentLevelIndex + direction;
+  newLevelIndex = Math.max(
+    0,
+    Math.min(newLevelIndex, BET_PER_LINE_LEVELS.length - 1)
+  );
+
+  // Update state via imported function/object
+  updateState({ currentBetPerLine: BET_PER_LINE_LEVELS[newLevelIndex] });
+  updateState({ currentTotalBet: state.currentBetPerLine * NUM_PAYLINES }); // Also update total bet
+
+  updateDisplays(); // Update UI
+}
+
+export function decreaseBet() {
+  changeBet(-1);
+}
+
+export function increaseBet() {
+  changeBet(1);
+}
+
+// --- Autoplay ---
+
+export function toggleAutoplay() {
+  if (state.isSpinning || state.isTransitioning || state.isInFreeSpins) return;
+
+  if (state.isAutoplaying) {
+    updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+    console.log("Autoplay stopped.");
+    setButtonsEnabled(true); // Enable buttons
+  } else {
+    updateState({ isAutoplaying: true, autoplaySpinsRemaining: state.autoplaySpinsDefault }); // Use default from state
+    console.log(`Autoplay started: ${state.autoplaySpinsRemaining} spins.`);
+    updateAutoplayButtonState(); // Update button appearance
+    startSpin(); // Start the first spin
+  }
+  // updateInfoOverlay(); // This will be handled by UIManager based on state changes
+}
+
+
+// --- Turbo Mode ---
+
+export function toggleTurbo() {
+  if (state.isTransitioning) return; // Prevent toggle during transitions
+
+  const newTurboState = !state.isTurboMode;
+  updateState({ isTurboMode: newTurboState }); // Update global state
+  console.log(`Turbo: ${state.isTurboMode}`);
+
+  // Apply settings (might involve updating animation config or directly passing values)
+  applyTurbo(state.isTurboMode); // Call function from TurboMode feature
+  updateTurboButtonState(); // Update button appearance
+}
+
+
+// --- Spin ---
+
+export function startSpin(isFreeSpin = false) {
+  if (state.isSpinning || state.isTransitioning) return;
+
+  // Ensure total bet is current
+  const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES;
+  updateState({ currentTotalBet: currentTotalBet });
+
+  // Check balance only if it's not a free spin
+  if (!isFreeSpin && state.balance < currentTotalBet) {
+    console.warn("Insufficient funds.");
+    // flashElement(balanceText, 0xe74c3c); // Needs reference to balanceText UI element - UIManager should handle this
+    if (state.isAutoplaying) {
+      // Stop autoplay if funds are insufficient
+      updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+      updateAutoplayButtonState();
+      // updateInfoOverlay(); // Handled by UIManager
+    }
+    setButtonsEnabled(true); // Re-enable buttons
+    return; // Stop the spin process
+  }
+
+  // --- Start the Spin Process ---
+  updateState({ isSpinning: true }); // Set master spinning flag
+  setButtonsEnabled(false); // Disable controls
+
+  // Reset win display and line graphics (UIManager or specific modules should handle this)
+  updateState({ lastTotalWin: 0, winningLinesInfo: [] });
+  // winLineGraphics.clear(); // Handled by PaylineGraphics module
+  // overlayContainer.removeChildren(); // Handled by Notifications/UIManager
+
+  updateDisplays(); // Update balance/win text immediately
+
+  // Deduct bet if not a free spin
+  if (!isFreeSpin) {
+    updateState({ balance: state.balance - currentTotalBet });
+    // balanceText.text = `€${state.balance.toFixed(2)}`; // Handled by UIManager
+  }
+
+  // Reset target stopping index for chained stops
+  updateState({ targetStoppingReelIndex: 0 });
+
+  // Initiate the actual reel spinning logic (call function in Game.js or ReelController.js)
+  startSpinLoop(state.isTurboMode); // Pass turbo state if needed by the spin loop logic
+
+  // The rest of the spin logic (scheduling stops, handling stop completion)
+  // will be managed within the Game/Reel modules and the game loop itself.
+}
+</file_content>
+
+<file_content path="./src//ui/UIManager.js">
+import * as PIXI from 'pixi.js';
+import { state } from '../core/GameState.js'; // Assuming state access
+import { GAME_WIDTH, bottomUIY } from '../config/gameSettings.js';
+
+// References to UI elements (Text objects, Buttons)
+let uiContainerRef = null;
+let balanceText = null;
+let winText = null;
+let betText = null;
+let autoplayButton = null;
+let turboButton = null;
+let spinButton = null;
+let betDecreaseButton = null;
+let betIncreaseButton = null;
+// Add other buttons if they need state management
+
+/**
+ * Initializes the UI Manager.
+ * Creates text elements and stores references to them and the main UI container.
+ * @param {PIXI.Container} uiContainer - The main container for UI elements.
+ * @param {object} uiTextStyle - Style object for labels.
+ * @param {object} uiValueStyle - Style object for value displays.
+ */
+export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
+    if (!uiContainer) {
+        console.error("UIManager: Provided uiContainer is invalid.");
+        return;
+    }
+    uiContainerRef = uiContainer;
+
+    // --- Create Text Labels and Value Displays ---
+
+    // Balance (Left Side)
+    const balanceLabel = new PIXI.Text({ text: "BALANCE", style: uiTextStyle });
+    balanceLabel.anchor.set(0, 0); // Left anchor
+    balanceLabel.x = 50; // Position from left
+    balanceLabel.y = bottomUIY + 15;
+    balanceText = new PIXI.Text({ text: `€${state.balance.toFixed(2)}`, style: uiValueStyle });
+    balanceText.anchor.set(0, 0); // Left anchor
+    balanceText.x = 50; // Position from left
+    balanceText.y = bottomUIY + 40;
+    uiContainer.addChild(balanceLabel, balanceText);
+
+    // Win (Center)
+    const winLabel = new PIXI.Text({ text: "WIN", style: uiTextStyle });
+    winLabel.anchor.set(0.5, 0); // Center anchor
+    winLabel.x = GAME_WIDTH / 2;
+    winLabel.y = bottomUIY + 15;
+    winText = new PIXI.Text({ text: `€${state.lastTotalWin.toFixed(2)}`, style: { ...uiValueStyle, fill: 0xf1c40f, fontSize: 26 } });
+    winText.anchor.set(0.5, 0);
+    winText.x = GAME_WIDTH / 2;
+    winText.y = bottomUIY + 40;
+    winText.visible = state.lastTotalWin > 0; // Initially hide if no win
+    uiContainer.addChild(winLabel, winText);
+
+    // Bet
+    const betLabel = new PIXI.Text({ text: "BET", style: uiTextStyle });
+    betLabel.anchor.set(1, 0);
+    betLabel.x = GAME_WIDTH - 50;
+    betLabel.y = bottomUIY + 15;
+    betText = new PIXI.Text({ text: `€${state.currentTotalBet.toFixed(2)}`, style: uiValueStyle });
+    betText.anchor.set(1, 0);
+    betText.x = GAME_WIDTH - 50;
+    betText.y = bottomUIY + 40;
+    uiContainer.addChild(betLabel, betText);
+
+    // --- Store Button References (assuming they are named in Game.js) ---
+    // Buttons are added by ButtonFactory, find them by name
+    spinButton = uiContainer.getChildByName("spinButton");
+    autoplayButton = uiContainer.getChildByName("autoplayButton");
+    turboButton = uiContainer.getChildByName("turboButton");
+    betDecreaseButton = uiContainer.getChildByName("betDecreaseButton");
+    betIncreaseButton = uiContainer.getChildByName("betIncreaseButton");
+
+    if (!spinButton || !autoplayButton || !turboButton || !betDecreaseButton || !betIncreaseButton) {
+         console.warn("UIManager: Could not find all expected buttons by name in uiContainer.");
+    }
+
+    console.log("UIManager initialized.");
+}
+
+/**
+ * Updates the text displays (Balance, Bet, Win) based on the current game state.
+ */
+export function updateDisplays() {
+    if (balanceText) balanceText.text = `€${state.balance.toFixed(2)}`;
+    if (betText) betText.text = `€${state.currentTotalBet.toFixed(2)}`;
+    if (winText) {
+        winText.text = `€${state.lastTotalWin.toFixed(2)}`;
+        winText.visible = state.lastTotalWin > 0;
+    }
+    // Update Info Overlay (DOM) - called separately by Game or state change listener
+    // updateInfoOverlay();
+}
+
+/**
+ * Enables or disables interaction and adjusts alpha for primary game buttons.
+ * @param {boolean} enabled - True to enable, false to disable.
+ */
+export function setButtonsEnabled(enabled) {
+    const alpha = enabled ? 1.0 : 0.5;
+    const eventMode = enabled ? 'static' : 'none'; // Keep using string literals
+    const cursor = enabled ? 'pointer' : 'default';
+
+    const buttonsToToggle = [
+        spinButton,
+        autoplayButton,
+        turboButton,
+        betDecreaseButton,
+        betIncreaseButton,
+    ];
+
+    buttonsToToggle.forEach(button => {
+        if (!button) return; // Skip if button reference wasn't found
+
+        // Special handling for bet buttons during free spins
+        const isBetButton = button === betDecreaseButton || button === betIncreaseButton;
+        const finalEnabled = enabled && !(isBetButton && state.isInFreeSpins);
+
+        button.eventMode = finalEnabled ? 'static' : 'none'; // Keep using string literals
+        button.alpha = finalEnabled ? 1.0 : 0.5;
+        button.cursor = finalEnabled ? 'pointer' : 'default';
+
+        // Reset visual state if disabling
+        if (!finalEnabled && button.bgHover) {
+             button.bgHover.visible = false;
+             button.bgDown.visible = false;
+             button.bgIdle.visible = true;
+        }
+    });
+
+    // Update specific button states after general enable/disable
+    updateAutoplayButtonState();
+    updateTurboButtonState();
+}
+
+/**
+ * Updates the visual state of the Autoplay button (icon, color).
+ */
+export function updateAutoplayButtonState() {
+    if (!autoplayButton) return;
+
+    // Update the icon using the new method in Button class
+    const newIconType = state.isAutoplaying ? 'autoplay_stop' : 'autoplay_play';
+    // Check if the updateIcon method exists before calling
+    if (typeof autoplayButton.updateIcon === 'function') {
+        autoplayButton.updateIcon(newIconType);
+    } else {
+        // Fallback or warning if method doesn't exist (e.g., old button instance)
+        console.warn("UIManager: autoplayButton does not have updateIcon method.");
+        // You might fallback to text label change here if needed
+        // if (autoplayButton.buttonLabel) {
+        //     autoplayButton.buttonLabel.text = state.isAutoplaying ? "■" : "▶";
+        // }
+    }
+
+    // Update background tint if backgrounds are stored (e.g., button.bgIdle)
+    // Ensure bgIdle exists before accessing tint
+    if (autoplayButton.bgIdle) {
+        const color = state.isAutoplaying ? 0xffa500 : 0x555555; // Orange when active
+        autoplayButton.bgIdle.tint = color;
+        // Ensure correct visibility if disabled/enabled changed state
+        autoplayButton.bgIdle.visible = true;
+        autoplayButton.bgHover.visible = false;
+        autoplayButton.bgDown.visible = false;
+    }
+}
+
+/**
+ * Updates the visual state of the Turbo button (color).
+ */
+export function updateTurboButtonState() {
+    if (!turboButton) return;
+    // Update background tint if backgrounds are stored
+    // Ensure turboButton and its idle background exist
+    if (turboButton?.bgIdle) {
+        const isActive = state.isTurboMode;
+        const activeColor = 0x00ffff; // Cyan
+        const idleColor = 0x555555; // Default dark grey
+
+        turboButton.bgIdle.tint = isActive ? activeColor : idleColor;
+
+        // Reset visibility ONLY if the button isn't currently being interacted with
+        // This prevents overriding the hover/down states visually during interaction
+        // Note: This assumes bgDown/bgHover visibility reflects interaction state.
+        if (!(turboButton.bgDown?.visible || turboButton.bgHover?.visible)) {
+            turboButton.bgIdle.visible = true;
+            if (turboButton.bgHover) turboButton.bgHover.visible = false;
+            if (turboButton.bgDown) turboButton.bgDown.visible = false;
+        }
+        // If the button IS being interacted with (hover/down visible), the interaction
+        // logic in ButtonFactory._onPointerUp/Out should handle setting the correct
+        // background visibility when the interaction ends.
+    }
+}
+</file_content>
+
+<file_content path="./src//ui/ButtonFactory.js">
+import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
+
+/**
+ * Creates a reusable PixiJS button component drawn with Graphics.
+ * @param {string} text - The text label for the button (ignored if iconType is provided).
+ * @param {number} x - The x-coordinate position.
+ * @param {number} y - The y-coordinate position.
+ * @param {function} callback - The function to call when the button is pressed.
+ * @param {object} textStyleObject - PIXI.TextStyle properties (used only if no iconType).
+ * @param {PIXI.Container} parentContainer - The container to add this button to. Required.
+ * @param {number} [width=100] - The width of the button (used for radius if circular).
+ * @param {number} [height=40] - The height of the button (used for radius if circular).
+ * @param {boolean} [circular=false] - Whether the button should be circular.
+ * @param {string} [iconType=undefined] - Optional: Type of icon to draw ('spin', etc.). If provided, text is ignored.
+ * @returns {Button} The Button instance.
+ */
+export function createButton(
+  text, x, y,
+  callback,
+  textStyleObject, // Still needed for potential non-icon buttons
+  parentContainer,
+  width = 100,
+  height = 40,
+  circular = false,
+  iconType = undefined // Default to undefined
+) {
+   // Ensure callback is a function, provide a no-op default if not
+   if (typeof callback !== "function") {
+     console.warn("createButton: Callback provided is not a function. Using no-op.");
+     callback = () => {};
+   }
+
+  // Pass iconType to the Button constructor
+  const button = new Button(text, x, y, callback, textStyleObject, parentContainer, width, height, circular, iconType);
+
+  // Add the button to the specified parent container
+  if (parentContainer) {
+      parentContainer.addChild(button);
+  } else {
+      console.warn("createButton: No parent container provided. Button not added to stage.");
+  }
+
+  return button; // Return the created button instance
+}
+
+
+/**
+ * Represents a custom Button class extending PIXI.Container
+ */
+class Button extends PIXI.Container {
+    /** @type {PIXI.Text | undefined} */
+    buttonLabel;
+    /** @type {PIXI.Graphics | undefined} */
+    buttonIcon;
+    /** @type {PIXI.Graphics | undefined} */
+    bgIdle;
+    /** @type {PIXI.Graphics | undefined} */
+    bgHover;
+    /** @type {PIXI.Graphics | undefined} */
+    bgDown;
+    /** @type {gsap.core.Tween | null} */
+    currentTween = null;
+    /** @type {Function | null} */
+    _callback = null;
+    _isCircular = false; // Store circular flag
+    _width = 0;
+    _height = 0;
+
+    constructor(
+        text, x, y,
+        callback,
+        textStyleObject,
+        parentContainer,
+        width = 100,
+        height = 40,
+        circular = false,
+        iconType
+    ) {
+        super();
+        this._callback = callback;
+        this._isCircular = circular; // Store flag
+
+        // Ensure width and height are numbers
+        this._width = Number(width) || 100;
+        this._height = Number(height) || 40;
+        const effectiveWidth = this._isCircular ? Math.min(this._width, this._height) : this._width;
+        const effectiveHeight = this._isCircular ? Math.min(this._width, this._height) : this._height;
+        const radius = effectiveWidth / 2;
+
+        this.pivot.set(effectiveWidth / 2, effectiveHeight / 2);
+        this.x = x;
+        this.y = y;
+        /** @type {PIXI.EventMode} */
+        this.eventMode = 'static'; // Explicitly set valid EventMode
+        this.cursor = "pointer";
+
+        // --- Button Shapes ---
+        this.bgIdle = this._drawShape(this._width, this._height, this._isCircular, radius, 0x555555, 0xaaaaaa);
+        this.bgHover = this._drawShape(this._width, this._height, this._isCircular, radius, 0x777777, 0xcccccc);
+        this.bgDown = this._drawShape(this._width, this._height, this._isCircular, radius, 0x333333, 0x888888);
+
+        if (this.bgHover) this.bgHover.visible = false;
+        if (this.bgDown) this.bgDown.visible = false;
+
+        if (this.bgIdle) this.addChild(this.bgIdle);
+        if (this.bgHover) this.addChild(this.bgHover);
+        if (this.bgDown) this.addChild(this.bgDown);
+
+
+        // --- Button Content (Icon or Text) ---
+        if (iconType) {
+            this.buttonIcon = this._drawIcon(iconType, effectiveWidth, effectiveHeight, radius);
+            if (this.buttonIcon) {
+                this.addChild(this.buttonIcon);
+            }
+        } else if (text) {
+            const style = new PIXI.TextStyle(textStyleObject || {});
+            const buttonText = new PIXI.Text({ text: text, style: style });
+            buttonText.anchor.set(0.5);
+            buttonText.x = effectiveWidth / 2;
+            buttonText.y = effectiveHeight / 2;
+            this.buttonLabel = buttonText;
+            this.addChild(buttonText);
+        }
+
+        // --- Interaction Logic ---
+        this._onPointerDown = this._onPointerDown.bind(this);
+        this._onPointerUp = this._onPointerUp.bind(this);
+        this._onPointerUpOutside = this._onPointerUpOutside.bind(this);
+        this._onPointerOver = this._onPointerOver.bind(this);
+        this._onPointerOut = this._onPointerOut.bind(this);
+
+        this.on("pointerdown", this._onPointerDown);
+        this.on("pointerup", this._onPointerUp);
+        this.on("pointerupoutside", this._onPointerUpOutside);
+        this.on("pointerover", this._onPointerOver);
+        this.on("pointerout", this._onPointerOut);
+    }
+
+    // --- Helper methods for drawing ---
+
+    /**
+     * Draws the basic button shape
+     * @param {number} width
+     * @param {number} height
+     * @param {boolean} circular
+     * @param {number} radius
+     * @param {number} fillColor
+     * @param {number} strokeColor
+     * @returns {PIXI.Graphics}
+     */
+    _drawShape(width, height, circular, radius, fillColor, strokeColor) {
+        const shape = new PIXI.Graphics();
+        if (circular) {
+            shape
+                .circle(radius, radius, radius)
+                .fill({ color: fillColor })
+                .stroke({ width: 2, color: strokeColor, alignment: 0.5 });
+        } else {
+            shape
+                .roundRect(0, 0, width, height, 10)
+                .fill({ color: fillColor })
+                .stroke({ width: 2, color: strokeColor, alignment: 0.5 });
+        }
+        return shape;
+    }
+
+    /**
+     * Draws the icon based on type
+     * @param {string} iconType
+     * @param {number} width
+     * @param {number} height
+     * @param {number} radius - Radius of the button (or half its size)
+     * @returns {PIXI.Graphics | undefined} // Return undefined on failure
+     */
+    _drawIcon(iconType, width, height, radius) {
+        const icon = new PIXI.Graphics();
+        const iconColor = 0xffffff;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const size = Math.min(width, height) * 0.5; // Base size for icons
+        const strokeWidth = Math.max(2, radius * 0.1);
+
+        switch (iconType) {
+            case 'spin':
+                const iconRadius = size * 0.8;
+                const arrowThickness = Math.max(2, radius * 0.15);
+                // Apply stroke style directly in the drawing commands
+                icon.stroke({ width: arrowThickness, color: iconColor, cap: 'round' });
+                icon.arc(centerX, centerY, iconRadius, -Math.PI * 0.1, Math.PI * 0.9);
+                this._drawArrowHead(icon, centerX, centerY, iconRadius, Math.PI * 0.9, arrowThickness);
+                // Need to begin new path for the second arc's stroke
+                icon.moveTo(centerX + iconRadius * Math.cos(Math.PI * 0.9), centerY + iconRadius * Math.sin(Math.PI * 0.9)); // Move to end of first arc
+                icon.stroke({ width: arrowThickness, color: iconColor, cap: 'round' }); // Re-apply stroke for next segment
+                icon.arc(centerX, centerY, iconRadius, Math.PI * 0.9, Math.PI * 1.9);
+                this._drawArrowHead(icon, centerX, centerY, iconRadius, Math.PI * 1.9, arrowThickness);
+                break;
+            case 'plus':
+                icon.stroke({ width: strokeWidth, color: iconColor, cap: 'round' });
+                icon.moveTo(centerX - size / 2, centerY);
+                icon.lineTo(centerX + size / 2, centerY);
+                icon.moveTo(centerX, centerY - size / 2);
+                icon.lineTo(centerX, centerY + size / 2);
+                break;
+            case 'minus':
+                icon.stroke({ width: strokeWidth, color: iconColor, cap: 'round' });
+                icon.moveTo(centerX - size / 2, centerY);
+                icon.lineTo(centerX + size / 2, centerY);
+                break;
+            case 'autoplay_play': // ▶ Triangle
+                icon.moveTo(centerX - size / 3, centerY - size / 2);
+                icon.lineTo(centerX + size / 2, centerY);
+                icon.lineTo(centerX - size / 3, centerY + size / 2);
+                icon.closePath();
+                icon.fill({ color: iconColor });
+                break;
+            case 'autoplay_stop': // ■ Square
+                icon.rect(centerX - size / 2.5, centerY - size / 2.5, size / 1.25, size / 1.25).fill({ color: iconColor });
+                break;
+            case 'turbo': // ⚡ Lightning Bolt
+                icon.moveTo(centerX + size / 3, centerY - size / 2);
+                icon.lineTo(centerX - size / 3, centerY + size / 10);
+                icon.lineTo(centerX, centerY + size / 10);
+                icon.lineTo(centerX - size / 3, centerY + size / 2);
+                icon.lineTo(centerX + size / 3, centerY - size / 10);
+                icon.lineTo(centerX, centerY - size / 10);
+                icon.closePath();
+                icon.fill({ color: iconColor });
+                break;
+            default:
+                console.warn("ButtonFactory: Unknown iconType:", iconType);
+                return undefined;
+        }
+        return icon;
+    }
+
+    /**
+     * Helper to draw arrowhead for spin icon
+     * @param {PIXI.Graphics} graphics
+     * @param {number} cx
+     * @param {number} cy
+     * @param {number} radius
+     * @param {number} angle
+     * @param {number} thickness
+     */
+    _drawArrowHead(graphics, cx, cy, radius, angle, thickness) {
+        const headLength = thickness * 1.5;
+        // Draw line segments for the arrowhead
+        // Need to ensure the current path is setup correctly before drawing lines
+        graphics.moveTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
+        graphics.lineTo(cx + radius * Math.cos(angle) - headLength * Math.cos(angle + Math.PI / 6), cy + radius * Math.sin(angle) - headLength * Math.sin(angle + Math.PI / 6));
+        graphics.moveTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)); // Re-move to the point for the second line segment
+        graphics.lineTo(cx + radius * Math.cos(angle) - headLength * Math.cos(angle - Math.PI / 6), cy + radius * Math.sin(angle) - headLength * Math.sin(angle - Math.PI / 6));
+    }
+
+    // --- Interaction Logic with GSAP ---
+    /** @param {object} targetProps */
+    _animate(targetProps) {
+        // Check if tween exists and is active before killing
+        if (this.currentTween && this.currentTween.isActive()) {
+            this.currentTween.kill();
+        }
+        this.currentTween = gsap.to(this.scale, { ...targetProps, duration: 0.1, ease: 'power1.out' });
+    }
+
+    /** @param {PIXI.FederatedPointerEvent} event */
+    _onPointerDown(event) {
+        if (this.alpha < 0.6) return; // Basic enabled check
+        if (this.bgDown) this.bgDown.visible = true;
+        if (this.bgIdle) this.bgIdle.visible = false;
+        if (this.bgHover) this.bgHover.visible = false;
+        this._animate({ x: 0.95, y: 0.95 });
+        if (typeof this._callback === 'function') {
+            this._callback();
+        }
+    }
+
+    /** @param {PIXI.FederatedPointerEvent} event */
+    _onPointerUp(event) {
+        if (this.alpha < 0.6) return;
+        if (this.bgDown) this.bgDown.visible = false;
+        // Check event.global exists and if it's within the button's bounds
+        const globalPoint = event.global;
+        let isOver = false;
+        if (globalPoint) {
+            const bounds = this.getBounds(); // Get bounds relative to the world stage
+            isOver = globalPoint.x >= bounds.x && globalPoint.x <= bounds.x + bounds.width &&
+                     globalPoint.y >= bounds.y && globalPoint.y <= bounds.y + bounds.height;
+        }
+        if (this.bgHover) this.bgHover.visible = isOver;
+        if (this.bgIdle) this.bgIdle.visible = !isOver;
+        this._animate({ x: isOver ? 1.05 : 1.0, y: isOver ? 1.05 : 1.0 });
+    }
+
+    /** @param {PIXI.FederatedPointerEvent} event */
+     _onPointerUpOutside(event) {
+        if (this.alpha < 0.6) return;
+        if (this.bgDown) this.bgDown.visible = false;
+        if (this.bgHover) this.bgHover.visible = false;
+        if (this.bgIdle) this.bgIdle.visible = true;
+        this._animate({ x: 1.0, y: 1.0 });
+    }
+
+    /** @param {PIXI.FederatedPointerEvent} event */
+    _onPointerOver(event) {
+        // Check bgDown visibility safely
+        if (this.alpha < 0.6 || (this.bgDown && this.bgDown.visible)) return;
+        if (this.bgHover) this.bgHover.visible = true;
+        if (this.bgIdle) this.bgIdle.visible = false;
+        this._animate({ x: 1.05, y: 1.05 });
+    }
+
+    /** @param {PIXI.FederatedPointerEvent} event */
+    _onPointerOut(event) {
+        // Check bgDown visibility safely
+        if (this.alpha < 0.6 || (this.bgDown && this.bgDown.visible)) return;
+        if (this.bgHover) this.bgHover.visible = false;
+        if (this.bgIdle) this.bgIdle.visible = true;
+        this._animate({ x: 1.0, y: 1.0 });
+    }
+
+    /**
+     * Method to update icon (needed for autoplay)
+     * @param {string} newIconType
+     */
+    updateIcon(newIconType) {
+        if (this.buttonIcon) {
+            this.removeChild(this.buttonIcon);
+            this.buttonIcon.destroy();
+            this.buttonIcon = undefined;
+        }
+
+        // Use stored dimensions and circular flag
+        const effectiveWidth = this._isCircular ? Math.min(this._width, this._height) : this._width;
+        const effectiveHeight = this._isCircular ? Math.min(this._width, this._height) : this._height;
+        const radius = effectiveWidth / 2;
+
+        this.buttonIcon = this._drawIcon(newIconType, effectiveWidth, effectiveHeight, radius);
+        if (this.buttonIcon) {
+            this.addChild(this.buttonIcon);
+        }
+    }
+}
+</file_content>
+
+<file_content path="./src//ui/Notifications.js">
+
+import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
+import { winAnimDelayMultiplier } from '../config/animationSettings.js';
+import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
+
+// Reference to the overlay container (needs initialization)
+let overlayContainer = null;
+let currentOverlayTween = null; // To manage GSAP tween
+let flashElementInterval = null; // Store interval ID for flashing
+
+/**
+ * Initializes the reference to the overlay container.
+ * @param {PIXI.Container} container - The Pixi container for overlay messages.
+ */
+export function initNotifications(container) {
+    if (!container) {
+        console.error("Notifications: Provided overlay container is invalid.");
+        return;
+    }
+    overlayContainer = container;
+    console.log("Notifications initialized with container:", overlayContainer);
+}
+
+/**
+ * Flashes a PixiJS display object (like Text) with a specific color.
+ * @param {PIXI.Container} element - The Pixi element to flash (Container is a common base).
+ * @param {number} [flashColor=0xff0000] - The color to flash (hex).
+ * @param {number} [baseDuration=150] - Base duration of each flash phase (ms).
+ * @param {number} [flashes=2] - Number of full on/off cycles.
+ */
+export function flashElement(
+  element,
+  flashColor = 0xff0000,
+  baseDuration = 150,
+  flashes = 2
+) {
+  if (flashElementInterval) clearInterval(flashElementInterval); // Clear previous interval
+  if (!element?.parent) return; // Don't flash if element isn't on stage
+
+  const originalTint = element.tint ?? 0xffffff;
+  let count = 0;
+  element.visible = true; // Ensure it's visible
+
+  const duration = baseDuration * winAnimDelayMultiplier; // Adjust duration based on turbo
+
+  function doFlash() {
+    if (!element?.parent) { // Stop if element is removed
+      clearInterval(flashElementInterval);
+      return;
+    }
+    if (count >= flashes * 2) { // Completed all flashes
+      clearInterval(flashElementInterval);
+      element.tint = originalTint; // Restore original tint
+      // Optionally hide if it's the win text and there's no win? Needs context.
+      // if (element === winText && lastTotalWin <= 0) element.visible = false;
+      return;
+    }
+    // Alternate between flash color and original tint
+    element.tint = count % 2 === 0 ? flashColor : originalTint;
+    count++;
+  }
+
+  doFlash(); // Start immediately
+  flashElementInterval = setInterval(doFlash, duration);
+}
+
+/**
+ * Displays a temporary message centered on the screen in the overlay container.
+ * @param {string} message - The text message to display (use \n for newlines).
+ * @param {number} baseDuration - Base duration to display the message (ms) before fading.
+ * @param {function} [callback] - Optional function to call after the message disappears.
+ */
+export function showOverlayMessage(message, baseDuration, callback) {
+  if (!overlayContainer) {
+      console.error("Notifications: Overlay container not initialized.");
+      return;
+  }
+  // Kill previous tween if running
+  if (currentOverlayTween) {
+      currentOverlayTween.kill();
+  }
+  overlayContainer.removeChildren(); // Clear previous messages
+
+  const messageStyle = {
+    fontFamily: "Impact, Charcoal, sans-serif",
+    fontSize: 60,
+    // Use an array for a simple linear gradient (top to bottom)
+    fill: [0xffffff, 0xdddddd],
+    stroke: { color: "#333333", width: 4 },
+    dropShadow: {
+        color: "#000",
+        distance: 4,
+        blur: 4,
+        angle: Math.PI / 4, // Add default angle
+        alpha: 0.7,        // Add default alpha
+    },
+    align: 'center',
+    lineSpacing: 10,
+  }; // Define style object
+
+  const messageText = new PIXI.Text({
+    text: message,
+    style: messageStyle, // Pass the style object directly
+  });
+  messageText.anchor.set(0.5);
+  messageText.x = GAME_WIDTH / 2;
+  messageText.y = GAME_HEIGHT / 2;
+
+  overlayContainer.addChild(messageText);
+
+  // Use GSAP for fade in, hold, and fade out
+  const displayDurationSeconds = (baseDuration / 1000) * winAnimDelayMultiplier;
+  const fadeDurationSeconds = 0.3 * winAnimDelayMultiplier; // Quick fade
+
+  messageText.alpha = 0; // Start invisible
+
+  currentOverlayTween = gsap.timeline({
+      onComplete: () => {
+          if (messageText.parent) {
+              overlayContainer.removeChild(messageText);
+              messageText.destroy();
+          }
+          if (callback) {
+              callback();
+          }
+          currentOverlayTween = null; // Clear reference
+      }
+  });
+
+  // Correctly place commas in GSAP .to() calls
+  currentOverlayTween.to(messageText, { alpha: 1, duration: fadeDurationSeconds, ease: "power1.inOut" }) // Fade in
+                     .to(messageText, { duration: displayDurationSeconds }) // Hold (vars object is optional if only duration is needed)
+                     .to(messageText, { alpha: 0, duration: fadeDurationSeconds, ease: "power1.inOut" }); // Fade out
+}
+</file_content>
+
+<file_content path="./src//core/Reel.js">
+import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
+import { SYMBOL_SIZE, SYMBOLS_PER_REEL_VISIBLE, REEL_WIDTH } from '../config/gameSettings.js';
+import {
+    spinAcceleration, maxSpinSpeed,
+    stopTweenDuration // Import new setting
+} from '../config/animationSettings.js'; // Import animation parameters
+import { createSymbolGraphic } from './Symbol.js';
+// Remove unused helpers: import { lerpAngle, easeOutQuad } from '../utils/helpers.js';
+
+export class Reel {
+    constructor(reelIndex, strip, appTicker) {
+        this.reelIndex = reelIndex;
+        this.strip = strip;
+        this.appTicker = appTicker; // Keep ticker reference if needed for 'now'
+
+        this.container = new PIXI.Container();
+        this.container.x = reelIndex * REEL_WIDTH;
+
+        this.symbols = []; // Array of PIXI.Container symbol graphics
+        this.position = Math.random() * this.strip.length; // Current position on the strip
+        this.spinSpeed = 0;
+        this.state = 'idle'; // idle, accelerating, spinning, tweeningStop, stopped
+        this.stopIndex = 0; // Target index on the strip to stop at
+        this.finalStopPosition = 0; // Store the target stop index as final position
+
+        // Properties for scheduled stop tweening
+        this.targetStopTime = 0; // Absolute time when the reel should finish stopping
+        this.stopTween = null; // Reference to the GSAP tween
+
+        // Blur filter
+        this.blur = new PIXI.BlurFilter({ strength: 0, quality: 1, kernelSize: 5 });
+        this.blur.enabled = false;
+        this.container.filters = [this.blur];
+
+        // Create initial symbols
+        const numSymbolsToCreate = SYMBOLS_PER_REEL_VISIBLE + 2; // +2 for buffer top/bottom
+        for (let j = 0; j < numSymbolsToCreate; j++) {
+            const symbol = createSymbolGraphic(this.strip[0]); // Start with placeholder
+            this.symbols.push(symbol);
+            this.container.addChild(symbol);
+        }
+        this.alignReelSymbols(); // Position initial symbols correctly
+    }
+
+    // --- Reel State Control ---
+
+    startSpinning(currentTurbo) {
+        this.state = 'accelerating';
+        this.spinSpeed = 0; // Start from 0 speed
+        this.blur.enabled = true;
+        this.blur.strength = 0;
+        // Determine random stop index (can be overridden by server/predetermined results later)
+        this.stopIndex = Math.floor(Math.random() * this.strip.length);
+        this.finalStopPosition = this.stopIndex; // Store the target index
+        this.targetStopTime = 0; // Reset target stop time
+        if (this.stopTween) { // Kill any previous stop tween
+            this.stopTween.kill();
+            this.stopTween = null;
+        }
+        console.log(`Reel ${this.reelIndex}: Starting spin, target stop index: ${this.stopIndex}`);
+    }
+
+    // New method to schedule the stop
+    scheduleStop(targetStopTime) {
+        this.targetStopTime = targetStopTime;
+        // The actual transition to tweening will happen in the update loop based on time
+    }
+
+    // --- Symbol Alignment ---
+
+    alignReelSymbols() {
+        const totalStripSymbols = this.strip.length;
+        const numSymbolsInDisplay = this.symbols.length; // e.g., 6 (SYMBOLS_PER_REEL_VISIBLE + 2)
+        const currentPosition = this.position; // Use the current reel position
+
+        // Calculate the index of the symbol strip that should be at the *very top* of the visible area
+        // Adjusting for the buffer symbol at the top.
+        const topVisibleStripIndex = Math.floor(currentPosition) % totalStripSymbols;
+
+        for (let i = 0; i < numSymbolsInDisplay; i++) {
+            const symbolSprite = this.symbols[i];
+            if (!symbolSprite) continue; // Should not happen if initialized correctly
+
+            // Calculate the target strip index for this sprite slot (i)
+            // Index 0 is buffer above, 1 is top visible, ..., numSymbolsInDisplay-1 is buffer below
+            // Relative index from the top visible symbol on the strip
+            const relativeIndex = i - 1; // -1 for top buffer, 0 for top visible, etc.
+            const targetStripIndex = (topVisibleStripIndex + relativeIndex + totalStripSymbols) % totalStripSymbols;
+
+            // Calculate the Y position based on the current reel position (fractional part determines offset)
+            const symbolOffset = currentPosition - Math.floor(currentPosition);
+            // Position relative to the container's top edge. Anchor is 0.5.
+            symbolSprite.y = (relativeIndex - symbolOffset) * SYMBOL_SIZE + (SYMBOL_SIZE / 2);
+
+            const expectedSymbolId = this.strip[targetStripIndex];
+
+            // If the sprite doesn't exist, or its ID doesn't match the expected one, replace it
+            if (symbolSprite.symbolId !== expectedSymbolId) {
+                const oldSymbolY = symbolSprite.y; // Store Y before removing
+                this.container.removeChild(symbolSprite);
+                symbolSprite.destroy(); // Destroy the old sprite
+
+                const newSymbol = createSymbolGraphic(expectedSymbolId); // Returns SymbolSprite
+                if (newSymbol) {
+                    newSymbol.y = oldSymbolY; // Apply stored Y position
+                    this.symbols[i] = newSymbol; // Replace in array
+                    this.container.addChild(newSymbol); // Add new sprite to container
+                } else {
+                    // Handle error if symbol creation fails
+                    // this.symbols[i] = undefined; // Don't assign undefined, let the check at loop start handle it
+                    console.error(`Failed to create symbol graphic for ID: ${expectedSymbolId}`);
+                }
+            }
+        }
+    }
+
+    // --- Update Logic (Called by Game Loop) ---
+
+    update(delta, now) { // 'now' is the current time from the ticker (performance.now() or similar)
+        let needsAlign = false;
+        let reelIsActive = true; // Assume active unless stopped/idle
+
+        // Check if it's time to start the stop tween
+        if ((this.state === 'accelerating' || this.state === 'spinning') && this.targetStopTime > 0 && now >= this.targetStopTime - stopTweenDuration && !this.stopTween) {
+            this.state = 'tweeningStop';
+            this.spinSpeed = 0; // Stop applying manual speed changes
+            this.blur.strength = 0;
+            this.blur.enabled = false;
+
+            // Ensure position is wrapped correctly before starting tween
+            const currentPosition = ((this.position % this.strip.length) + this.strip.length) % this.strip.length;
+            let targetPosition = this.finalStopPosition;
+
+            // Handle wrap-around for GSAP tweening
+            // If the target is just past the wrap point (e.g., target 1, current 15, length 16), add strip.length
+            if (Math.abs(targetPosition - currentPosition) > this.strip.length / 2) {
+                if (targetPosition < currentPosition) {
+                    targetPosition += this.strip.length;
+                } else {
+                    // This case might be less common if spinning forward, but handle anyway
+                    // targetPosition -= this.strip.length; // Or adjust currentPosition instead?
+                    // Let's assume forward spin, target is usually ahead or slightly behind after wrap
+                }
+            }
+
+            console.log(`Reel ${this.reelIndex}: Starting GSAP stop tween from ${currentPosition.toFixed(2)} to ${targetPosition.toFixed(2)} at ${now.toFixed(0)}ms`);
+
+            this.stopTween = gsap.to(this, {
+                position: targetPosition,
+                duration: stopTweenDuration / 1000, // GSAP uses seconds
+                ease: 'quad.out', // Use GSAP's easing functions
+                onUpdate: () => {
+                    needsAlign = true; // Align symbols during tween
+                },
+                onComplete: () => {
+                    this.position = this.finalStopPosition; // Ensure exact final position
+                    this.state = 'stopped';
+                    this.alignReelSymbols(); // <<<=== FINAL ALIGNMENT CALL
+                    needsAlign = false; // Alignment is done
+                    reelIsActive = false; // Mark as stopped
+                    this.stopTween = null; // Clear tween reference
+                    console.log(`Reel ${this.reelIndex}: GSAP tween stopped at ${performance.now().toFixed(0)}ms`);
+                }
+            });
+        }
+
+        switch (this.state) {
+            case 'accelerating':
+                this.spinSpeed = Math.min(maxSpinSpeed, this.spinSpeed + spinAcceleration * delta);
+                this.position += this.spinSpeed * delta;
+                if (this.spinSpeed >= maxSpinSpeed) {
+                    this.state = 'spinning';
+                    this.spinSpeed = maxSpinSpeed; // Cap speed
+                }
+                this.blur.strength = (this.spinSpeed / maxSpinSpeed) * 8;
+                needsAlign = true;
+                break;
+
+            case 'spinning':
+                // Continue spinning at max speed
+                this.position += maxSpinSpeed * delta;
+                this.blur.strength = 8; // Max blur
+                needsAlign = true;
+                break;
+
+            case 'tweeningStop':
+                // GSAP is handling the position update via the tween's onUpdate
+                // We just need to ensure symbols are aligned
+                if (this.stopTween) { // If tween is active
+                    needsAlign = true; // Ensure alignment happens
+                } else {
+                    // If tween finished unexpectedly or was killed, force state to stopped
+                    this.state = 'stopped';
+                    this.position = this.finalStopPosition; // Snap to final position
+                    needsAlign = true;
+                    reelIsActive = false;
+                    console.warn(`Reel ${this.reelIndex}: Tween finished unexpectedly.`);
+                    // } // Remove the redundant if check
+                }
+                break;
+            // Removed duplicated block here
+            case 'stopped':
+            case 'idle':
+                reelIsActive = false;
+                // Ensure blur is off
+                if (this.blur.enabled) {
+                    this.blur.enabled = false;
+                    this.blur.strength = 0;
+                }
+                break;
+        } // End Switch
+
+        // Normalize position and align symbols if needed
+        if (needsAlign) {
+            // Wrap position around strip length
+            this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length;
+            this.alignReelSymbols();
+        }
+
+        return reelIsActive; // Return whether the reel is still considered moving/active
+    }
+}
+</file_content>
+
+<file_content path="./src//core/Game.js">
+import * as PIXI from 'pixi.js';
+import * as SETTINGS from '../config/gameSettings.js';
+import { REEL_STRIPS } from '../config/reelStrips.js';
+// Import animation settings
+import {
+    // stopDelayBase, // No longer used directly here
+    winAnimDelayMultiplier, // Still used in handleSpinEnd
+    REEL_STOP_STAGGER, baseSpinDuration, stopTweenDuration, // Normal settings
+    turboBaseSpinDuration, turboReelStopStagger // Turbo settings
+} from '../config/animationSettings.js';
+import { state, updateState, initGameState } from './GameState.js';
+import { Reel } from './Reel.js';
+import { createButton } from '../ui/ButtonFactory.js';
+import * as handlers from '../ui/ButtonHandlers.js';
+import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
+import { initNotifications } from '../ui/Notifications.js'; // init only
+import { initWinEvaluation, evaluateWin } from '../features/WinEvaluation.js';
+import { initPaylineGraphics, clearWinLines } from '../features/PaylineGraphics.js'; // Import clearWinLines here
+import { initFreeSpins } from '../features/FreeSpins.js';
+import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
+import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
+import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManager.js'; // Assuming UIManager exists
+import { handleAutoplayNextSpin } from '../features/Autoplay.js';
+import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
+
+// --- Module-level variables ---
+let app = null;
+let reels = [];
+let reelContainer, uiContainer, winLineGraphics, overlayContainer, particleContainer;
+let infoOverlayElement; // DOM element reference
+
+// --- Game Class ---
+export class Game {
+    constructor(canvasContainerId) {
+        this.canvasContainer = document.getElementById(canvasContainerId);
+        if (!this.canvasContainer) {
+            console.error(`Game Error: Canvas container #${canvasContainerId} not found.`);
+            return;
+        }
+        // Initialize game state with default values
+        initGameState();
+    }
+
+    async init() {
+        try {
+            // --- PixiJS App Setup ---
+            app = new PIXI.Application();
+            await app.init({
+                width: SETTINGS.GAME_WIDTH,
+                height: SETTINGS.GAME_HEIGHT,
+                backgroundColor: SETTINGS.normalBgColor,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+            });
+            // Ensure app and canvas exist before appending
+            if (app?.canvas && this.canvasContainer) {
+                this.canvasContainer.appendChild(app.canvas);
+            } else {
+                throw new Error("Pixi Application or canvas could not be initialized.");
+            }
+
+            // --- Asset Loading ---
+            const symbolAssets = SYMBOL_DEFINITIONS.map(def => ({
+                alias: def.id, // Use symbol ID as alias
+                src: `assets/images/${def.id}.png` // Construct path
+            }));
+            // Add other assets if needed (e.g., button textures later)
+            // const uiAssets = [ { alias: 'button_idle', src: 'assets/images/ui/button_idle.png' }, ... ];
+            console.log("Loading assets:", symbolAssets);
+            await PIXI.Assets.load(symbolAssets);
+            console.log("Assets loaded.");
+
+            // --- Initialize Core Modules ---
+            initFreeSpins(app); // Pass app reference for background changes
+
+            // --- Create Main Containers ---
+            reelContainer = new PIXI.Container();
+            reelContainer.x = SETTINGS.reelAreaX;
+            reelContainer.y = SETTINGS.reelAreaY;
+            // Ensure app and stage exist before adding children
+            if (!app?.stage) throw new Error("Pixi stage not available after init.");
+            app.stage.addChild(reelContainer);
+
+            uiContainer = new PIXI.Container();
+            app.stage.addChild(uiContainer); // Add UI container first? Or last? Check layering.
+
+            winLineGraphics = new PIXI.Graphics();
+            // Position set in initPaylineGraphics
+            app.stage.addChild(winLineGraphics);
+
+            overlayContainer = new PIXI.Container(); // For win messages, etc.
+            app.stage.addChild(overlayContainer);
+
+            particleContainer = new PIXI.Container(); // For particle effects
+            app.stage.addChild(particleContainer);
+
+            // --- Initialize Feature/UI Modules with Containers ---
+            initPaylineGraphics(winLineGraphics);
+            initNotifications(overlayContainer); // Pass overlay container
+            initAnimations(overlayContainer, particleContainer); // Pass relevant containers
+            initTurboMode(reels); // Pass reels array reference
+
+            // --- Create Reels ---
+            for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
+                const reel = new Reel(i, REEL_STRIPS[i], app.ticker);
+                reels.push(reel);
+                reelContainer.addChild(reel.container);
+            }
+            initWinEvaluation(reels); // Pass reels array reference
+
+            // --- Reel Mask ---
+            const reelMask = new PIXI.Graphics()
+                .rect(SETTINGS.reelAreaX, SETTINGS.reelAreaY, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
+                .fill(0xffffff);
+            reelContainer.mask = reelMask;
+            if (app?.stage) { // Check again before adding mask
+               app.stage.addChild(reelMask); // Mask needs to be added to stage
+            }
+
+            // --- Setup UI ---
+            this.setupUI(); // Call UI setup method
+
+            // --- Initialize Info Overlay (DOM) ---
+            infoOverlayElement = document.getElementById('infoOverlay'); // Get DOM element
+            if (infoOverlayElement) {
+                initInfoOverlay(infoOverlayElement); // Initialize the module
+                updateInfoOverlay(); // Initial update
+            } else {
+                console.warn("Game Setup: infoOverlay element not found in DOM.");
+            }
+
+            // --- Final Setup ---
+            updateDisplays(); // Initial UI text update
+            setButtonsEnabled(true); // Enable buttons initially
+            applyTurboSettings(state.isTurboMode); // Apply initial turbo settings
+
+            // --- Start Game Loop ---
+            // Ensure app and ticker exist before adding update loop
+            if (app?.ticker) {
+                app.ticker.add(this.update.bind(this)); // Add bound update method to ticker
+            } else {
+                 throw new Error("Pixi ticker not available after init.");
+            }
+
+            console.log("Game Initialized Successfully");
+
+        } catch (err) {
+            console.error("PixiJS or Game Init Failed:", err);
+            this.canvasContainer.innerHTML = `Error initializing graphics: ${err.message}. Check console.`;
+        }
+    }
+
+    setupUI() {
+        // --- Title ---
+        const titleStyle = {
+             fontFamily: "Impact, Charcoal, sans-serif",
+             fontSize: 40,
+             // Use a single color for fill as PixiJS expects
+             fill: 0xffd700, // Gold color
+             stroke: { color: "#8B0000", width: 3 },
+             dropShadow: { color: "#000000", distance: 4, blur: 4, angle: Math.PI / 4, alpha: 0.7 }
+            };
+        const titleText = new PIXI.Text({ text: "HEAVENS TEN", style: titleStyle });
+        titleText.anchor.set(0.5, 0);
+        titleText.x = SETTINGS.GAME_WIDTH / 2;
+        titleText.y = 15;
+        // Ensure app and stage exist before adding title
+        if (app && app.stage) { // More explicit check
+            app.stage.addChild(titleText); // Add title directly to stage
+        }
+
+        // --- UI Panel ---
+        const panelHeight = 100;
+        const panel = new PIXI.Graphics()
+            .rect(0, SETTINGS.GAME_HEIGHT - panelHeight, SETTINGS.GAME_WIDTH, panelHeight)
+            .fill({ color: 0x1a1a1a, alpha: 0.8 });
+        if (uiContainer) { // Add check for uiContainer
+            uiContainer.addChild(panel);
+        }
+
+        // --- Text Styles ---
+        const uiTextStyle = { fontFamily: "Arial, sans-serif", fontSize: 18, fill: 0xdddddd };
+        const uiValueStyle = { fontFamily: '"Arial Black", Gadget, sans-serif', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 2 } };
+        const buttonTextStyle = { fontFamily: '"Arial Black", Gadget, sans-serif', fontSize: 20, fill: 0xffffff };
+
+        // --- Create UI Elements (using UIManager) ---
+        // UIManager should handle creation and storing references
+        initUIManager(uiContainer, uiTextStyle, uiValueStyle);
+
+        // --- Create Buttons (using ButtonFactory and handlers) ---
+        const bottomUIY = SETTINGS.bottomUIY;
+        const btnW = 40, btnH = 40; // Common button size
+
+        // Bet Buttons (Using iconType)
+        // Pass empty string for text and empty object for style when using iconType
+        createButton("", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
+
+        // Spin Button (Circular with Icon)
+        createButton("", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
+
+        // Turbo Button (Using iconType)
+        createButton("", 90 + 20, bottomUIY + 55, handlers.toggleTurbo, {}, uiContainer, btnW, btnH, false, 'turbo').name = "turboButton";
+
+        // Autoplay Button (Using iconType - initial state is 'play')
+        createButton("", 150 + 20, bottomUIY + 55, handlers.toggleAutoplay, {}, uiContainer, btnW, btnH, false, 'autoplay_play').name = "autoplayButton";
+
+        // Placeholder/Inactive Buttons
+        createButton("$", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 - 50, () => {}, buttonTextStyle, uiContainer, 60, 60, true).alpha = 0.3;
+        createButton("☰", SETTINGS.GAME_WIDTH - 55, 20 + 20, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
+        // Removed overlapping 'X' button: createButton("X", 30 + 20, bottomUIY + 55, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
+
+        // Add all created buttons from ButtonFactory to the uiContainer
+        // (ButtonFactory now returns the button, it doesn't add it)
+        // We need a way to get references to buttons created by createButton if UIManager needs them.
+        // Option 1: createButton adds to uiContainer (simpler now)
+        // Option 2: Game collects buttons and passes to UIManager (more complex)
+        // Let's modify ButtonFactory to add to uiContainer for now.
+        // --> Requires reading/modifying ButtonFactory.js again. Let's do that *after* this file.
+
+    }
+
+    update(ticker) {
+        const delta = ticker.deltaTime;
+        const now = ticker.lastTime;
+        let anyReelMoving = false;
+
+        try {
+            // Update all reels
+            reels.forEach(reel => {
+                const isActive = reel.update(delta, now);
+                if (isActive) {
+                    anyReelMoving = true;
+                }
+            });
+
+            // Update particle animations
+            updateParticles(delta);
+
+            // Check if the spin has just ended
+            if (state.isSpinning && !anyReelMoving) {
+                this.handleSpinEnd();
+            }
+
+        } catch (err) {
+            console.error("Error in game loop:", err);
+            // Ensure app and ticker exist before stopping
+            if (app?.ticker) {
+                app.ticker.stop(); // Stop the loop on critical error
+            }
+            alert("Game loop critical error. Check console.");
+        }
+    }
+
+    handleSpinEnd() {
+        updateState({ isSpinning: false, isTransitioning: true }); // Mark as transitioning
+        console.log("All reels stopped moving (final check).");
+
+        // Short delay before evaluating wins to allow final animations/settling
+        setTimeout(() => {
+            console.log("Evaluating wins...");
+            evaluateWin(); // Evaluate wins (updates state.lastTotalWin, etc.)
+
+            updateState({ isTransitioning: false }); // End transition after evaluation
+
+            // Check game state to decide next action
+            if (state.isInFreeSpins) {
+                // handleFreeSpinEnd will decide if another FS starts or exits
+                // handleFreeSpinEnd(); // This is called within evaluateWin if FS trigger happens? No, called after eval.
+                // --> Need to import and call handleFreeSpinEnd from FreeSpins.js
+                // --> Let's assume evaluateWin handles the FS trigger, and we call handleFreeSpinEnd *after* eval if in FS.
+                 import('../features/FreeSpins.js').then(fs => fs.handleFreeSpinEnd()); // Dynamic import to avoid circular dependency? Or pass function ref.
+            } else if (state.isAutoplaying) {
+                handleAutoplayNextSpin(); // Check if next autoplay spin should start
+            } else {
+                setButtonsEnabled(true); // Re-enable buttons for manual play
+            }
+        }, 50 * winAnimDelayMultiplier); // Use animation multiplier for delay
+    }
+}
+
+// --- Global Functions used by other modules ---
+
+/**
+ * Starts the spinning process for all reels.
+ * Called by ButtonHandlers.startSpin.
+ */
+export function startSpinLoop(isTurbo) {
+    // Clear previous win lines before starting spin
+    clearWinLines();
+
+    // Get current time to calculate absolute stop times
+    // Note: app.ticker.lastTime might be more accurate if available globally or passed in
+    const startTime = performance.now();
+
+    // Start all reels spinning and schedule their stops
+    reels.forEach((reel, i) => {
+        reel.startSpinning(isTurbo); // Start spinning visually
+
+        // Calculate the absolute time this reel should come to a complete stop
+        // Select duration and stagger based on turbo state
+        const currentBaseDuration = state.isTurboMode ? turboBaseSpinDuration : baseSpinDuration;
+        const currentStagger = state.isTurboMode ? turboReelStopStagger : REEL_STOP_STAGGER;
+
+        const targetStopTime = startTime + currentBaseDuration + i * currentStagger;
+
+        // Tell the reel when to stop and which index to target
+        // (stopIndex is determined internally by the reel in startSpinning for now)
+        reel.scheduleStop(targetStopTime);
+        console.log(`Game: Reel ${i} scheduled to stop at ${targetStopTime.toFixed(0)}ms`);
+    });
+
+    // No need for targetStoppingReelIndex or setTimeout for initiation
+    updateState({ targetStoppingReelIndex: -1 });
+}
+
+// Removed triggerNextReelStop function as it's no longer needed
+// Removed old initiateStop logic using setTimeout
+</file_content>
+
+<file_content path="./src//core/Symbol.js">
+import * as PIXI from 'pixi.js';
+// Removed SYMBOL_DEFINITIONS import for now, will be used later for texture mapping
+import { SYMBOL_SIZE, REEL_WIDTH } from '../config/gameSettings.js';
+
+/**
+ * Creates a PixiJS Sprite representation for a given symbol ID.
+ * @param {string} symbolId - The ID of the symbol (e.g., "FACE1", "SCAT").
+ * @returns {SymbolSprite} An instance of the SymbolSprite class.
+ */
+export function createSymbolGraphic(symbolId) { // Keep function name for compatibility
+  return new SymbolSprite(symbolId);
+}
+
+/**
+ * Represents a single symbol sprite on the reel.
+ * Extends PIXI.Sprite for better performance.
+ */
+export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
+  symbolId; // The ID of the symbol ('FACE1', 'SCAT', etc.)
+  isAnimating = false; // Flag for win animations
+
+  constructor(symbolId) {
+    // TODO: Replace placeholder with actual texture loading based on symbolId
+    // Use the preloaded texture from PIXI.Assets by its alias (which is the symbolId)
+    const texture = PIXI.Assets.get(symbolId);
+    if (!texture) {
+        console.error(`Texture not found for symbol ID: ${symbolId}. Ensure it was preloaded.`);
+        // Use a fallback texture or handle error appropriately
+        super(PIXI.Texture.WHITE); // Fallback to a white square
+    } else {
+        super(texture); // Call PIXI.Sprite constructor with the loaded texture
+    }
+    this.symbolId = symbolId;
+
+    // Set anchor to center for positioning and scaling
+    this.anchor.set(0.5);
+
+    // Set size (optional, adjust as needed based on texture size)
+    this.width = SYMBOL_SIZE * 0.9;
+    this.height = SYMBOL_SIZE * 0.9;
+
+    // Position in the center of the reel width (x is relative to parent container)
+    this.x = REEL_WIDTH / 2;
+
+    // Y position will be set by alignReelSymbols in Reel.js
+  }
+}
+</file_content>
+
+<file_content path="./src//core/GameState.js">
+import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS } from '../config/gameSettings.js'; // Import NUM_REELS
+import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
+
+// --- Central Game State ---
+// Using 'let' for properties that change, 'const' for initial settings if not modified elsewhere.
+export let state = {
+    // Core gameplay
+    balance: 10000,
+    currentBetPerLine: BET_PER_LINE_LEVELS[3] || 0.1, // Default to a mid-level bet
+    currentTotalBet: (BET_PER_LINE_LEVELS[3] || 0.1) * NUM_PAYLINES,
+    numReels: NUM_REELS, // Add number of reels to state
+    lastTotalWin: 0,
+    /** @type {Array<{lineIndex: number, symbolId: string, count: number, winAmount: number, symbols: Array<import('./Symbol.js').Symbol>}>} */
+    winningLinesInfo: [], // Array of { lineIndex, symbolId, count, winAmount, symbols }
+
+    // Spin state
+    isSpinning: false,      // Master flag: Are reels currently spinning/stopping?
+    isTransitioning: false, // Is the game in a non-interactive transition (e.g., FS entry/exit message)?
+    targetStoppingReelIndex: -1, // Which reel index is expected to stop next (for chained stops)
+
+    // Features state
+    isAutoplaying: false,
+    autoplaySpinsRemaining: 0,
+    autoplaySpinsDefault: AUTOPLAY_SPINS_DEFAULT, // Store the default value
+    isTurboMode: false,
+    isInFreeSpins: false,
+    freeSpinsRemaining: 0,
+    totalFreeSpinsWin: 0,
+
+    // References (can be set during initialization if needed, though maybe better managed in Game.js)
+    // reels: [], // Maybe keep reel references in Game.js instead?
+    // uiElements: {}, // Maybe keep UI references in UIManager.js?
+};
+
+/**
+ * Initializes the game state to default values.
+ * Can be called at the start or to reset the game.
+ */
+export function initGameState() {
+    state = {
+        ...state, // Keep potential references if any were added dynamically
+        balance: 10000,
+        currentBetPerLine: BET_PER_LINE_LEVELS[3] || 0.1,
+        currentTotalBet: (BET_PER_LINE_LEVELS[3] || 0.1) * NUM_PAYLINES,
+        numReels: NUM_REELS, // Add number of reels to state reset
+        lastTotalWin: 0,
+        winningLinesInfo: [], // Reset to empty array
+        isSpinning: false,
+        isTransitioning: false,
+        targetStoppingReelIndex: -1,
+        isAutoplaying: false,
+        autoplaySpinsRemaining: 0,
+        isTurboMode: false, // Reset turbo on init? Or keep user preference? Let's reset for now.
+        isInFreeSpins: false,
+        freeSpinsRemaining: 0,
+        totalFreeSpinsWin: 0,
+    };
+    console.log("GameState Initialized:", state);
+}
+
+/**
+ * Updates the central game state object with new values.
+ * Merges the provided updates with the existing state.
+ * @param {Partial<state>} updates - An object containing state properties to update.
+ */
+export function updateState(updates) {
+    // Basic merge, could add validation or logging later
+    state = { ...state, ...updates };
+    // console.log("GameState Updated:", updates, "New State:", state); // Optional: Log updates
+}
+
+// Optional: Add getter functions if direct state access is discouraged later
+// export function getBalance() { return state.balance; }
+// export function isSpinning() { return state.isSpinning; }
+// ... etc.
+</file_content>
+
+<file_content path="./src//config/gameSettings.js">
+export const GAME_WIDTH = 1000;
+export const GAME_HEIGHT = 700;
+export const NUM_REELS = 5;
+export const SYMBOLS_PER_REEL_VISIBLE = 4;
+export const REEL_WIDTH = 150;
+export const SYMBOL_SIZE = 130;
+export const SCATTER_SYMBOL_ID = "SCAT";
+export const MIN_SCATTERS_FOR_FREE_SPINS = 3;
+export const FREE_SPINS_AWARDED = 10;
+export const AUTOPLAY_SPINS_DEFAULT = 10;
+export const BET_PER_LINE_LEVELS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0];
+export const ENABLE_FREE_SPINS = false; // Config flag to enable/disable free spins feature
+export const normalBgColor = 0x2f4f4f;
+export const freeSpinsBgColor = 0x4b0082;
+
+// Derived constants (can also be calculated where needed, but useful here)
+export const REEL_VISIBLE_HEIGHT = SYMBOLS_PER_REEL_VISIBLE * SYMBOL_SIZE;
+export const reelAreaX = (GAME_WIDTH - NUM_REELS * REEL_WIDTH) / 2;
+export const reelAreaY = 80; // Adjust as needed
+export const bottomUIY = GAME_HEIGHT - 100; // Adjust as needed
+</file_content>
+
+<file_content path="./src//config/paylines.js">
+export const PAYLINES = [
+  [1, 1, 1, 1, 1], // Line 1 (Middle row)
+  [0, 0, 0, 0, 0], // Line 2 (Top row)
+  [2, 2, 2, 2, 2], // Line 3 (Row below middle)
+  [3, 3, 3, 3, 3], // Line 4 (Bottom row)
+  [0, 1, 2, 1, 0], // Line 5 (V shape)
+  [3, 2, 1, 2, 3], // Line 6 (Inverted V)
+  [0, 1, 1, 1, 0], // Line 7
+  [3, 2, 2, 2, 3], // Line 8
+  [1, 2, 1, 0, 1], // Line 9
+  [2, 1, 2, 3, 2], // Line 10
+  [0, 0, 1, 2, 2], // Line 11
+  [3, 3, 2, 1, 1], // Line 12
+  [1, 0, 1, 2, 3], // Line 13
+  [2, 3, 2, 1, 0], // Line 14
+  [1, 2, 3, 2, 1], // Line 15
+];
+
+// Derived constant
+export const NUM_PAYLINES = PAYLINES.length;
+</file_content>
+
+<file_content path="./src//config/symbolDefinitions.js">
+export const SYMBOL_DEFINITIONS = [
+  {
+    id: "FACE1",
+    color: 0xffd700,
+    text: "(:",
+    payout: { 3: 10, 4: 25, 5: 100 },
+  },
+  {
+    id: "FACE2",
+    color: 0x8b4513,
+    text: "{:",
+    payout: { 3: 8, 4: 20, 5: 80 },
+  },
+  {
+    id: "FACE3",
+    color: 0xde6fa1,
+    text: "):",
+    payout: { 3: 6, 4: 15, 5: 60 },
+  },
+  {
+    id: "KNIFE",
+    color: 0xa9a9a9,
+    text: "K",
+    payout: { 3: 4, 4: 10, 5: 40 },
+  },
+  {
+    id: "CUP",
+    color: 0xdc143c,
+    text: "U",
+    payout: { 3: 3, 4: 8, 5: 30 },
+  },
+  {
+    id: "PATCH",
+    color: 0x4682b4,
+    text: "!",
+    payout: { 3: 2, 4: 5, 5: 20 },
+  },
+  {
+    id: "SCAT",
+    color: 0xff00ff,
+    text: "$",
+    payout: { 3: 5, 4: 10, 5: 25 }, // Note: Scatter payout is often handled differently (any position)
+  },
+  {
+    id: "LOW",
+    color: 0x556b2f,
+    text: "~",
+    payout: { 3: 1, 4: 2, 5: 10 },
+  },
+];
+
+// Derived Paytable for quick lookup
+export const PAYTABLE = SYMBOL_DEFINITIONS.reduce((table, sym) => {
+  if (sym.payout) table[sym.id] = sym.payout;
+  return table;
+}, {});
+</file_content>
+
+<file_content path="./src//config/animationSettings.js">
+// Base settings (can be modified by Turbo Mode)
+export let spinAcceleration = 0.1; // Increased from 0.05
+export let maxSpinSpeed = 1.4; // Increased from 1.0
+export let spinDeceleration = 0.92; // Increased deceleration for faster stop
+export let minSpinSpeedBeforeSnap = 0.05;
+export let stopDelayBase = 300; // Reduced initial delay
+export let winAnimDelayMultiplier = 1.0;
+export const REEL_STOP_STAGGER = 150; // Slower stagger for normal mode
+
+// New settings for fixed duration + tween stop
+export let baseSpinDuration = 1500; // Slower base duration for normal mode
+export let stopTweenDuration = 250; // ms duration of the final tween into stop position
+
+// Turbo settings modifiers (applied directly where needed)
+export const turboSpinAcceleration = 0.15;
+export const turboMaxSpinSpeed = 1.8;
+// export const turboSpinDeceleration = 0.96; // No longer used by tween logic
+// export const turboMinSpinSpeedBeforeSnap = 0.2; // No longer used by tween logic
+// export const turboStopDelayBase = 100; // No longer used by tween logic
+export const turboWinAnimDelayMultiplier = 0.2;
+export const turboBaseSpinDuration = 500; // Faster duration for turbo
+export const turboReelStopStagger = 50;   // Tighter stagger for turbo
+
+// Bounce animation (Keep for reference, but skipBounce is unused now)
+export const OVERSHOOT_AMOUNT = 0.15;
+export const OVERSHOOT_DURATION = 120; // ms
+export const BOUNCE_BACK_DURATION = 180; // ms
+export let skipBounceInTurbo = true; // Configurable turbo behavior (Currently unused by tween logic)
+
+// Removed updateAnimationSettings function - settings are applied directly based on state.isTurboMode
+</file_content>
+
+<file_content path="./src//config/reelStrips.js">
+export const REEL_STRIPS = [
+  [
+    "FACE1",
+    "KNIFE",
+    "FACE2",
+    "LOW",
+    "CUP",
+    "PATCH",
+    "LOW", // Replace SCAT with LOW
+    "FACE3",
+    "LOW",
+    "KNIFE",
+    "PATCH",
+    "FACE1",
+    "LOW",
+    "CUP",
+    "FACE2",
+    "SCAT",
+  ],
+  [
+    "FACE2",
+    "PATCH",
+    "FACE3",
+    "LOW",
+    "KNIFE",
+    "CUP",
+    "FACE1",
+    "LOW", // Replace SCAT with LOW
+    "LOW",
+    "FACE2",
+    "PATCH",
+    "KNIFE",
+    "LOW",
+    "FACE3",
+    "CUP",
+    "SCAT",
+  ],
+  [
+    "FACE3",
+    "CUP",
+    "KNIFE",
+    "LOW", // Replace SCAT with LOW
+    "FACE1",
+    "PATCH",
+    "LOW",
+    "FACE2",
+    "KNIFE",
+    "FACE3", // Corrected
+    "LOW",   // Corrected
+    "PATCH",
+    "SCAT",
+    "CUP",
+    "FACE1",
+    "LOW",
+  ],
+  [
+    "FACE1",
+    "LOW",
+    "PATCH",
+    "CUP",
+    "FACE2",
+    "KNIFE",
+    "LOW", // Corrected
+    "FACE3",
+    "PATCH",
+    "LOW",
+    "FACE1",
+    "CUP",
+    "KNIFE",
+    "FACE2",
+    "LOW",
+    "SCAT",
+  ],
+  [
+    "SCAT",
+    "FACE2",
+    "LOW",
+    "KNIFE",
+    "FACE3",
+    "CUP",
+    "PATCH",
+    "FACE1",
+    "LOW",
+    "KNIFE",
+    "FACE2",
+    "PATCH",
+    "FACE3",
+    "LOW",
+    "CUP",
+    "FACE1",
+  ],
+];
+</file_content>
+
+<file_content path="./src//features/FreeSpins.js">
+import { FREE_SPINS_AWARDED, freeSpinsBgColor, normalBgColor } from '../config/gameSettings.js';
+import { winAnimDelayMultiplier } from '../config/animationSettings.js';
+import { state, updateState } from '../core/GameState.js'; // Assuming state management
+import { showOverlayMessage } from '../ui/Notifications.js'; // Assuming notification handling
+import { setButtonsEnabled, updateAutoplayButtonState } from '../ui/UIManager.js'; // Assuming UI management
+import { startSpin } from '../ui/ButtonHandlers.js'; // Assuming spin initiation
+
+// Reference to the Pixi app (needed for background color change)
+let appRef = null;
+export function initFreeSpins(app) {
+    appRef = app;
+}
+
+/**
+ * Enters the Free Spins mode.
+ * Updates state, shows message, changes background, and starts the first free spin.
+ */
+export function enterFreeSpins() {
+    if (state.isInFreeSpins || !appRef) return; // Prevent re-entry or if not initialized
+
+    console.log(`Enter Free Spins: ${FREE_SPINS_AWARDED}`);
+    updateState({
+        isInFreeSpins: true,
+        freeSpinsRemaining: FREE_SPINS_AWARDED,
+        totalFreeSpinsWin: 0, // Reset total win for the feature
+    });
+
+    // Stop autoplay if it was running
+    if (state.isAutoplaying) {
+        updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+        updateAutoplayButtonState(); // Update UI
+        console.log("Autoplay stopped for FS.");
+    }
+
+    // Change background color
+    appRef.renderer.background.color = freeSpinsBgColor;
+
+    // updateInfoOverlay(); // Handled by UIManager based on state change
+    setButtonsEnabled(false); // Disable controls during transition
+    updateState({ isTransitioning: true });
+
+    // Show entry message
+    showOverlayMessage(
+        `${FREE_SPINS_AWARDED}\nFREE SPINS`,
+        2000, // Use base duration, showOverlayMessage applies multiplier
+        () => {
+            updateState({ isTransitioning: false });
+            setButtonsEnabled(false); // Keep buttons disabled during FS (except maybe stop?)
+            startFreeSpin(); // Start the first spin after the message
+        }
+    );
+}
+
+/**
+ * Initiates a single free spin if conditions are met.
+ */
+function startFreeSpin() {
+    if (!state.isInFreeSpins || state.freeSpinsRemaining <= 0 || state.isSpinning || state.isTransitioning) {
+        console.log("Cannot start free spin:", {fs: state.isInFreeSpins, rem: state.freeSpinsRemaining, spin: state.isSpinning, trans: state.isTransitioning});
+        return;
+    }
+    // updateInfoOverlay(); // Handled by UIManager
+    setButtonsEnabled(false); // Ensure buttons remain disabled
+    startSpin(true); // Call the main startSpin function, flagging it as a free spin
+}
+
+/**
+ * Exits the Free Spins mode.
+ * Shows summary message, resets state, changes background back.
+ */
+export function exitFreeSpins() {
+    if (!state.isInFreeSpins || !appRef) return;
+
+    console.log(`Exit Free Spins. Total Win: €${state.totalFreeSpinsWin.toFixed(2)}`);
+    updateState({ isTransitioning: true }); // Prevent actions during transition
+
+    // Show summary message
+    showOverlayMessage(
+        `FREE SPINS COMPLETE\nTOTAL WIN:\n€${state.totalFreeSpinsWin.toFixed(2)}`,
+        3000, // Use base duration
+        () => {
+            // Reset state AFTER the message
+            updateState({
+                isInFreeSpins: false,
+                freeSpinsRemaining: 0,
+                isTransitioning: false,
+                // Keep totalFreeSpinsWin for display until next regular win? Or reset here?
+                // totalFreeSpinsWin: 0, // Let's reset it here for clarity
+            });
+            appRef.renderer.background.color = normalBgColor; // Change background back
+            // updateInfoOverlay(); // Handled by UIManager
+            setButtonsEnabled(true); // Re-enable controls
+            // updateDisplays(); // Ensure final win amount is shown correctly if needed
+        }
+    );
+}
+
+/**
+ * Handles the logic after a free spin completes.
+ * Updates total win, decrements remaining spins, and decides whether to start next spin or exit.
+ */
+export function handleFreeSpinEnd() {
+    if (!state.isInFreeSpins) return;
+
+    // Add the win from the completed spin to the total FS win
+    updateState({ totalFreeSpinsWin: state.totalFreeSpinsWin + state.lastTotalWin });
+    updateState({ freeSpinsRemaining: state.freeSpinsRemaining - 1 });
+
+    // updateInfoOverlay(); // Handled by UIManager
+
+    // Delay before next action (next spin or exit)
+    const delay = (state.isTurboMode ? 200 : 800) * winAnimDelayMultiplier;
+    updateState({ isTransitioning: true });
+
+    setTimeout(() => {
+        updateState({ isTransitioning: false });
+        if (state.freeSpinsRemaining > 0) {
+            startFreeSpin(); // Start the next free spin
+        } else {
+            exitFreeSpins(); // No spins left, exit the mode
+        }
+    }, delay);
+}
+</file_content>
+
+<file_content path="./src//features/TurboMode.js">
+import { skipBounceInTurbo } from '../config/animationSettings.js'; // Removed updateAnimationSettings import
+import { state } from '../core/GameState.js'; // Assuming state access
+import { updateTurboButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
+
+// Placeholder for reels data - this should be passed in or accessed via GameState/Game module
+let reelsRef = [];
+export function initTurboMode(reels) {
+    reelsRef = reels;
+}
+
+/**
+ * Applies turbo settings to the game.
+ * Updates animation timings and reel bounce behavior based on the turbo state.
+ * @param {boolean} isTurbo - Whether turbo mode is currently active.
+ */
+export function applyTurboSettings(isTurbo) {
+    // updateAnimationSettings is removed as settings are now applied directly based on state.isTurboMode
+
+    // Update reel-specific behavior if needed (like skipping bounce, though currently unused by tween logic)
+    // This assumes reelsRef is initialized and contains reel objects with a 'skipBounce' property
+    if (reelsRef && reelsRef.length > 0) {
+        reelsRef.forEach(reel => {
+            if (reel) { // Check if reel object exists
+                reel.skipBounce = isTurbo && skipBounceInTurbo;
+            } else {
+                console.warn("TurboMode: Found undefined reel in reelsRef during applyTurboSettings.");
+            }
+        });
+    } else {
+        // This might happen if called before reels are created, maybe log a warning
+        // console.warn("TurboMode: applyTurboSettings called before reelsRef was initialized or populated.");
+    }
+
+    // Update the button state visually (handled by UIManager)
+    // updateBtnState(isTurbo); // Call the function imported from UIManager
+}
+
+// Note: updateTurboButtonState is now assumed to be part of UIManager.js
+// It will read the `isTurboMode` from the shared state and update the button's appearance.
+// The toggleTurbo function in ButtonHandlers.js calls applyTurboSettings here
+// and then calls the UIManager's updateTurboButtonState.
+</file_content>
+
+<file_content path="./src//features/WinEvaluation.js">
+import { PAYLINES, NUM_PAYLINES } from '../config/paylines.js';
+import { PAYTABLE } from '../config/symbolDefinitions.js';
+import {
+    SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, SYMBOLS_PER_REEL_VISIBLE,
+    ENABLE_FREE_SPINS // Ensure this is imported
+} from '../config/gameSettings.js';
+import { state, updateState } from '../core/GameState.js'; // Assuming state management
+import { drawWinLines } from './PaylineGraphics.js'; // Assuming graphics handling
+import { playWinAnimations, animateWinningSymbols } from './Animations.js'; // Assuming animation handling
+import { enterFreeSpins } from './FreeSpins.js'; // Assuming FreeSpins handling
+import { updateDisplays } from '../ui/UIManager.js'; // Assuming UI update handling
+// import { flashElement } from '../ui/Notifications.js'; // Assuming notification handling
+
+// Placeholder for reels data - this should be passed in or accessed via GameState/Game module
+let reelsRef = [];
+export function initWinEvaluation(reels) {
+    reelsRef = reels;
+}
+
+/**
+ * Evaluates the win based on the current stopped reels.
+ * Calculates line wins and scatter triggers.
+ * Updates game state and triggers win animations/sounds.
+ */
+export function evaluateWin() {
+    let calculatedTotalWin = 0;
+    let calculatedWinningLines = []; // Initialize as empty array
+    const resultsGrid = getResultsGrid();
+    console.log("[DEBUG] WinEvaluation - Results Grid:", JSON.stringify(resultsGrid)); // DEBUG: Log the grid
+    let scatterCount = 0;
+
+    // --- Calculate Line Wins ---
+    PAYLINES.forEach((linePath, lineIndex) => {
+        // console.log(`--- [DEBUG] Checking Line ${lineIndex} --- Path: ${linePath}`); // DEBUG: Line Start
+        let lineSymbolIds = [];
+        let lineSymbolObjects = []; // Store references to the actual symbol objects on screen
+
+        for (let reelIndex = 0; reelIndex < state.numReels; reelIndex++) { // Use state.numReels
+            const rowIndex = linePath[reelIndex];
+            if (rowIndex >= 0 && rowIndex < SYMBOLS_PER_REEL_VISIBLE) {
+                const symbolId = resultsGrid[reelIndex][rowIndex];
+                lineSymbolIds.push(symbolId);
+
+                // Find the corresponding symbol object on the reel
+                let symbolObj = null;
+                const reel = reelsRef[reelIndex];
+                if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) {
+                    symbolObj = reel.symbols[rowIndex + 1]; // Index 1 to SYMBOLS_PER_REEL_VISIBLE should be visible
+                    console.log(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}, Row ${rowIndex}: Trying index ${rowIndex + 1}. Got symbolObj: ${symbolObj?.symbolId || 'undefined'}, Expected: ${symbolId}`);
+                } else {
+                     console.error(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}: Invalid reel or symbols array.`);
+                }
+
+                // Verify the retrieved object matches the expected symbol ID from the grid
+                if (symbolObj && symbolObj.symbolId === symbolId) {
+                    lineSymbolObjects.push(symbolObj);
+                } else {
+                    console.warn(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}, Row ${rowIndex}: Symbol object mismatch or missing (Expected: ${symbolId}, Found: ${symbolObj?.symbolId || 'null/undefined'}). Pushing null.`);
+                    lineSymbolObjects.push(null);
+                }
+            } else {
+                // Should not happen with valid PAYLINES definition
+                lineSymbolIds.push(null);
+                lineSymbolObjects.push(null);
+            }
+        }
+        console.log(`[DEBUG] Line ${lineIndex} - Collected Symbol IDs: ${lineSymbolIds.join(', ')}`); // DEBUG: Symbols on line
+        console.log(`[DEBUG] Line ${lineIndex} - Collected Symbol Objects:`, lineSymbolObjects.map(s => s?.symbolId || 'null')); // DEBUG: Symbol objects collected
+
+        const firstSymbolId = lineSymbolIds[0];
+        // console.log(`Line ${lineIndex} First Symbol: ${firstSymbolId}`); // DEBUG: First symbol
+        if (!firstSymbolId || !PAYTABLE[firstSymbolId]) {
+            // console.log(`Line ${lineIndex}: Skipping - First symbol invalid or not payable.`); // DEBUG
+            return; // Skip if first symbol isn't payable
+        }
+
+        let matchCount = 1;
+        for (let i = 1; i < state.numReels; i++) {
+            if (lineSymbolIds[i] === firstSymbolId) {
+                matchCount++;
+            } else {
+                break; // Symbols must match consecutively from the left
+            }
+        }
+        console.log(`[DEBUG] Line ${lineIndex} - Calculated Match Count: ${matchCount}`); // DEBUG: Match count
+
+        const payoutInfo = PAYTABLE[firstSymbolId];
+        const expectedPayout = payoutInfo ? payoutInfo[matchCount] : undefined;
+        // console.log(`Line ${lineIndex} Payout Info: ${JSON.stringify(payoutInfo)}, Expected Payout for ${matchCount}: ${expectedPayout}`); // DEBUG: Payout check
+
+        if (matchCount >= 3 && payoutInfo && expectedPayout !== undefined) { // Check expectedPayout specifically
+            const lineWin = expectedPayout * state.currentBetPerLine;
+            calculatedTotalWin += lineWin;
+            // Filter out nulls *before* slicing to ensure correct symbols are kept
+            const validSymbolObjects = lineSymbolObjects.filter(s => s !== null);
+            const winningSymbols = validSymbolObjects.slice(0, matchCount);
+
+            const winInfo = {
+                lineIndex: lineIndex,
+                symbolId: firstSymbolId,
+                count: matchCount, // Use the calculated matchCount
+                winAmount: lineWin,
+                symbols: winningSymbols, // Use the correctly sliced array
+            };
+            calculatedWinningLines.push(winInfo);
+            console.log("[DEBUG] WinEvaluation - WIN FOUND:", {
+                line: lineIndex,
+                symbol: firstSymbolId,
+                count: matchCount,
+                amount: lineWin,
+                symbolsToAnimate: winningSymbols.map(s => s.symbolId) // Log IDs being sent to animation
+            });
+        }
+    });
+
+    // --- Check for Scatters ---
+    resultsGrid.forEach(col => col.forEach(symId => {
+        if (symId === SCATTER_SYMBOL_ID) {
+            scatterCount++;
+        }
+    }));
+
+    // --- Update State and Trigger Effects ---
+    updateState({ lastTotalWin: calculatedTotalWin, winningLinesInfo: calculatedWinningLines });
+
+    if (calculatedTotalWin > 0) {
+        if (!state.isInFreeSpins) {
+            updateState({ balance: state.balance + calculatedTotalWin });
+        }
+        console.log(`Win: €${calculatedTotalWin.toFixed(2)}`);
+        updateDisplays(); // Update balance/win text
+        // flashElement(winText, 0xffff00, 200, 3); // Needs UIManager reference to winText
+        drawWinLines(calculatedWinningLines); // Pass winning lines info
+        playWinAnimations(calculatedTotalWin, state.currentTotalBet); // Pass win and bet for threshold checks
+        calculatedWinningLines.forEach(info => {
+            // Check the symbols array in the winInfo object passed to animation
+            if (info.symbols && info.symbols.length > 0) {
+                 console.log(`[DEBUG] Animating ${info.symbols.length} symbols for line ${info.lineIndex}:`, info.symbols.map(s => s.symbolId)); // Final check before animation
+                animateWinningSymbols(info.symbols);
+            } else {
+                 console.warn(`[DEBUG] No valid symbols found to animate for line ${info.lineIndex}`);
+            }
+        });
+    } else {
+        console.log("No line win.");
+        updateDisplays(); // Ensure win display is cleared if needed
+    }
+
+    // --- Trigger Free Spins (if applicable and enabled) ---
+    if (ENABLE_FREE_SPINS && !state.isInFreeSpins && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS) {
+        console.log(`WinEvaluation: ${scatterCount} scatters found. Triggering free spins (Enabled: ${ENABLE_FREE_SPINS}).`); // DEBUG
+        // Delay slightly after win animations if any
+        const delay = (calculatedTotalWin > 0 ? 1000 : 100) * state.winAnimDelayMultiplier;
+        updateState({ isTransitioning: true }); // Prevent actions during transition
+        setTimeout(() => enterFreeSpins(), delay);
+    }
+}
+
+/**
+ * Gets the grid of symbol IDs currently visible on the reels.
+ * @returns {string[][]} A 2D array representing the visible grid [reelIndex][rowIndex].
+ */
+function getResultsGrid() {
+    const grid = [];
+    reelsRef.forEach((reel) => {
+        const column = [];
+        // Calculate visible symbols based on stopIndex
+        // Ensure reel and strip exist
+        if (reel && reel.strip) {
+            for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                // Ensure stopIndex is a number
+                const stopIndex = typeof reel.stopIndex === 'number' ? reel.stopIndex : 0;
+                const symbolIndexOnStrip = (stopIndex + rowIndex + reel.strip.length) % reel.strip.length;
+                column.push(reel.strip[symbolIndexOnStrip]);
+            }
+        } else {
+             console.error("[DEBUG] Invalid reel or reel strip found in getResultsGrid");
+             // Push empty column or handle error appropriately
+             for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                 column.push(null); // Push nulls if reel is invalid
+             }
+        }
+        grid.push(column);
+    });
+    // console.log("Result Grid:", grid); // Optional: Debugging
+    return grid;
+}
+</file_content>
+
+<file_content path="./src//features/Animations.js">
+import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
+import { winAnimDelayMultiplier } from '../config/animationSettings.js';
+import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
+
+// References to containers (need initialization)
+let overlayContainer = null;
+let particleContainer = null;
+let winOverlayAnimInterval = null; // Interval ID for big win text animation
+const particles = []; // Array to hold active particle objects
+
+/**
+ * Initializes references to necessary PIXI containers.
+ * @param {PIXI.Container} overlayCont - Container for big win text overlays.
+ * @param {PIXI.Container} particleCont - Container for particle effects.
+ */
+export function initAnimations(overlayCont, particleCont) {
+    if (!overlayCont || !particleCont) {
+        console.error("Animations: Provided containers are invalid.");
+        return;
+    }
+    overlayContainer = overlayCont;
+    particleContainer = particleCont;
+    console.log("Animations initialized with containers.");
+}
+
+/**
+ * Animates the scale of winning symbols with a bounce effect.
+ * @param {Array<import('../core/Symbol.js').SymbolSprite>} symbolsToAnimate - Array of SymbolSprite instances to animate.
+ */
+export function animateWinningSymbols(symbolsToAnimate) {
+    if (!symbolsToAnimate || symbolsToAnimate.length === 0) return;
+
+    const baseDuration = 0.15; // Base duration for each scale change (seconds)
+    const duration = baseDuration * winAnimDelayMultiplier; // Adjust for turbo
+    const targetScale = 1.1; // Reduced scale factor (110%)
+    const easeType = "power1.inOut";
+
+    symbolsToAnimate.forEach((symbol) => {
+        // Ensure symbol is valid and has a scale property
+        if (symbol?.scale && !symbol.isAnimating) {
+            symbol.isAnimating = true; // Mark as animating
+
+            // Kill any previous animation on this symbol's scale
+            gsap.killTweensOf(symbol.scale);
+
+            // Create a GSAP timeline for the bounce effect
+            const tl = gsap.timeline({
+                onComplete: () => {
+                    symbol.isAnimating = false; // Unmark on completion
+                    // Ensure final scale is 1 (optional, if overshoot happens)
+                    // gsap.set(symbol.scale, { x: 1, y: 1 });
+                }
+            });
+
+            // Add tweens for bounce effect (e.g., scale up then back down)
+            tl.to(symbol.scale, { x: targetScale, y: targetScale, duration: duration, ease: easeType })
+              .to(symbol.scale, { x: 1, y: 1, duration: duration, ease: easeType });
+
+            // Optional: Add more bounces if desired
+            // tl.to(symbol.scale, { x: targetScale, y: targetScale, duration: duration, ease: easeType })
+            //   .to(symbol.scale, { x: 1, y: 1, duration: duration, ease: easeType });
+        }
+    });
+}
+
+/**
+ * Plays big/mega win text animations and triggers particle effects.
+ * @param {number} winAmount - The total amount won in the spin.
+ * @param {number} currentTotalBet - The total bet amount for the spin (for threshold calculation).
+ */
+export function playWinAnimations(winAmount, currentTotalBet) {
+    if (!overlayContainer) {
+        console.error("Animations: Overlay container not initialized for win animations.");
+        return;
+    }
+    // Clear previous animation interval if any
+    if (winOverlayAnimInterval) clearInterval(winOverlayAnimInterval);
+    overlayContainer.removeChildren(); // Clear previous win text
+
+    // Define win thresholds
+    const bigWinThreshold = currentTotalBet * 10;
+    const megaWinThreshold = currentTotalBet * 25;
+    let winTextStr = "";
+
+    // Determine win level text
+    if (winAmount >= megaWinThreshold) winTextStr = "MEGA WIN!";
+    else if (winAmount >= bigWinThreshold) winTextStr = "BIG WIN!";
+
+    // --- Big/Mega Win Text Animation ---
+    if (winTextStr) {
+        const winOverlayText = new PIXI.Text({
+            text: winTextStr + `\n€${winAmount.toFixed(2)}`,
+            style: {
+                fontFamily: "Impact, Charcoal, sans-serif",
+                fontSize: 70,
+                fill: [0xffff00, 0xffaa00], // Use hex numbers
+                stroke: { color: "#8B0000", width: 5 },
+                dropShadow: { color: "#000", distance: 5, blur: 5, alpha: 0.8 },
+                align: 'center', // Use string literal
+                // lineSpacing: 10, // Removed invalid property
+            },
+        });
+        winOverlayText.anchor.set(0.5);
+        winOverlayText.x = GAME_WIDTH / 2;
+        winOverlayText.y = GAME_HEIGHT / 2 - 50; // Position slightly above center
+        winOverlayText.scale.set(0.1); // Start small
+        overlayContainer.addChild(winOverlayText);
+
+        let scale = 0.1;
+        let alpha = 1.0;
+        let phase = 0; // 0: scaling up, 1: holding, 2: fading out
+        let holdCounter = 0;
+        const holdDuration = 50; // Frames/intervals to hold at full size
+        const animSpeed = 20; // Interval speed (ms)
+
+        winOverlayAnimInterval = setInterval(() => {
+            if (!winOverlayText?.parent) { // Stop if text is removed
+                clearInterval(winOverlayAnimInterval);
+                return;
+            }
+
+            const currentAnimSpeed = animSpeed * winAnimDelayMultiplier; // Adjust speed for turbo
+
+            if (phase === 0) { // Scaling up
+                scale += 0.05 * (currentAnimSpeed / 20); // Adjust scale increment based on speed
+                winOverlayText.scale.set(Math.min(1.0, scale));
+                if (scale >= 1.0) {
+                    phase = 1; // Move to hold phase
+                    holdCounter = 0;
+                }
+            } else if (phase === 1) { // Holding
+                holdCounter++;
+                if (holdCounter * currentAnimSpeed >= holdDuration * 20) { // Adjust hold duration based on speed
+                    phase = 2; // Move to fade out phase
+                }
+            } else if (phase === 2) { // Fading out
+                alpha -= 0.04 * (currentAnimSpeed / 20); // Adjust alpha decrement
+                winOverlayText.alpha = Math.max(0, alpha);
+                if (alpha <= 0) {
+                    clearInterval(winOverlayAnimInterval); // Stop animation
+                    if (winOverlayText.parent) overlayContainer.removeChild(winOverlayText);
+                    winOverlayText.destroy(); // Clean up
+                }
+            }
+        }, animSpeed); // Base interval remains 20ms, logic adjusts based on multiplier
+    }
+
+    // --- Particle Effect ---
+    // Trigger particles based on win amount relative to bet
+    const numParticles = Math.min(60, Math.floor((winAmount / currentTotalBet) * 3));
+    if (numParticles > 0) {
+        createParticles(numParticles);
+    }
+}
+
+/**
+ * Creates a specified number of particle objects.
+ * @param {number} count - The number of particles to create.
+ */
+function createParticles(count) {
+    if (!particleContainer) {
+        console.error("Animations: Particle container not initialized.");
+        return;
+    }
+    for (let i = 0; i < count; i++) {
+        const p = {
+            gfx: new PIXI.Graphics()
+                .circle(0, 0, Math.random() * 5 + 3) // Random size
+                .fill({ color: Math.random() > 0.5 ? 0xffd700 : 0xf1c40f }), // Random gold/yellow
+            vx: (Math.random() - 0.5) * 8, // Horizontal velocity
+            vy: -Math.random() * 10 - 8, // Initial upward velocity
+            gravity: 0.35,
+            life: Math.random() * 80 + 40, // Lifetime in frames/updates
+            alpha: 1.0,
+        };
+        p.fade = 1 / p.life; // Alpha fade per update
+        // Start position around center
+        p.gfx.x = GAME_WIDTH / 2 + (Math.random() - 0.5) * 100;
+        p.gfx.y = GAME_HEIGHT / 2 + 50;
+        particles.push(p);
+        particleContainer.addChild(p.gfx);
+    }
+}
+
+/**
+ * Updates the position and state of all active particles.
+ * Should be called in the main game loop.
+ * @param {number} delta - Time delta since the last frame (usually from ticker).
+ */
+export function updateParticles(delta) {
+    if (!particleContainer) return; // Don't run if not initialized
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+
+        // Apply physics
+        p.vy += p.gravity * delta;
+        p.gfx.x += p.vx * delta;
+        p.gfx.y += p.vy * delta;
+
+        // Update lifetime and alpha
+        p.life -= delta;
+        p.alpha -= p.fade * delta;
+        p.gfx.alpha = Math.max(0, p.alpha);
+
+        // Remove particle if life ended, faded out, or went off-screen
+        if (p.life <= 0 || p.alpha <= 0 || p.gfx.y > GAME_HEIGHT + 20) {
+            particleContainer.removeChild(p.gfx);
+            p.gfx.destroy();
+            particles.splice(i, 1); // Remove from active array
+        }
+    }
+}
+</file_content>
+
+<file_content path="./src//features/Autoplay.js">
+import { state, updateState } from '../core/GameState.js'; // Assuming state management
+import { setButtonsEnabled, updateAutoplayButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
+import { startSpin } from '../ui/ButtonHandlers.js'; // Assuming spin initiation
+import { winAnimDelayMultiplier } from '../config/animationSettings.js';
+import { NUM_PAYLINES } from '../config/paylines.js';
+// import { flashElement } from '../ui/Notifications.js'; // Assuming notification handling
+
+/**
+ * Handles the logic for the next spin during autoplay.
+ * Checks conditions (autoplay active, spins remaining, balance),
+ * then schedules the next spin or stops autoplay.
+ */
+export function handleAutoplayNextSpin() {
+    // Stop conditions
+    if (!state.isAutoplaying || state.isInFreeSpins || state.isTransitioning) {
+        if (state.isAutoplaying) { // Only log/update if it was actually autoplaying
+            console.log("Autoplay stopped (condition met: FS/Transition).");
+            updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+            updateBtnState(); // Update button appearance
+            // updateInfoOverlay(); // Handled by UIManager
+            // Enable buttons only if not transitioning into free spins or another state
+            setButtonsEnabled(!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning);
+        }
+        return;
+    }
+
+    if (state.autoplaySpinsRemaining > 0) {
+        // Check balance before starting the next spin
+        const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES; // Recalculate just in case
+        if (state.balance < currentTotalBet) {
+            console.log("Autoplay stopped: Low balance.");
+            updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+            updateBtnState();
+            // updateInfoOverlay(); // Handled by UIManager
+            setButtonsEnabled(true);
+            // flashElement(balanceText, 0xe74c3c); // Needs UIManager reference
+            return;
+        }
+
+        // Decrement spins and schedule next one
+        updateState({ autoplaySpinsRemaining: state.autoplaySpinsRemaining - 1 });
+        // updateInfoOverlay(); // Handled by UIManager
+
+        const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
+        updateState({ isTransitioning: true }); // Prevent actions during the short delay
+
+        setTimeout(() => {
+            updateState({ isTransitioning: false });
+            startSpin(); // Start the next spin
+        }, delay);
+
+    } else {
+        // Autoplay finished naturally
+        console.log("Autoplay finished.");
+        updateState({ isAutoplaying: false });
+        updateBtnState();
+        // updateInfoOverlay(); // Handled by UIManager
+        setButtonsEnabled(true); // Re-enable buttons
+    }
+}
+
+// Note: updateAutoplayButtonState is now assumed to be part of UIManager.js
+// If it needs specific logic tied only to autoplay, it could live here,
+// but updating button appearance feels like a UI Manager responsibility.
+</file_content>
+
+<file_content path="./src//features/PaylineGraphics.js">
+import * as PIXI from 'pixi.js';
+import { winAnimDelayMultiplier } from '../config/animationSettings.js';
+import { REEL_WIDTH, reelAreaX, reelAreaY } from '../config/gameSettings.js'; // Import positioning constants
+
+// Reference to the graphics object (needs initialization)
+let winLineGraphics = null;
+let winLineFadeTimeout = null;
+let winLineFadeInterval = null;
+
+/**
+ * Initializes the reference to the win line graphics object.
+ * @param {PIXI.Graphics} graphics - The Pixi Graphics object for drawing lines.
+ */
+export function initPaylineGraphics(graphics) {
+    if (!graphics) {
+        console.error("PaylineGraphics: Provided graphics object is invalid.");
+        return;
+    }
+    winLineGraphics = graphics;
+    // Set initial position based on config (could also be done in Game setup)
+    winLineGraphics.x = reelAreaX;
+    winLineGraphics.y = reelAreaY;
+    console.log("PaylineGraphics initialized with:", winLineGraphics);
+}
+
+/**
+ * Draws the winning paylines based on the provided win information.
+ * Includes fade-in and fade-out animations.
+ * @param {Array} winningLinesInfo - Array of objects, each describing a winning line.
+ *                                   Expected format: { lineIndex, count, symbols: [symbolObj1, ...] }
+ */
+export function drawWinLines(winningLinesInfo) {
+    if (!winLineGraphics) {
+        console.error("PaylineGraphics: Graphics object not initialized.");
+        return;
+    }
+    if (!winningLinesInfo || winningLinesInfo.length === 0) {
+        winLineGraphics.clear(); // Clear if no wins
+        return;
+    }
+
+    // Clear previous animations/timeouts
+    if (winLineFadeTimeout) clearTimeout(winLineFadeTimeout);
+    if (winLineFadeInterval) clearInterval(winLineFadeInterval);
+    winLineGraphics.clear();
+    winLineGraphics.alpha = 0; // Start transparent for fade-in
+
+    const lineColors = [ // Define colors for different lines
+        0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffa500,
+        0x800080, 0x008000, 0x800000, 0xadd8e6, 0x90ee90, 0xffb6c1, 0xfaebd7, 0xdda0dd
+    ];
+
+    winningLinesInfo.forEach((info) => {
+        if (!info.symbols || info.symbols.length < 1) return; // Skip if no symbols recorded
+
+        const lineColor = lineColors[info.lineIndex % lineColors.length];
+        winLineGraphics.lineStyle({ width: 5, color: lineColor, alpha: 0.7 });
+
+        let firstValidPoint = true;
+        for (let i = 0; i < info.count; i++) {
+            const symbolObj = info.symbols[i];
+            if (!symbolObj?.parent) { // Check if symbol is still valid and on stage
+                console.warn(`PaylineGraphics: Symbol object invalid for line ${info.lineIndex}, index ${i}`);
+                continue;
+            }
+
+            // Calculate position relative to the winLineGraphics container's origin (reelAreaX, reelAreaY)
+            // Assumes symbolObj.parent is the reel container (rc)
+            const reelIndex = symbolObj.parent.x / REEL_WIDTH; // Infer reel index from container position
+            const symbolCenterX = reelIndex * REEL_WIDTH + REEL_WIDTH / 2;
+            const symbolCenterY = symbolObj.y; // y position is relative to the reel container
+
+            if (firstValidPoint) {
+                winLineGraphics.moveTo(symbolCenterX, symbolCenterY);
+                firstValidPoint = false;
+            } else {
+                winLineGraphics.lineTo(symbolCenterX, symbolCenterY);
+            }
+            // Draw circles at symbol centers
+            winLineGraphics.drawCircle(symbolCenterX, symbolCenterY, 8).fill({ color: lineColor, alpha: 0.8 });
+        }
+        if (!firstValidPoint) {
+            winLineGraphics.stroke(); // Draw the line segments
+        }
+    });
+
+    // --- Fade In Animation ---
+    let currentAlpha = 0;
+    const fadeInDuration = 50 * winAnimDelayMultiplier; // Faster fade-in
+    winLineFadeInterval = setInterval(() => {
+        currentAlpha += 0.15; // Faster increment
+        winLineGraphics.alpha = Math.min(0.8, currentAlpha);
+        if (currentAlpha >= 0.8) {
+            clearInterval(winLineFadeInterval);
+        }
+    }, fadeInDuration / (0.8 / 0.15)); // Adjust interval timing
+
+    // --- Fade Out Timer ---
+    const displayDuration = 3000 * winAnimDelayMultiplier;
+    winLineFadeTimeout = setTimeout(() => {
+        if (winLineFadeInterval) clearInterval(winLineFadeInterval); // Ensure fade-in stops
+
+        let fadeOutAlpha = winLineGraphics.alpha;
+        const fadeOutDuration = 50 * winAnimDelayMultiplier; // Faster fade-out
+        const fadeOutInterval = setInterval(() => {
+            fadeOutAlpha -= 0.15; // Faster decrement
+            winLineGraphics.alpha = Math.max(0, fadeOutAlpha);
+            if (fadeOutAlpha <= 0) {
+                clearInterval(fadeOutInterval);
+                winLineGraphics.clear(); // Clear graphics after fade out
+            }
+        }, fadeOutDuration / (fadeOutAlpha / 0.15 + 1)); // Adjust interval timing
+
+    }, displayDuration);
+}
+
+/**
+ * Clears any active win lines and stops animations.
+ */
+export function clearWinLines() {
+    if (winLineFadeTimeout) clearTimeout(winLineFadeTimeout);
+    if (winLineFadeInterval) clearInterval(winLineFadeInterval);
+    if (winLineGraphics) {
+        winLineGraphics.clear();
+        winLineGraphics.alpha = 0;
+    }
+    winLineFadeTimeout = null;
+    winLineFadeInterval = null;
+}
+</file_content>
+
+<file_content path="./src//utils/helpers.js">
+/**
+ * Linearly interpolates between two angles, handling wrapping around a range (e.g., 360 degrees or 2*PI radians).
+ * @param {number} start - The starting angle.
+ * @param {number} end - The target angle.
+ * @param {number} t - The interpolation factor (0 to 1).
+ * @param {number} range - The full range of the angle (e.g., Math.PI * 2 for radians).
+ * @returns {number} The interpolated angle.
+ */
+export function lerpAngle(start, end, t, range) {
+    t = Math.max(0, Math.min(1, t)); // Clamp t between 0 and 1
+    let delta = end - start;
+
+    // Adjust delta if the shortest path wraps around the range
+    if (Math.abs(delta) > range / 2) {
+        delta -= Math.sign(delta) * range;
+    }
+
+    let result = start + delta * t;
+
+    // Ensure the result stays within the valid range (e.g., 0 to range)
+    return ((result % range) + range) % range;
+}
+
+/**
+ * Easing function: quadratic ease-out.
+ * Starts fast, then decelerates.
+ * @param {number} t - Progress ratio (0 to 1).
+ * @returns {number} Eased progress ratio.
+ */
+export const easeOutQuad = (t) => t * (2 - t);
+
+// Add other general utility functions here if needed later.
+</file_content>
+
+<file_content path="./src//main.js">
+import { Game } from './core/Game.js';
+
+// --- Entry Point ---
+
+// Wait for the DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // ID of the container element in index.html where the Pixi canvas will be added
+    const gameContainerId = 'game-container'; // Make sure this ID exists in index.html
+
+    // Create and initialize the game instance
+    const game = new Game(gameContainerId);
+    game.init().catch(err => {
+        console.error("Failed to initialize game:", err);
+        // Optionally display an error message to the user in the DOM
+        const container = document.getElementById(gameContainerId);
+        if (container) {
+            container.innerHTML = `<p style="color: red; text-align: center; margin-top: 50px;">Error loading game. Please check console.</p>`;
+        }
+    });
+});
+</file_content>
+
+<file_content path="./src//styles/main.css">
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #1a1a1a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: "Arial Black", Gadget, sans-serif;
+  overflow: hidden;
+}
+canvas {
+  border: 3px solid #b8860b;
+  background-color: #2f4f4f;
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+}
+.info-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  display: none;
+  z-index: 10;
+}
+</file_content>
+

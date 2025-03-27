@@ -26,12 +26,12 @@ export function evaluateWin() {
     let calculatedTotalWin = 0;
     let calculatedWinningLines = []; // Initialize as empty array
     const resultsGrid = getResultsGrid();
-    console.log("WinEvaluation - Results Grid:", JSON.stringify(resultsGrid)); // DEBUG: Log the grid
+    console.log("[DEBUG] WinEvaluation - Results Grid:", JSON.stringify(resultsGrid)); // DEBUG: Log the grid
     let scatterCount = 0;
 
     // --- Calculate Line Wins ---
     PAYLINES.forEach((linePath, lineIndex) => {
-        // console.log(`--- Checking Line ${lineIndex} --- Path: ${linePath}`); // DEBUG: Line Start
+        // console.log(`--- [DEBUG] Checking Line ${lineIndex} --- Path: ${linePath}`); // DEBUG: Line Start
         let lineSymbolIds = [];
         let lineSymbolObjects = []; // Store references to the actual symbol objects on screen
 
@@ -42,12 +42,20 @@ export function evaluateWin() {
                 lineSymbolIds.push(symbolId);
 
                 // Find the corresponding symbol object on the reel
-                // Assumes symbols array index corresponds to visual row + 1 (for buffer symbol)
-                const symbolObj = reelsRef[reelIndex]?.symbols[rowIndex + 1];
+                let symbolObj = null;
+                const reel = reelsRef[reelIndex];
+                if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) {
+                    symbolObj = reel.symbols[rowIndex + 1]; // Index 1 to SYMBOLS_PER_REEL_VISIBLE should be visible
+                    console.log(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}, Row ${rowIndex}: Trying index ${rowIndex + 1}. Got symbolObj: ${symbolObj?.symbolId || 'undefined'}, Expected: ${symbolId}`);
+                } else {
+                     console.error(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}: Invalid reel or symbols array.`);
+                }
+
+                // Verify the retrieved object matches the expected symbol ID from the grid
                 if (symbolObj && symbolObj.symbolId === symbolId) {
                     lineSymbolObjects.push(symbolObj);
                 } else {
-                    // This case might happen if grid/reels are out of sync, log warning?
+                    console.warn(`[DEBUG] Line ${lineIndex}, Reel ${reelIndex}, Row ${rowIndex}: Symbol object mismatch or missing (Expected: ${symbolId}, Found: ${symbolObj?.symbolId || 'null/undefined'}). Pushing null.`);
                     lineSymbolObjects.push(null);
                 }
             } else {
@@ -56,7 +64,8 @@ export function evaluateWin() {
                 lineSymbolObjects.push(null);
             }
         }
-        // console.log(`Line ${lineIndex} Symbols: ${lineSymbolIds}`); // DEBUG: Symbols on line
+        console.log(`[DEBUG] Line ${lineIndex} - Collected Symbol IDs: ${lineSymbolIds.join(', ')}`); // DEBUG: Symbols on line
+        console.log(`[DEBUG] Line ${lineIndex} - Collected Symbol Objects:`, lineSymbolObjects.map(s => s?.symbolId || 'null')); // DEBUG: Symbol objects collected
 
         const firstSymbolId = lineSymbolIds[0];
         // console.log(`Line ${lineIndex} First Symbol: ${firstSymbolId}`); // DEBUG: First symbol
@@ -73,7 +82,7 @@ export function evaluateWin() {
                 break; // Symbols must match consecutively from the left
             }
         }
-        // console.log(`Line ${lineIndex} Match Count: ${matchCount}`); // DEBUG: Match count
+        console.log(`[DEBUG] Line ${lineIndex} - Calculated Match Count: ${matchCount}`); // DEBUG: Match count
 
         const payoutInfo = PAYTABLE[firstSymbolId];
         const expectedPayout = payoutInfo ? payoutInfo[matchCount] : undefined;
@@ -82,15 +91,25 @@ export function evaluateWin() {
         if (matchCount >= 3 && payoutInfo && expectedPayout !== undefined) { // Check expectedPayout specifically
             const lineWin = expectedPayout * state.currentBetPerLine;
             calculatedTotalWin += lineWin;
+            // Filter out nulls *before* slicing to ensure correct symbols are kept
+            const validSymbolObjects = lineSymbolObjects.filter(s => s !== null);
+            const winningSymbols = validSymbolObjects.slice(0, matchCount);
+
             const winInfo = {
                 lineIndex: lineIndex,
                 symbolId: firstSymbolId,
-                count: matchCount,
+                count: matchCount, // Use the calculated matchCount
                 winAmount: lineWin,
-                symbols: lineSymbolObjects.slice(0, matchCount).filter(s => s !== null), // Store refs to winning symbols
+                symbols: winningSymbols, // Use the correctly sliced array
             };
             calculatedWinningLines.push(winInfo);
-            console.log("WinEvaluation - WIN FOUND:", winInfo); // DEBUG: Log found win
+            console.log("[DEBUG] WinEvaluation - WIN FOUND:", {
+                line: lineIndex,
+                symbol: firstSymbolId,
+                count: matchCount,
+                amount: lineWin,
+                symbolsToAnimate: winningSymbols.map(s => s.symbolId) // Log IDs being sent to animation
+            });
         }
     });
 
@@ -113,11 +132,32 @@ export function evaluateWin() {
         // flashElement(winText, 0xffff00, 200, 3); // Needs UIManager reference to winText
         drawWinLines(calculatedWinningLines); // Pass winning lines info
         playWinAnimations(calculatedTotalWin, state.currentTotalBet); // Pass win and bet for threshold checks
+        
+        // Collect all unique symbols to animate
+        const allSymbolsToAnimate = [];
+        const seenSymbols = new Set();
+        
         calculatedWinningLines.forEach(info => {
-            if (info.symbols.length > 0) {
-                animateWinningSymbols(info.symbols);
+            // Check the symbols array in the winInfo object passed to animation
+            if (info.symbols && info.symbols.length > 0) {
+                // Add only unique symbols to the animation array
+                info.symbols.forEach(symbol => {
+                    if (symbol && !seenSymbols.has(symbol)) {
+                        seenSymbols.add(symbol);
+                        allSymbolsToAnimate.push(symbol);
+                    }
+                });
+                console.log(`[DEBUG] Collected ${info.symbols.length} symbols for line ${info.lineIndex}:`, info.symbols.map(s => s.symbolId));
+            } else {
+                console.warn(`[DEBUG] No valid symbols found to animate for line ${info.lineIndex}`);
             }
         });
+        
+        // Animate all winning symbols at once
+        if (allSymbolsToAnimate.length > 0) {
+            console.log(`[DEBUG] Animating ${allSymbolsToAnimate.length} unique symbols across all winning lines`);
+            animateWinningSymbols(allSymbolsToAnimate);
+        }
     } else {
         console.log("No line win.");
         updateDisplays(); // Ensure win display is cleared if needed
@@ -142,9 +182,20 @@ function getResultsGrid() {
     reelsRef.forEach((reel) => {
         const column = [];
         // Calculate visible symbols based on stopIndex
-        for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
-            const symbolIndexOnStrip = (reel.stopIndex + rowIndex + reel.strip.length) % reel.strip.length;
-            column.push(reel.strip[symbolIndexOnStrip]);
+        // Ensure reel and strip exist
+        if (reel && reel.strip) {
+            for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                // Ensure stopIndex is a number
+                const stopIndex = typeof reel.stopIndex === 'number' ? reel.stopIndex : 0;
+                const symbolIndexOnStrip = (stopIndex + rowIndex + reel.strip.length) % reel.strip.length;
+                column.push(reel.strip[symbolIndexOnStrip]);
+            }
+        } else {
+             console.error("[DEBUG] Invalid reel or reel strip found in getResultsGrid");
+             // Push empty column or handle error appropriately
+             for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                 column.push(null); // Push nulls if reel is invalid
+             }
         }
         grid.push(column);
     });

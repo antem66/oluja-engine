@@ -1,4 +1,6 @@
 import * as PIXI from 'pixi.js';
+import { gsap } from 'gsap'; // Import GSAP
+import { getWinRollupText } from '../ui/UIManager.js'; // Import function to get text element
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
@@ -25,51 +27,127 @@ export function initAnimations(overlayCont, particleCont) {
 
 /**
  * Animates the scale of winning symbols with a bounce effect.
- * @param {Array<import('../core/Symbol.js').Symbol>} symbolsToAnimate - Array of Symbol instances to animate.
+ * @param {Array<import('../core/Symbol.js').SymbolSprite>} symbolsToAnimate - Array of SymbolSprite instances to animate.
  */
 export function animateWinningSymbols(symbolsToAnimate) {
-    if (!symbolsToAnimate) return;
+    if (!symbolsToAnimate || symbolsToAnimate.length === 0) return;
 
-    symbolsToAnimate.forEach((symbol) => {
-        // Check if symbol is valid and not already animating
-        if (symbol?.scale && !symbol.isAnimating) {
-            symbol.isAnimating = true; // Mark as animating
-            const originalScale = 1.0;
-            symbol.scale.set(originalScale); // Ensure starting scale
+    const baseDuration = 0.35; // Increased base duration for longer animation
+    const duration = baseDuration * winAnimDelayMultiplier;
+    const targetScaleUp = 1.25; // Increased scale factor for more impact
+    const initialDipScale = 0.9; // Deeper initial dip
+    const easeType = "power2.out"; // Smoother ease out
+    const easeBack = "elastic.out(1.2, 0.5)"; // More pronounced bounce
 
-            const targetScaleUp = originalScale * 1.15;
-            const baseDuration = 150; // ms per half-bounce
-            const duration = baseDuration * winAnimDelayMultiplier; // Adjust for turbo
-            const bounces = 2; // Number of up/down cycles
-            let count = 0;
-            let animTimeout = null;
+    // Track symbols by their unique ID to prevent duplicates
+    const seenSymbols = new Set();
+    
+    symbolsToAnimate.forEach((symbol, index) => {
+        // Skip if symbol is already being seen in this animation batch or is already animating
+        if (!symbol?.scale || symbol.isAnimating || seenSymbols.has(symbol)) return;
+        
+        // Mark this symbol as seen in this animation batch
+        seenSymbols.add(symbol);
+        
+        // Mark the symbol as animating to prevent multiple animations from running
+        symbol.isAnimating = true;
+        
+        // Kill any existing tweens targeting this symbol or its scale
+        gsap.killTweensOf(symbol);
+        gsap.killTweensOf(symbol.scale);
 
-            function bounceSymbol() {
-                // Stop if symbol is destroyed or removed
-                if (!symbol?.scale || !symbol.parent) {
-                    if (symbol) symbol.isAnimating = false; // Reset flag if possible
-                    clearTimeout(animTimeout);
-                    return;
-                }
+        // Store original values
+        const originalScaleX = symbol.scale.x;
+        const originalScaleY = symbol.scale.y;
+        const originalAlpha = symbol.alpha;
+        const originalRotation = symbol.rotation;
+        
+        // Add subtle staggered delay for sequential effect based on symbol index
+        const staggerDelay = index * 0.08 * winAnimDelayMultiplier;
+        
+        // Create gold tint for winning effect - slot machine style
+        const goldTint = 0xFFDF00; // Gold color
+        const originalTint = symbol.tint;
 
-                // End animation after specified bounces
-                if (count >= bounces * 2) {
-                    symbol.scale.set(originalScale); // Reset to original scale
-                    symbol.isAnimating = false; // Unmark
-                    return;
-                }
-
-                // Alternate target scale
-                const target = count % 2 === 0 ? targetScaleUp : originalScale;
-                symbol.scale.set(target); // Apply scale change
-                count++;
-
-                // Schedule next step
-                animTimeout = setTimeout(bounceSymbol, duration);
+        // Main animation timeline
+        const tl = gsap.timeline({
+            delay: staggerDelay,
+            onComplete: () => {
+                // Reset properties that might not be explicitly reset in the timeline
+                symbol.tint = originalTint;
+                symbol.alpha = originalAlpha;
+                symbol.rotation = originalRotation;
+                symbol.isAnimating = false;
             }
+        });
 
-            bounceSymbol(); // Start the animation loop
-        }
+        // Initial attention-grabbing quick flash
+        tl.to(symbol, { 
+            alpha: 1.5, // Slight overbright
+            duration: duration * 0.2, 
+            ease: "power1.in",
+        }, 0)
+        
+        // Initial dip with slight rotation
+        .to(symbol.scale, { 
+            x: originalScaleX * initialDipScale, 
+            y: originalScaleY * initialDipScale, 
+            duration: duration * 0.3, 
+            ease: "power2.in" 
+        }, 0)
+        .to(symbol, {
+            rotation: originalRotation - 0.05,
+            duration: duration * 0.3,
+            ease: "power1.in"
+        }, 0)
+        
+        // Pop up larger with gold tint
+        .to(symbol.scale, { 
+            x: originalScaleX * targetScaleUp, 
+            y: originalScaleY * targetScaleUp, 
+            duration: duration * 0.5, 
+            ease: easeType 
+        }, duration * 0.3)
+        .to(symbol, {
+            tint: goldTint,
+            rotation: originalRotation + 0.08,
+            duration: duration * 0.5,
+            ease: "power1.out"
+        }, duration * 0.3)
+        
+        // Pulsing phase - two subtle pulses while gold
+        .to(symbol.scale, {
+            x: originalScaleX * (targetScaleUp * 0.9),
+            y: originalScaleY * (targetScaleUp * 0.9),
+            duration: duration * 0.4,
+            ease: "sine.inOut"
+        }, duration * 0.8)
+        .to(symbol.scale, {
+            x: originalScaleX * targetScaleUp,
+            y: originalScaleY * targetScaleUp,
+            duration: duration * 0.4,
+            ease: "sine.inOut"
+        }, duration * 1.2)
+        .to(symbol.scale, {
+            x: originalScaleX * (targetScaleUp * 0.95),
+            y: originalScaleY * (targetScaleUp * 0.95),
+            duration: duration * 0.3,
+            ease: "sine.inOut"
+        }, duration * 1.6)
+        
+        // Final return to original state with elastic bounce
+        .to(symbol.scale, { 
+            x: originalScaleX, 
+            y: originalScaleY, 
+            duration: duration * 0.8, 
+            ease: easeBack 
+        }, duration * 1.9)
+        .to(symbol, {
+            tint: originalTint,
+            rotation: originalRotation,
+            duration: duration * 0.8,
+            ease: "power1.inOut"
+        }, duration * 1.9);
     });
 }
 
@@ -79,6 +157,48 @@ export function animateWinningSymbols(symbolsToAnimate) {
  * @param {number} currentTotalBet - The total bet amount for the spin (for threshold calculation).
  */
 export function playWinAnimations(winAmount, currentTotalBet) {
+    const winRollupElement = getWinRollupText(); // Get the text element
+
+    // --- Win Rollup Animation ---
+    if (winRollupElement && winAmount > 0) {
+        winRollupElement.text = `€0.00`; // Reset text
+        winRollupElement.visible = true; // Make it visible
+        winRollupElement.alpha = 1; // Ensure alpha is reset
+
+        // Use a temporary object for GSAP to tween a numeric value
+        const counter = { value: 0 };
+        // Duration based on win amount, e.g., 0.5s for small wins up to 2s for large wins
+        const rollupDuration = Math.max(0.5, Math.min(2.0, winAmount * 0.02));
+
+        gsap.to(counter, {
+            value: winAmount,
+            duration: rollupDuration * winAnimDelayMultiplier, // Apply turbo multiplier
+            ease: "power1.out",
+            onUpdate: () => {
+                if (winRollupElement) { // Check if element still exists
+                    winRollupElement.text = `€${counter.value.toFixed(2)}`;
+                }
+            },
+            onComplete: () => {
+                // Optionally hide rollup after a delay, or let it stay until next spin starts
+                // We'll hide it after 1.5 seconds delay
+                 if (winRollupElement) {
+                    gsap.to(winRollupElement, {
+                        alpha: 0,
+                        delay: 1.5 * winAnimDelayMultiplier,
+                        duration: 0.3 * winAnimDelayMultiplier,
+                        onComplete: () => { if (winRollupElement) winRollupElement.visible = false; }
+                    });
+                 }
+            }
+        });
+    } else if (winRollupElement) {
+        // Ensure rollup is hidden if there's no win
+        winRollupElement.visible = false;
+    }
+
+
+    // --- Big/Mega Win Text Animation (Keep existing logic) ---
     if (!overlayContainer) {
         console.error("Animations: Overlay container not initialized for win animations.");
         return;
