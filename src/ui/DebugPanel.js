@@ -177,8 +177,9 @@ function createCheckbox(x, y, initialState = false, id) {
         
         // Handle specific checkbox actions
         if (id === 'forceWin') {
+            console.log(`Debug Panel: Setting forceWin to ${newState}`);
             updateState({ forceWin: newState });
-            console.log(`Debug: Force win set to ${newState}`);
+            console.log(`Debug Panel: State after update: isDebugMode=${state.isDebugMode}, forceWin=${state.forceWin}`);
         }
     });
     
@@ -192,6 +193,8 @@ function toggleDebugPanel() {
     debugContainer.visible = !debugContainer.visible;
     // Also set master debug flag
     updateState({ isDebugMode: debugContainer.visible });
+    console.log(`Debug Panel: Toggled panel visibility to ${debugContainer.visible}`);
+    console.log(`Debug Panel: isDebugMode=${state.isDebugMode}, forceWin=${state.forceWin}`);
     
     // Update the state of debug controls to match the game state
     if (debugContainer.visible) {

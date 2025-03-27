@@ -150,7 +150,9 @@ export class Game {
 
         } catch (err) {
             console.error("PixiJS or Game Init Failed:", err);
-            this.canvasContainer.innerHTML = `Error initializing graphics: ${err.message}. Check console.`;
+            if (this.canvasContainer) {
+                this.canvasContainer.innerHTML = `Error initializing graphics: ${err.message}. Check console.`;
+            }
         }
     }
 
@@ -273,6 +275,108 @@ export class Game {
             }
         }, 50 * winAnimDelayMultiplier); // Use animation multiplier for delay
     }
+
+    /**
+     * Start the spinning process for all reels
+     */
+    startSpinLoop() {
+        // Schedule each reel to stop after a delay
+        let winPattern = null;
+        
+        // If force win is enabled, generate a winning pattern before starting the spins
+        if (state.isDebugMode && state.forceWin) {
+          console.log("Debug mode active: Forcing a win pattern");
+          winPattern = this.generateRandomWinPattern();
+          console.log("Generated win pattern:", winPattern);
+        }
+        
+        for (let i = 0; i < reels.length; i++) {
+          const reel = reels[i];
+          
+          // Start spinning the reel
+          reel.startSpinning();
+          
+          // Schedule when to stop the reel
+          // Use the animation settings constants
+          const stopDelay = baseSpinDuration + (i * REEL_STOP_STAGGER);
+          
+          setTimeout(() => {
+            // If in debug mode and force win is enabled, use the predetermined winning pattern
+            if (state.isDebugMode && state.forceWin && winPattern) {
+              // Find stop position that will show the target symbol in the correct position
+              const stopIndex = this.findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]);
+              reel.scheduleStop(stopIndex);
+            } else {
+              // Normal random stop logic
+              const randomStopIndex = Math.floor(Math.random() * reel.totalSymbols);
+              reel.scheduleStop(randomStopIndex);
+            }
+          }, stopDelay);
+        }
+    }
+    
+    /**
+     * Generate a random winning pattern
+     * @returns {{symbol: string, positions: number[]}} A winning pattern with symbol and positions
+     */
+    generateRandomWinPattern() {
+        // Use only high-value symbols for testing
+        const highValueSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
+        
+        // Choose a random high-value symbol
+        const winSymbol = highValueSymbols[Math.floor(Math.random() * highValueSymbols.length)];
+        
+        // For simplicity, always use the middle row (index 1) for our winning line
+        const rowIndex = 1;
+        
+        // Determine win length - favor longer wins for testing
+        const winLength = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5
+        
+        // Generate positions array (showing which row the symbol should appear on each reel)
+        const positions = [];
+        for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
+          // For reels within our win length, use the selected row
+          if (i < winLength) {
+            positions.push(rowIndex);
+          } else {
+            // For reels beyond our win length, use random positions
+            positions.push(Math.floor(Math.random() * SETTINGS.SYMBOLS_PER_REEL_VISIBLE));
+          }
+        }
+        
+        return {
+          symbol: winSymbol,
+          positions: positions
+        };
+    }
+    
+    /**
+     * Find the stop index that will show the target symbol in the target position
+     * @param {Object} reel - The reel object
+     * @param {string} targetSymbol - The symbol we want to show
+     * @param {number} targetPosition - The position where we want the symbol (0=top, 1=middle, 2=bottom)
+     * @returns {number} The stop index that will show the target symbol in position
+     */
+    findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
+        // Get the current sequence of symbols on the reel
+        const symbols = reel.symbolsSequence;
+        
+        // Try to find the target symbol
+        for (let i = 0; i < symbols.length; i++) {
+          if (symbols[i].name === targetSymbol) {
+            // Calculate the stop index that would place this symbol at the target position
+            // The stop index must be adjusted for the target position
+            let stopIndex = (i - targetPosition) % symbols.length;
+            if (stopIndex < 0) stopIndex += symbols.length;
+            
+            return stopIndex;
+          }
+        }
+        
+        // Fallback: if the symbol isn't found, use a random stop position
+        console.log(`Could not find symbol ${targetSymbol} on reel - using random position`);
+        return Math.floor(Math.random() * reel.totalSymbols);
+    }
 }
 
 // --- Global Functions used by other modules ---
@@ -289,37 +393,21 @@ export function startSpinLoop(isTurbo) {
     // Note: app.ticker.lastTime might be more accurate if available globally or passed in
     const startTime = performance.now();
 
+    // If debug mode with force win is enabled, generate a winning pattern for all reels
+    let winPattern = null;
+    if (state.isDebugMode && state.forceWin) {
+        winPattern = generateRandomWinPattern();
+        console.log(`Debug - Forcing win with ${winPattern.symbol} on line ${winPattern.line}`);
+    }
+
     // Start all reels spinning and schedule their stops
     reels.forEach((reel, i) => {
         reel.startSpinning(isTurbo); // Start spinning visually
         
-        // Force a winning outcome if debug mode is enabled and "Force Win" is checked
-        if (state.isDebugMode && state.forceWin) {
-            // Find a common symbol to force on the payline
-            const targetSymbol = "FACE1"; 
-            const strip = REEL_STRIPS[i];
-            
-            // Find positions where our target symbol appears
-            const symbolPositions = [];
-            for (let j = 0; j < strip.length; j++) {
-                if (strip[j] === targetSymbol) {
-                    symbolPositions.push(j);
-                }
-            }
-            
-            if (symbolPositions.length > 0) {
-                // Choose one of the positions randomly
-                const randomPosition = symbolPositions[Math.floor(Math.random() * symbolPositions.length)];
-                
-                // We want the symbol to appear in the middle row (index 1)
-                // Offset the index to align properly in the middle (this is where the win line is)
-                const stopIndex = (randomPosition - 1 + strip.length) % strip.length;
-                
-                // Override the reel's stop index directly
-                reel.stopIndex = stopIndex;
-                reel.finalStopPosition = stopIndex;
-                console.log(`Debug - Forcing reel ${i} to stop at index ${stopIndex} to show ${targetSymbol}`);
-            }
+        // Apply the winning pattern if debug mode is enabled
+        if (winPattern) {
+            reel.stopIndex = winPattern.stopIndices[i];
+            reel.finalStopPosition = winPattern.stopIndices[i];
         }
 
         // Calculate the absolute time this reel should come to a complete stop
@@ -337,4 +425,94 @@ export function startSpinLoop(isTurbo) {
 
     // No need for targetStoppingReelIndex or setTimeout for initiation
     updateState({ targetStoppingReelIndex: -1 });
+}
+
+/**
+ * Generates a random winning pattern for the reels
+ * @returns {Object} Object containing symbol, line number, and stop indices
+ */
+function generateRandomWinPattern() {
+    // Use high-value symbols for better wins
+    const winningSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
+    
+    // Choose a random symbol
+    const symbolIndex = Math.floor(Math.random() * winningSymbols.length);
+    const symbol = winningSymbols[symbolIndex];
+    
+    // For simplicity and reliability, use the middle row (line index 1)
+    // This is the most reliable way to create wins
+    const paylineIndex = 1;
+    
+    // Choose a random win length (3, 4, or 5)
+    // Bias toward 5 to get bigger wins for testing
+    const winLength = Math.random() < 0.5 ? 5 : (Math.random() < 0.7 ? 4 : 3);
+    
+    console.log(`Debug - Creating win pattern with ${symbol} for ${winLength} reels on middle row`);
+    
+    // For each reel, find positions where our symbol can appear
+    const stopIndices = [];
+    
+    for (let i = 0; i < REEL_STRIPS.length; i++) {
+        const strip = REEL_STRIPS[i];
+        
+        // For reels that should show the winning symbol
+        if (i < winLength) {
+            // Find all positions of the target symbol
+            const symbolPositions = [];
+            for (let j = 0; j < strip.length; j++) {
+                if (strip[j] === symbol) {
+                    symbolPositions.push(j);
+                }
+            }
+            
+            // If we couldn't find the symbol on this reel, look for any high value symbol
+            if (symbolPositions.length === 0) {
+                // Use a fallback symbol from our list
+                for (const fallbackSymbol of winningSymbols) {
+                    if (fallbackSymbol === symbol) continue; // Skip the one we already tried
+                    
+                    // Check if this fallback symbol exists on the reel
+                    for (let j = 0; j < strip.length; j++) {
+                        if (strip[j] === fallbackSymbol) {
+                            symbolPositions.push(j);
+                        }
+                    }
+                    
+                    if (symbolPositions.length > 0) {
+                        console.log(`Debug - Using fallback symbol ${fallbackSymbol} on reel ${i}`);
+                        break; // Found a fallback symbol
+                    }
+                }
+                
+                // Last resort fallback
+                if (symbolPositions.length === 0) {
+                    const randomPos = Math.floor(Math.random() * strip.length);
+                    symbolPositions.push(randomPos);
+                    console.log(`Debug - Using random position on reel ${i} as last resort`);
+                }
+            }
+            
+            // Choose random position from our found positions
+            const randomPosition = symbolPositions[Math.floor(Math.random() * symbolPositions.length)];
+            
+            // For middle row, offset is 1
+            const offset = 1;
+            
+            // Calculate the stop index that places the symbol in the middle row
+            // We need to "back up" the strip by the offset to get the symbol at the right row
+            const stopIndex = (randomPosition - offset + strip.length) % strip.length;
+            stopIndices.push(stopIndex);
+        } 
+        else {
+            // For reels beyond our win length, place random symbols
+            const stopIndex = Math.floor(Math.random() * strip.length);
+            stopIndices.push(stopIndex);
+        }
+    }
+    
+    return {
+        symbol: symbol,
+        line: paylineIndex,
+        stopIndices: stopIndices
+    };
 }
