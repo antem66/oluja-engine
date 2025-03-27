@@ -67,6 +67,13 @@ export class Game {
                 alias: def.id, // Use symbol ID as alias
                 src: `assets/images/${def.id}.png` // Construct path
             }));
+            
+            // Add background image to assets
+            symbolAssets.push({
+                alias: 'BG_IMAGE',
+                src: 'assets/images/background/bg.png'
+            });
+            
             console.log("Loading symbol assets:", symbolAssets);
             await PIXI.Assets.load(symbolAssets);
             console.log("Symbol assets loaded.");
@@ -79,11 +86,32 @@ export class Game {
             initFreeSpins(app); // Pass app reference for background changes
 
             // --- Create Main Containers ---
+            // Create background layer first (lowest z-index)
+            const backgroundLayer = new PIXI.Container();
+            
+            // Create the background sprite
+            const bgSprite = new PIXI.Sprite(PIXI.Assets.get('BG_IMAGE'));
+            // Center the background
+            bgSprite.anchor.set(0.5);
+            bgSprite.x = SETTINGS.GAME_WIDTH / 2;
+            bgSprite.y = SETTINGS.GAME_HEIGHT / 2;
+            
+            // Scale to fit the game area
+            const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
+            const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
+            const scale = Math.max(scaleX, scaleY); // Use max to cover the entire area
+            bgSprite.scale.set(scale);
+            
+            backgroundLayer.addChild(bgSprite);
+            
+            // Add background layer to stage
+            if (!app?.stage) throw new Error("Pixi stage not available after init.");
+            app.stage.addChild(backgroundLayer);
+            
+            // Create reel container (middle z-index)
             reelContainer = new PIXI.Container();
             reelContainer.x = SETTINGS.reelAreaX;
             reelContainer.y = SETTINGS.reelAreaY;
-            // Ensure app and stage exist before adding children
-            if (!app?.stage) throw new Error("Pixi stage not available after init.");
             app.stage.addChild(reelContainer);
 
             uiContainer = new PIXI.Container();
@@ -170,7 +198,7 @@ export class Game {
              stroke: { color: "#8B0000", width: 3 },
              dropShadow: { color: "#000000", distance: 4, blur: 4, angle: Math.PI / 4, alpha: 0.7 }
             };
-        const titleText = new PIXI.Text({ text: "HEAVENS TEN", style: titleStyle });
+        const titleText = new PIXI.Text({ text: "MAD SCIENTIST", style: titleStyle });
         titleText.anchor.set(0.5, 0);
         titleText.x = SETTINGS.GAME_WIDTH / 2;
         titleText.y = 15;

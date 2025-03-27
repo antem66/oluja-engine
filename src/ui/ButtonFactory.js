@@ -155,6 +155,7 @@ class Button extends PIXI.Container {
                 icon.y = effectiveHeight / 2;
                 icon.width = effectiveWidth * 0.6;
                 icon.height = effectiveHeight * 0.6;
+                icon.tint = 0xFFFFFF; // Set the tint to white to match drawn icons
                 this.buttonIcon = icon;
             } else {
                 // Fallback to drawn icon
@@ -380,9 +381,12 @@ class Button extends PIXI.Container {
             
             // Add a flash effect to the icon
             if (this.buttonIcon) {
-                // Flash icon to bright white and back
+                // Flash icon bright white (or orange for SVGs)
+                const flashColor = this._usingSVG ? 0xFF7700 : 0xFFFFFF;
+                const originalTint = this._usingSVG ? 0xFFFFFF : 0xFFFFFF;
+                
                 tl.to(this.buttonIcon, {
-                    tint: 0xFFFFFF,
+                    tint: flashColor,
                     alpha: 1.5, // Slight overbright
                     duration: 0.2,
                     ease: "sine.in"
@@ -390,7 +394,7 @@ class Button extends PIXI.Container {
                 
                 // Return to normal
                 tl.to(this.buttonIcon, {
-                    tint: 0xFFFFFF, // Reset to normal white
+                    tint: originalTint,
                     alpha: 1.0,
                     duration: 0.3,
                     ease: "power1.out"
@@ -547,6 +551,7 @@ class Button extends PIXI.Container {
                 icon.y = effectiveHeight / 2;
                 icon.width = effectiveWidth * 0.6;
                 icon.height = effectiveHeight * 0.6;
+                icon.tint = 0xFFFFFF; // Set the tint to white
                 this.buttonIcon = icon;
                 this.addChild(icon);
                 return;
