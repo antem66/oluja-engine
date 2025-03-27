@@ -18,6 +18,7 @@ export function createSymbolGraphic(symbolId) { // Keep function name for compat
 export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
   symbolId; // The ID of the symbol ('FACE1', 'SCAT', etc.)
   isAnimating = false; // Flag for win animations
+  customFilters = []; // Track custom filters separately from base filters
 
   constructor(symbolId) {
     // TODO: Replace placeholder with actual texture loading based on symbolId
@@ -43,5 +44,100 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
     this.x = REEL_WIDTH / 2;
 
     // Y position will be set by alignReelSymbols in Reel.js
+  }
+  
+  /**
+   * Adds a visual effect filter to the symbol
+   * @param {PIXI.Filter} filter - The PIXI filter to add
+   * @param {string} [name] - Optional name to reference this filter later
+   * @returns {PIXI.Filter} The added filter
+   */
+  addFilter(filter, name) {
+    // Initialize filters array if not exists
+    if (!this.filters) {
+      this.filters = [];
+    }
+    
+    // Add name property to filter for reference
+    if (name) {
+      filter.name = name;
+    }
+    
+    // Add to both arrays
+    this.filters.push(filter);
+    this.customFilters.push(filter);
+    
+    return filter;
+  }
+  
+  /**
+   * Removes a filter by reference or name
+   * @param {PIXI.Filter|string} filterOrName - Filter object or name to remove
+   * @returns {boolean} True if filter was found and removed
+   */
+  removeFilter(filterOrName) {
+    if (!this.filters || !this.customFilters.length) return false;
+    
+    let filterIndex = -1;
+    
+    if (typeof filterOrName === 'string') {
+      // Find by name
+      filterIndex = this.filters.findIndex(f => f.name === filterOrName);
+    } else {
+      // Find by reference
+      filterIndex = this.filters.indexOf(filterOrName);
+    }
+    
+    if (filterIndex >= 0) {
+      const removedFilter = this.filters.splice(filterIndex, 1)[0];
+      
+      // Also remove from our tracking array
+      const customIndex = this.customFilters.indexOf(removedFilter);
+      if (customIndex >= 0) {
+        this.customFilters.splice(customIndex, 1);
+      }
+      
+      // If no more filters, set to null
+      if (this.filters.length === 0) {
+        this.filters = null;
+      }
+      
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Removes all custom filters that were added
+   */
+  clearCustomFilters() {
+    if (!this.filters) return;
+    
+    // Remove all custom filters from main filters array
+    this.customFilters.forEach(filter => {
+      const index = this.filters.indexOf(filter);
+      if (index >= 0) {
+        this.filters.splice(index, 1);
+      }
+    });
+    
+    // Clear the custom filters array
+    this.customFilters = [];
+    
+    // If no more filters, set to null
+    if (this.filters.length === 0) {
+      this.filters = null;
+    }
+  }
+  
+  /**
+   * Gets a filter by name
+   * @param {string} name - The name of the filter to find
+   * @returns {PIXI.Filter|null} The filter or null if not found
+   */
+  getFilter(name) {
+    if (!this.filters) return null;
+    return this.filters.find(f => f.name === name) || null;
   }
 }

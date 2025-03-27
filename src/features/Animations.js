@@ -10,6 +10,20 @@ let particleContainer = null;
 let winOverlayAnimInterval = null; // Interval ID for big win text animation
 const particles = []; // Array to hold active particle objects
 
+// Symbol Animation Registry - Maps symbol IDs to custom animation functions
+const symbolAnimations = new Map();
+
+/**
+ * Registers a custom animation for a specific symbol type
+ * 
+ * @param {string} symbolId - The symbol identifier (e.g., "FACE1", "KNIFE")
+ * @param {Function} animationFn - Function(symbol, baseTimeline, config) that adds custom animations to the timeline
+ */
+export function registerSymbolAnimation(symbolId, animationFn) {
+    symbolAnimations.set(symbolId, animationFn);
+    console.log(`Registered custom animation for symbol: ${symbolId}`);
+}
+
 /**
  * Initializes references to necessary PIXI containers.
  * @param {PIXI.Container} overlayCont - Container for big win text overlays.
@@ -23,6 +37,70 @@ export function initAnimations(overlayCont, particleCont) {
     overlayContainer = overlayCont;
     particleContainer = particleCont;
     console.log("Animations initialized with containers.");
+    
+    // Setup default symbol animations
+    setupDefaultSymbolAnimations();
+}
+
+/**
+ * Sets up the default symbol animations for various symbol types
+ */
+function setupDefaultSymbolAnimations() {
+    // SCATTER symbol - special purple glow and extra scaling
+    registerSymbolAnimation("SCAT", (symbol, tl, config) => {
+        const goldPurple = 0xFF00FF;
+        const targetScale = 1.4;  // Larger scale for scatter
+
+        // Add a special purple/gold flash effect
+        tl.to(symbol, {
+            tint: goldPurple,
+            duration: config.duration * 0.5,
+            ease: "sine.inOut",
+            repeat: 3,
+            yoyo: true
+        }, config.duration * 0.3);
+        
+        // Override the scale animation to be more dramatic
+        tl.to(symbol.scale, {
+            x: config.originalScaleX * targetScale,
+            y: config.originalScaleY * targetScale,
+            duration: config.duration * 0.5,
+            ease: "back.out(1.5)"
+        }, config.duration * 0.3);
+        
+        return tl;
+    });
+    
+    // FACE1 (gold face) - gold shimmer effect
+    registerSymbolAnimation("FACE1", (symbol, tl, config) => {
+        const brightGold = 0xFFFF00;
+        const dimGold = 0xDAA520;
+        
+        // Add a golden shimmer effect
+        tl.to(symbol, {
+            tint: brightGold,
+            duration: config.duration * 0.3,
+            repeat: 4,
+            yoyo: true,
+            ease: "sine.inOut"
+        }, config.duration * 0.3);
+        
+        return tl;
+    });
+    
+    // KNIFE - slashing rotation effect
+    registerSymbolAnimation("KNIFE", (symbol, tl, config) => {
+        const fullRotation = Math.PI * 2;
+        
+        // Add a full rotation effect
+        tl.to(symbol, {
+            rotation: config.originalRotation + fullRotation,
+            duration: config.duration * 1.1,
+            ease: "power3.inOut"
+        }, config.duration * 0.4);
+        
+        return tl;
+    });
 }
 
 /**
@@ -61,13 +139,28 @@ export function animateWinningSymbols(symbolsToAnimate) {
         const originalScaleY = symbol.scale.y;
         const originalAlpha = symbol.alpha;
         const originalRotation = symbol.rotation;
+        const originalTint = symbol.tint;
         
         // Add subtle staggered delay for sequential effect based on symbol index
         const staggerDelay = index * 0.08 * winAnimDelayMultiplier;
         
         // Create gold tint for winning effect - slot machine style
         const goldTint = 0xFFDF00; // Gold color
-        const originalTint = symbol.tint;
+        
+        // Configuration object to pass to custom animations
+        const animConfig = {
+            duration,
+            originalScaleX,
+            originalScaleY,
+            originalAlpha,
+            originalRotation,
+            originalTint,
+            targetScaleUp,
+            initialDipScale,
+            easeType,
+            easeBack,
+            goldTint
+        };
 
         // Main animation timeline
         const tl = gsap.timeline({
@@ -81,14 +174,14 @@ export function animateWinningSymbols(symbolsToAnimate) {
             }
         });
 
-        // Initial attention-grabbing quick flash
+        // Initial attention-grabbing quick flash - common to all symbols
         tl.to(symbol, { 
             alpha: 1.5, // Slight overbright
             duration: duration * 0.2, 
             ease: "power1.in",
         }, 0)
         
-        // Initial dip with slight rotation
+        // Initial dip with slight rotation - common to all symbols
         .to(symbol.scale, { 
             x: originalScaleX * initialDipScale, 
             y: originalScaleY * initialDipScale, 
@@ -99,44 +192,53 @@ export function animateWinningSymbols(symbolsToAnimate) {
             rotation: originalRotation - 0.05,
             duration: duration * 0.3,
             ease: "power1.in"
-        }, 0)
+        }, 0);
         
-        // Pop up larger with gold tint
-        .to(symbol.scale, { 
-            x: originalScaleX * targetScaleUp, 
-            y: originalScaleY * targetScaleUp, 
-            duration: duration * 0.5, 
-            ease: easeType 
-        }, duration * 0.3)
-        .to(symbol, {
-            tint: goldTint,
-            rotation: originalRotation + 0.08,
-            duration: duration * 0.5,
-            ease: "power1.out"
-        }, duration * 0.3)
+        // Check if this symbol has a custom animation
+        const symbolId = symbol.symbolId;
+        const customAnimation = symbolAnimations.get(symbolId);
         
-        // Pulsing phase - two subtle pulses while gold
-        .to(symbol.scale, {
-            x: originalScaleX * (targetScaleUp * 0.9),
-            y: originalScaleY * (targetScaleUp * 0.9),
-            duration: duration * 0.4,
-            ease: "sine.inOut"
-        }, duration * 0.8)
-        .to(symbol.scale, {
-            x: originalScaleX * targetScaleUp,
-            y: originalScaleY * targetScaleUp,
-            duration: duration * 0.4,
-            ease: "sine.inOut"
-        }, duration * 1.2)
-        .to(symbol.scale, {
-            x: originalScaleX * (targetScaleUp * 0.95),
-            y: originalScaleY * (targetScaleUp * 0.95),
-            duration: duration * 0.3,
-            ease: "sine.inOut"
-        }, duration * 1.6)
+        if (customAnimation) {
+            // Apply the custom animation, which can override or extend the timeline
+            customAnimation(symbol, tl, animConfig);
+        } else {
+            // Default animation sequence for symbols without custom animations
+            tl.to(symbol.scale, { 
+                x: originalScaleX * targetScaleUp, 
+                y: originalScaleY * targetScaleUp, 
+                duration: duration * 0.5, 
+                ease: easeType 
+            }, duration * 0.3)
+            .to(symbol, {
+                tint: goldTint,
+                rotation: originalRotation + 0.08,
+                duration: duration * 0.5,
+                ease: "power1.out"
+            }, duration * 0.3)
+            
+            // Pulsing phase - two subtle pulses while gold
+            .to(symbol.scale, {
+                x: originalScaleX * (targetScaleUp * 0.9),
+                y: originalScaleY * (targetScaleUp * 0.9),
+                duration: duration * 0.4,
+                ease: "sine.inOut"
+            }, duration * 0.8)
+            .to(symbol.scale, {
+                x: originalScaleX * targetScaleUp,
+                y: originalScaleY * targetScaleUp,
+                duration: duration * 0.4,
+                ease: "sine.inOut"
+            }, duration * 1.2)
+            .to(symbol.scale, {
+                x: originalScaleX * (targetScaleUp * 0.95),
+                y: originalScaleY * (targetScaleUp * 0.95),
+                duration: duration * 0.3,
+                ease: "sine.inOut"
+            }, duration * 1.6);
+        }
         
-        // Final return to original state with elastic bounce
-        .to(symbol.scale, { 
+        // Ensure all symbols return to original state at the end - common ending
+        tl.to(symbol.scale, { 
             x: originalScaleX, 
             y: originalScaleY, 
             duration: duration * 0.8, 
