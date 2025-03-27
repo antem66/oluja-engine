@@ -6,7 +6,7 @@ export const REEL_STRIPS = [
     "LOW",
     "CUP",
     "PATCH",
-    "SCAT",
+    "LOW", // Replace SCAT with LOW
     "FACE3",
     "LOW",
     "KNIFE",
@@ -25,7 +25,7 @@ export const REEL_STRIPS = [
     "KNIFE",
     "CUP",
     "FACE1",
-    "SCAT",
+    "LOW", // Replace SCAT with LOW
     "LOW",
     "FACE2",
     "PATCH",
@@ -39,14 +39,14 @@ export const REEL_STRIPS = [
     "FACE3",
     "CUP",
     "KNIFE",
-    "SCAT",
+    "LOW", // Replace SCAT with LOW
     "FACE1",
     "PATCH",
     "LOW",
     "FACE2",
     "KNIFE",
-    "FACE3",
-    "LOW",
+    "FACE3", // Corrected
+    "LOW",   // Corrected
     "PATCH",
     "SCAT",
     "CUP",
@@ -60,7 +60,7 @@ export const REEL_STRIPS = [
     "CUP",
     "FACE2",
     "KNIFE",
-    "SCAT",
+    "LOW", // Corrected
     "FACE3",
     "PATCH",
     "LOW",

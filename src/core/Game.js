@@ -1,8 +1,13 @@
 import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
-// Import stagger constant
-import { stopDelayBase, winAnimDelayMultiplier, REEL_STOP_STAGGER } from '../config/animationSettings.js';
+// Import animation settings
+import {
+    // stopDelayBase, // No longer used directly here
+    winAnimDelayMultiplier, // Still used in handleSpinEnd
+    REEL_STOP_STAGGER, baseSpinDuration, stopTweenDuration, // Normal settings
+    turboBaseSpinDuration, turboReelStopStagger // Turbo settings
+} from '../config/animationSettings.js';
 import { state, updateState, initGameState } from './GameState.js';
 import { Reel } from './Reel.js';
 import { createButton } from '../ui/ButtonFactory.js';
@@ -46,7 +51,12 @@ export class Game {
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true,
             });
-            this.canvasContainer.appendChild(app.canvas);
+            // Ensure app and canvas exist before appending
+            if (app?.canvas && this.canvasContainer) {
+                this.canvasContainer.appendChild(app.canvas);
+            } else {
+                throw new Error("Pixi Application or canvas could not be initialized.");
+            }
 
             // --- Initialize Core Modules ---
             initFreeSpins(app); // Pass app reference for background changes
@@ -55,6 +65,8 @@ export class Game {
             reelContainer = new PIXI.Container();
             reelContainer.x = SETTINGS.reelAreaX;
             reelContainer.y = SETTINGS.reelAreaY;
+            // Ensure app and stage exist before adding children
+            if (!app?.stage) throw new Error("Pixi stage not available after init.");
             app.stage.addChild(reelContainer);
 
             uiContainer = new PIXI.Container();
@@ -89,7 +101,9 @@ export class Game {
                 .rect(SETTINGS.reelAreaX, SETTINGS.reelAreaY, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
                 .fill(0xffffff);
             reelContainer.mask = reelMask;
-            app.stage.addChild(reelMask); // Mask needs to be added to stage
+            if (app?.stage) { // Check again before adding mask
+               app.stage.addChild(reelMask); // Mask needs to be added to stage
+            }
 
             // --- Setup UI ---
             this.setupUI(); // Call UI setup method
@@ -109,7 +123,12 @@ export class Game {
             applyTurboSettings(state.isTurboMode); // Apply initial turbo settings
 
             // --- Start Game Loop ---
-            app.ticker.add(this.update.bind(this)); // Add bound update method to ticker
+            // Ensure app and ticker exist before adding update loop
+            if (app?.ticker) {
+                app.ticker.add(this.update.bind(this)); // Add bound update method to ticker
+            } else {
+                 throw new Error("Pixi ticker not available after init.");
+            }
 
             console.log("Game Initialized Successfully");
 
@@ -124,8 +143,8 @@ export class Game {
         const titleStyle = {
              fontFamily: "Impact, Charcoal, sans-serif",
              fontSize: 40,
-             // Try array of colors again, maybe type checker was fixed?
-             fill: [0xffd700, 0xf1c40f],
+             // Use a single color for fill as PixiJS expects
+             fill: 0xffd700, // Gold color
              stroke: { color: "#8B0000", width: 3 },
              dropShadow: { color: "#000000", distance: 4, blur: 4, angle: Math.PI / 4, alpha: 0.7 }
             };
@@ -133,7 +152,10 @@ export class Game {
         titleText.anchor.set(0.5, 0);
         titleText.x = SETTINGS.GAME_WIDTH / 2;
         titleText.y = 15;
-        app.stage.addChild(titleText); // Add title directly to stage
+        // Ensure app and stage exist before adding title
+        if (app && app.stage) { // More explicit check
+            app.stage.addChild(titleText); // Add title directly to stage
+        }
 
         // --- UI Panel ---
         const panelHeight = 100;
@@ -171,7 +193,7 @@ export class Game {
         // Placeholder/Inactive Buttons
         createButton("$", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 - 50, () => {}, buttonTextStyle, uiContainer, 60, 60, true).alpha = 0.3;
         createButton("☰", SETTINGS.GAME_WIDTH - 55, 20 + 20, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
-        createButton("X", 30 + 20, bottomUIY + 55, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
+        // Removed overlapping 'X' button: createButton("X", 30 + 20, bottomUIY + 55, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
 
         // Add all created buttons from ButtonFactory to the uiContainer
         // (ButtonFactory now returns the button, it doesn't add it)
@@ -207,7 +229,10 @@ export class Game {
 
         } catch (err) {
             console.error("Error in game loop:", err);
-            app.ticker.stop(); // Stop the loop on critical error
+            // Ensure app and ticker exist before stopping
+            if (app?.ticker) {
+                app.ticker.stop(); // Stop the loop on critical error
+            }
             alert("Game loop critical error. Check console.");
         }
     }
@@ -249,26 +274,30 @@ export function startSpinLoop(isTurbo) {
     // Clear previous win lines before starting spin
     clearWinLines();
 
-    reels.forEach(reel => reel.startSpinning(isTurbo));
+    // Get current time to calculate absolute stop times
+    // Note: app.ticker.lastTime might be more accurate if available globally or passed in
+    const startTime = performance.now();
 
-    // Schedule stops for all reels with stagger
-    // Use the stopDelayBase which is now updated by updateAnimationSettings based on turbo state
-    const currentStopDelayBase = stopDelayBase; // Corrected: Use the dynamically updated stopDelayBase
-    const currentStagger = state.isTurboMode ? 0 : REEL_STOP_STAGGER; // No stagger in turbo? Or reduced? Let's use 0 for now.
+    // Start all reels spinning and schedule their stops
+    reels.forEach((reel, i) => {
+        reel.startSpinning(isTurbo); // Start spinning visually
 
-    for (let i = 0; i < reels.length; i++) {
-        const reel = reels[i];
-        const delay = currentStopDelayBase + i * currentStagger;
-        setTimeout(() => {
-            // Check if the spin is still active before initiating stop
-            if (state.isSpinning && reel) {
-                reel.initiateStop();
-                console.log(`Game: Initiating stop for reel ${i} after ${delay}ms`);
-            }
-        }, delay);
-    }
-    // No need to track targetStoppingReelIndex anymore with this approach
-    updateState({ targetStoppingReelIndex: -1 }); // Reset immediately
+        // Calculate the absolute time this reel should come to a complete stop
+        // Select duration and stagger based on turbo state
+        const currentBaseDuration = state.isTurboMode ? turboBaseSpinDuration : baseSpinDuration;
+        const currentStagger = state.isTurboMode ? turboReelStopStagger : REEL_STOP_STAGGER;
+
+        const targetStopTime = startTime + currentBaseDuration + i * currentStagger;
+
+        // Tell the reel when to stop and which index to target
+        // (stopIndex is determined internally by the reel in startSpinning for now)
+        reel.scheduleStop(targetStopTime);
+        console.log(`Game: Reel ${i} scheduled to stop at ${targetStopTime.toFixed(0)}ms`);
+    });
+
+    // No need for targetStoppingReelIndex or setTimeout for initiation
+    updateState({ targetStoppingReelIndex: -1 });
 }
 
 // Removed triggerNextReelStop function as it's no longer needed
+// Removed old initiateStop logic using setTimeout

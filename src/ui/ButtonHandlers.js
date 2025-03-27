@@ -1,7 +1,7 @@
 /* global PIXI */ // Might be needed for flashing elements later
 import { BET_PER_LINE_LEVELS } from '../config/gameSettings.js';
 import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
-import { updateAnimationSettings } from '../config/animationSettings.js';
+// Removed unused import: import { updateAnimationSettings } from '../config/animationSettings.js';
 
 // --- Placeholder Imports (Will be replaced with actual module imports later) ---
 // These represent dependencies that need to be resolved once other modules are created.

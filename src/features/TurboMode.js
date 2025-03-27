@@ -1,4 +1,4 @@
-import { updateAnimationSettings, skipBounceInTurbo } from '../config/animationSettings.js';
+import { skipBounceInTurbo } from '../config/animationSettings.js'; // Removed updateAnimationSettings import
 import { state } from '../core/GameState.js'; // Assuming state access
 import { updateTurboButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
 
@@ -14,10 +14,9 @@ export function initTurboMode(reels) {
  * @param {boolean} isTurbo - Whether turbo mode is currently active.
  */
 export function applyTurboSettings(isTurbo) {
-    // Update the shared animation settings based on turbo state
-    updateAnimationSettings(isTurbo);
+    // updateAnimationSettings is removed as settings are now applied directly based on state.isTurboMode
 
-    // Update reel-specific behavior (like skipping bounce)
+    // Update reel-specific behavior if needed (like skipping bounce, though currently unused by tween logic)
     // This assumes reelsRef is initialized and contains reel objects with a 'skipBounce' property
     if (reelsRef && reelsRef.length > 0) {
         reelsRef.forEach(reel => {

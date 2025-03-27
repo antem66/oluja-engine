@@ -30,16 +30,18 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
 
     // --- Create Text Labels and Value Displays ---
 
-    // Balance
+    // Balance (Centered)
     const balanceLabel = new PIXI.Text({ text: "BALANCE", style: uiTextStyle });
-    balanceLabel.x = 50;
+    balanceLabel.anchor.set(0.5, 0); // Center anchor
+    balanceLabel.x = GAME_WIDTH / 2; // Center X
     balanceLabel.y = bottomUIY + 15;
     balanceText = new PIXI.Text({ text: `€${state.balance.toFixed(2)}`, style: uiValueStyle });
-    balanceText.x = 50;
+    balanceText.anchor.set(0.5, 0); // Center anchor
+    balanceText.x = GAME_WIDTH / 2; // Center X
     balanceText.y = bottomUIY + 40;
     uiContainer.addChild(balanceLabel, balanceText);
 
-    // Win
+    // Win (Leave centered for now, maybe move later if needed)
     const winLabel = new PIXI.Text({ text: "WIN", style: uiTextStyle });
     winLabel.anchor.set(0.5, 0);
     winLabel.x = GAME_WIDTH / 2;
