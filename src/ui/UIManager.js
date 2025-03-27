@@ -88,6 +88,10 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
          console.warn("UIManager: Could not find all expected buttons by name in uiContainer.");
     }
 
+    // Set initial button states
+    updateAutoplayButtonState();
+    updateTurboButtonState();
+
     console.log("UIManager initialized.");
 }
 
@@ -132,17 +136,9 @@ export function setButtonsEnabled(enabled) {
         const isBetButton = button === betDecreaseButton || button === betIncreaseButton;
         const finalEnabled = enabled && !(isBetButton && state.isInFreeSpins);
 
-        button.eventMode = finalEnabled ? 'static' : 'none'; // Keep using string literals
+        button.eventMode = finalEnabled ? 'static' : 'none';
         button.alpha = finalEnabled ? 1.0 : 0.5;
         button.cursor = finalEnabled ? 'pointer' : 'default';
-
-        // Reset visual state if disabling
-        if (!finalEnabled && button.bgHover) {
-             button.bgHover.visible = false;
-             button.bgDown.visible = false;
-             // Check if bgIdle exists before setting visibility
-             if (button.bgIdle) button.bgIdle.visible = true;
-        }
     });
 
     // Update specific button states after general enable/disable
@@ -156,27 +152,16 @@ export function setButtonsEnabled(enabled) {
 export function updateAutoplayButtonState() {
     if (!autoplayButton) return;
 
-    // Update the icon using the new method in Button class
-    const newIconType = state.isAutoplaying ? 'autoplay_stop' : 'autoplay_play';
-    // Check if the updateIcon method exists before calling
-    if (typeof autoplayButton.updateIcon === 'function') {
-        autoplayButton.updateIcon(newIconType);
-    } else {
-        // Fallback or warning if method doesn't exist (e.g., old button instance)
-        console.warn("UIManager: autoplayButton does not have updateIcon method.");
+    // Set active state if button supports it directly
+    if (typeof autoplayButton.setActiveState === 'function') {
+        autoplayButton.setActiveState(state.isAutoplaying);
     }
 
-    // Update background tint if backgrounds are stored (e.g., button.bgIdle)
-    // Ensure bgIdle exists before accessing tint
-    if (autoplayButton.bgIdle) {
-        const color = state.isAutoplaying ? 0xffa500 : 0x555555; // Orange when active
-        autoplayButton.bgIdle.tint = color;
-        // Ensure correct visibility if disabled/enabled changed state ONLY if not interacting
-        if (!(autoplayButton.bgDown?.visible || autoplayButton.bgHover?.visible)) {
-            autoplayButton.bgIdle.visible = true;
-            if (autoplayButton.bgHover) autoplayButton.bgHover.visible = false;
-            if (autoplayButton.bgDown) autoplayButton.bgDown.visible = false;
-        }
+    // Update the icon 
+    if (typeof autoplayButton.updateIcon === 'function') {
+        // Use play icon when not autoplaying, stop icon when autoplaying
+        const newIconType = state.isAutoplaying ? 'stop' : 'autoplay';
+        autoplayButton.updateIcon(newIconType);
     }
 }
 
@@ -185,26 +170,10 @@ export function updateAutoplayButtonState() {
  */
 export function updateTurboButtonState() {
     if (!turboButton) return;
-    // Update background tint if backgrounds are stored
-    // Ensure turboButton and its idle background exist
-    if (turboButton?.bgIdle) {
-        const isActive = state.isTurboMode;
-        const activeColor = 0x00ffff; // Cyan
-        const idleColor = 0x555555; // Default dark grey
 
-        turboButton.bgIdle.tint = isActive ? activeColor : idleColor;
-
-        // Reset visibility ONLY if the button isn't currently being interacted with
-        // This prevents overriding the hover/down states visually during interaction
-        // Note: This assumes bgDown/bgHover visibility reflects interaction state.
-        if (!(turboButton.bgDown?.visible || turboButton.bgHover?.visible)) {
-            turboButton.bgIdle.visible = true;
-            if (turboButton.bgHover) turboButton.bgHover.visible = false;
-            if (turboButton.bgDown) turboButton.bgDown.visible = false;
-        }
-        // If the button IS being interacted with (hover/down visible), the interaction
-        // logic in ButtonFactory._onPointerUp/Out should handle setting the correct
-        // background visibility when the interaction ends.
+    // Set active state if button supports it directly
+    if (typeof turboButton.setActiveState === 'function') {
+        turboButton.setActiveState(state.isTurboMode);
     }
 }
 

@@ -10,7 +10,7 @@ import {
 } from '../config/animationSettings.js';
 import { state, updateState, initGameState } from './GameState.js';
 import { Reel } from './Reel.js';
-import { createButton } from '../ui/ButtonFactory.js';
+import { createButton, loadButtonAssets } from '../ui/ButtonFactory.js';
 import * as handlers from '../ui/ButtonHandlers.js';
 import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
 import { initNotifications } from '../ui/Notifications.js'; // init only
@@ -23,6 +23,7 @@ import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManage
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
 import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
 import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
+
 
 // --- Module-level variables ---
 let app = null;
@@ -61,15 +62,18 @@ export class Game {
             }
 
             // --- Asset Loading ---
+            // Load symbol assets
             const symbolAssets = SYMBOL_DEFINITIONS.map(def => ({
                 alias: def.id, // Use symbol ID as alias
                 src: `assets/images/${def.id}.png` // Construct path
             }));
-            // Add other assets if needed (e.g., button textures later)
-            // const uiAssets = [ { alias: 'button_idle', src: 'assets/images/ui/button_idle.png' }, ... ];
-            console.log("Loading assets:", symbolAssets);
+            console.log("Loading symbol assets:", symbolAssets);
             await PIXI.Assets.load(symbolAssets);
-            console.log("Assets loaded.");
+            console.log("Symbol assets loaded.");
+            
+            // Load button SVG assets
+            console.log("Loading button assets...");
+            await loadButtonAssets();
 
             // --- Initialize Core Modules ---
             initFreeSpins(app); // Pass app reference for background changes
@@ -179,7 +183,7 @@ export class Game {
         const panelHeight = 100;
         const panel = new PIXI.Graphics()
             .rect(0, SETTINGS.GAME_HEIGHT - panelHeight, SETTINGS.GAME_WIDTH, panelHeight)
-            .fill({ color: 0x1a1a1a, alpha: 0.8 });
+            .fill({ color: 0x1a1a1a, alpha: 0.85 });
         if (uiContainer) { // Add check for uiContainer
             uiContainer.addChild(panel);
         }
@@ -195,27 +199,22 @@ export class Game {
 
         // --- Create Buttons (using ButtonFactory and handlers) ---
         const bottomUIY = SETTINGS.bottomUIY;
-        const btnW = 40, btnH = 40; // Common button size
+        const btnW = 45, btnH = 45; // Slightly larger buttons
+        const spinBtnSize = 85; // Larger spin button
 
+        // Improved button positioning
         // Bet Buttons (Using iconType)
-        // Pass empty string for text and empty object for style when using iconType
-        createButton("", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
-        createButton("", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 180, bottomUIY + 52, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
 
-        // Spin Button (Circular with Icon)
-        createButton("", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
+        // Spin Button (Circular with Icon) - Positioned more prominently
+        createButton("", SETTINGS.GAME_WIDTH - 80, SETTINGS.GAME_HEIGHT / 2 + 80, handlers.startSpin, {}, uiContainer, spinBtnSize, spinBtnSize, true, 'spin').name = "spinButton";
 
-        // Turbo Button (Using iconType)
-        createButton("", 90 + 20, bottomUIY + 55, handlers.toggleTurbo, {}, uiContainer, btnW, btnH, false, 'turbo').name = "turboButton";
+        // Turbo Button (Using iconType) - Positioned with better spacing
+        createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, uiContainer, btnW, btnH, false, 'turbo').name = "turboButton";
 
-        // Autoplay Button (Using iconType - initial state is 'play')
-        createButton("", 150 + 20, bottomUIY + 55, handlers.toggleAutoplay, {}, uiContainer, btnW, btnH, false, 'autoplay_play').name = "autoplayButton";
-
-        // Placeholder/Inactive Buttons
-        createButton("$", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 - 50, () => {}, buttonTextStyle, uiContainer, 60, 60, true).alpha = 0.3;
-        createButton("☰", SETTINGS.GAME_WIDTH - 55, 20 + 20, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
-        // Removed overlapping 'X' button: createButton("X", 30 + 20, bottomUIY + 55, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
-
+        // Autoplay Button (Using iconType)
+        createButton("", 180, bottomUIY + 52, handlers.toggleAutoplay, {}, uiContainer, btnW, btnH, false, 'autoplay').name = "autoplayButton";
     }
 
     update(ticker) {
@@ -234,6 +233,9 @@ export class Game {
 
             // Update particle animations
             updateParticles(delta);
+
+            // Update button states in improved UI if state changes
+           // updateButtonStates();
 
             // Check if the spin has just ended
             if (state.isSpinning && !anyReelMoving) {
