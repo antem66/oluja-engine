@@ -45,6 +45,12 @@ export class Game {
 
     async init() {
         try {
+            // Make this instance accessible to other modules like the debug panel
+            if (typeof window !== 'undefined') {
+                // @ts-ignore - Dynamically adding gameApp property
+                window.gameApp = this;
+            }
+            
             // --- PixiJS App Setup ---
             app = new PIXI.Application();
             await app.init({
@@ -91,27 +97,56 @@ export class Game {
             
             // Create the background sprite
             const bgSprite = new PIXI.Sprite(PIXI.Assets.get('BG_IMAGE'));
-            // Center the background
-            bgSprite.anchor.set(0.5);
-            bgSprite.x = SETTINGS.GAME_WIDTH / 2;
-            bgSprite.y = SETTINGS.GAME_HEIGHT / 2;
             
-            // Scale to fit the game area
-            const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
-            const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
-            const scale = Math.max(scaleX, scaleY); // Use max to cover the entire area
+            // Position the background
+            bgSprite.x = SETTINGS.GAME_WIDTH / 2 + SETTINGS.BG_OFFSET_X;
+            bgSprite.y = SETTINGS.GAME_HEIGHT / 2 + SETTINGS.BG_OFFSET_Y;
+            
+            // Scale based on the configured mode
+            let scale = 1;
+            if (SETTINGS.BG_SCALE_MODE === 'cover') {
+                // Cover mode: ensure image covers the entire game area
+                const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
+                const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
+                scale = Math.max(scaleX, scaleY) * SETTINGS.BG_SCALE_FACTOR;
+            } else if (SETTINGS.BG_SCALE_MODE === 'contain') {
+                // Contain mode: ensure entire image fits in the game area
+                const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
+                const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
+                scale = Math.min(scaleX, scaleY) * SETTINGS.BG_SCALE_FACTOR;
+            } else {
+                // Exact mode: use the scale factor directly
+                scale = SETTINGS.BG_SCALE_FACTOR;
+            }
+            
+            // Center anchor and apply scale
+            bgSprite.anchor.set(0.5);
             bgSprite.scale.set(scale);
             
+            // Ensure background doesn't interfere with game play
+            bgSprite.eventMode = 'none';
+            
+            // Add the background to its container
             backgroundLayer.addChild(bgSprite);
             
             // Add background layer to stage
             if (!app?.stage) throw new Error("Pixi stage not available after init.");
             app.stage.addChild(backgroundLayer);
             
+            // Store reference to background sprite for adjustments
+            this.backgroundSprite = bgSprite;
+            
             // Create reel container (middle z-index)
             reelContainer = new PIXI.Container();
             reelContainer.x = SETTINGS.reelAreaX;
             reelContainer.y = SETTINGS.reelAreaY;
+            
+            // Add slight shadow to reels container for depth
+            const reelShadow = new PIXI.Graphics()
+                .rect(0, 0, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
+                .fill({ color: 0x000000, alpha: 0.2 });
+            reelContainer.addChild(reelShadow);
+            
             app.stage.addChild(reelContainer);
 
             uiContainer = new PIXI.Container();
@@ -406,6 +441,33 @@ export class Game {
         // Fallback: if the symbol isn't found, use a random stop position
         console.log(`Could not find symbol ${targetSymbol} on reel - using random position`);
         return Math.floor(Math.random() * reel.totalSymbols);
+    }
+
+    /**
+     * Allows dynamic adjustment of the background position and scale
+     * @param {number} offsetX - X-axis offset adjustment
+     * @param {number} offsetY - Y-axis offset adjustment
+     * @param {number} scale - Scale adjustment factor
+     */
+    adjustBackground(offsetX, offsetY, scale) {
+        if (!this.backgroundSprite) return;
+        
+        // Update position
+        this.backgroundSprite.x = SETTINGS.GAME_WIDTH / 2 + offsetX;
+        this.backgroundSprite.y = SETTINGS.GAME_HEIGHT / 2 + offsetY;
+        
+        // Update scale with current factor
+        const baseScale = SETTINGS.BG_SCALE_MODE === 'cover' 
+            ? Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width, 
+                      SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
+            : SETTINGS.BG_SCALE_MODE === 'contain'
+                ? Math.min(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width,
+                          SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
+                : 1;
+                
+        this.backgroundSprite.scale.set(baseScale * scale);
+        
+        console.log(`Background adjusted: offset(${offsetX}, ${offsetY}), scale: ${scale}`);
     }
 }
 

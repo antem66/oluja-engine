@@ -27,6 +27,11 @@ export function initDebugPanel(app) {
     debugPanel.beginFill(0x222222, 0.85);
     debugPanel.drawRect(0, 0, 240, 280);
     debugPanel.endFill();
+    
+    // Add currentY tracking property to the panel
+    // @ts-ignore - Adding custom property for position tracking
+    debugPanel.currentY = 40;
+    
     debugContainer.addChild(debugPanel);
     
     // Panel title
@@ -69,6 +74,13 @@ export function initDebugPanel(app) {
     
     // Add debug options
     createDebugOptions();
+    
+    // Update currentY based on the height of createDebugOptions section
+    // @ts-ignore - Using custom property for position tracking
+    debugPanel.currentY = 140; // Set appropriate Y position after debug options
+    
+    // Add background adjustment section
+    addBackgroundAdjustmentSection(debugPanel);
 }
 
 /**
@@ -128,6 +140,10 @@ function createDebugOptions() {
         console.log("Debug: Added 100 to balance");
     });
     debugContainer.addChild(addBalanceBtn);
+    
+    // Update the currentY for the panel
+    // @ts-ignore - Using custom property for position tracking
+    debugPanel.currentY = yPos + 40; // Set for next section
 }
 
 /**
@@ -215,4 +231,187 @@ export function updateDebugControls() {
             forceWinCheckbox.getChildAt(1).visible = state.forceWin;
         }
     }
+}
+
+// Add section for background adjustments
+function addBackgroundAdjustmentSection(debugPanel) {
+    const sectionTitle = new PIXI.Text({
+        text: "Background Adjustments",
+        style: { 
+            fontSize: 14,
+            fill: 0xFFFFFF
+        }
+    });
+    sectionTitle.y = debugPanel.currentY;
+    debugPanel.addChild(sectionTitle);
+    debugPanel.currentY += 20;
+
+    // Add controls for x, y, and scale
+    const offsetLabel = new PIXI.Text({
+        text: "Offset: X=0, Y=0, Scale=1",
+        style: { 
+            fontSize: 12,
+            fill: 0xCCCCCC
+        }
+    });
+    offsetLabel.y = debugPanel.currentY;
+    debugPanel.addChild(offsetLabel);
+    debugPanel.currentY += 20;
+    
+    // Create button with proper fill syntax for Pixi.js v8
+    function createButton(x, y, width, height) {
+        const btn = new PIXI.Graphics();
+        btn.rect(0, 0, width, height);
+        btn.fill({ color: 0x444444 });
+        btn.stroke({ color: 0x666666, width: 1 });
+        btn.x = x;
+        btn.y = y;
+        return btn;
+    }
+    
+    // X adjustment buttons
+    const btnXMinus = createButton(0, debugPanel.currentY, 30, 20);
+    const xMinusText = new PIXI.Text({
+        text: "X-",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    xMinusText.x = 8;
+    xMinusText.y = 4;
+    btnXMinus.addChild(xMinusText);
+    
+    const btnXPlus = createButton(35, debugPanel.currentY, 30, 20);
+    const xPlusText = new PIXI.Text({
+        text: "X+",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    xPlusText.x = 8;
+    xPlusText.y = 4;
+    btnXPlus.addChild(xPlusText);
+    
+    // Y adjustment buttons
+    const btnYMinus = createButton(70, debugPanel.currentY, 30, 20);
+    const yMinusText = new PIXI.Text({
+        text: "Y-",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    yMinusText.x = 8;
+    yMinusText.y = 4;
+    btnYMinus.addChild(yMinusText);
+    
+    const btnYPlus = createButton(105, debugPanel.currentY, 30, 20);
+    const yPlusText = new PIXI.Text({
+        text: "Y+",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    yPlusText.x = 8;
+    yPlusText.y = 4;
+    btnYPlus.addChild(yPlusText);
+    
+    // Scale adjustment buttons
+    const btnScaleMinus = createButton(140, debugPanel.currentY, 40, 20);
+    const scaleMinusText = new PIXI.Text({
+        text: "S-",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    scaleMinusText.x = 14;
+    scaleMinusText.y = 4;
+    btnScaleMinus.addChild(scaleMinusText);
+    
+    const btnScalePlus = createButton(185, debugPanel.currentY, 40, 20);
+    const scalePlusText = new PIXI.Text({
+        text: "S+",
+        style: { 
+            fontSize: 12,
+            fill: 0xFFFFFF
+        }
+    });
+    scalePlusText.x = 14;
+    scalePlusText.y = 4;
+    btnScalePlus.addChild(scalePlusText);
+    
+    // Add all buttons
+    debugPanel.addChild(btnXMinus);
+    debugPanel.addChild(btnXPlus);
+    debugPanel.addChild(btnYMinus);
+    debugPanel.addChild(btnYPlus);
+    debugPanel.addChild(btnScaleMinus);
+    debugPanel.addChild(btnScalePlus);
+    
+    // Track adjustment values
+    let offsetX = 0;
+    let offsetY = 0;
+    let scale = 1;
+    
+    // Set up button interactions
+    btnXMinus.eventMode = 'static';
+    btnXMinus.cursor = 'pointer';
+    btnXMinus.on('pointerdown', () => {
+        offsetX -= 5;
+        updateBackground();
+    });
+    
+    btnXPlus.eventMode = 'static';
+    btnXPlus.cursor = 'pointer';
+    btnXPlus.on('pointerdown', () => {
+        offsetX += 5;
+        updateBackground();
+    });
+    
+    btnYMinus.eventMode = 'static';
+    btnYMinus.cursor = 'pointer';
+    btnYMinus.on('pointerdown', () => {
+        offsetY -= 5;
+        updateBackground();
+    });
+    
+    btnYPlus.eventMode = 'static';
+    btnYPlus.cursor = 'pointer';
+    btnYPlus.on('pointerdown', () => {
+        offsetY += 5;
+        updateBackground();
+    });
+    
+    btnScaleMinus.eventMode = 'static';
+    btnScaleMinus.cursor = 'pointer';
+    btnScaleMinus.on('pointerdown', () => {
+        scale -= 0.01;
+        updateBackground();
+    });
+    
+    btnScalePlus.eventMode = 'static';
+    btnScalePlus.cursor = 'pointer';
+    btnScalePlus.on('pointerdown', () => {
+        scale += 0.01;
+        updateBackground();
+    });
+    
+    // Function to update background and label
+    function updateBackground() {
+        // Update the label
+        offsetLabel.text = `Offset: X=${offsetX}, Y=${offsetY}, Scale=${scale.toFixed(2)}`;
+        
+        // Access game instance using @ts-ignore to bypass type checking
+        // @ts-ignore - Accessing dynamically added gameApp property
+        if (window.gameApp && typeof window.gameApp.adjustBackground === 'function') {
+            // @ts-ignore - Call dynamically available method
+            window.gameApp.adjustBackground(offsetX, offsetY, scale);
+        }
+    }
+    
+    debugPanel.currentY += 30;
 } 
