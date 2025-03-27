@@ -1,6 +1,9 @@
 import { PAYLINES, NUM_PAYLINES } from '../config/paylines.js';
 import { PAYTABLE } from '../config/symbolDefinitions.js';
-import { SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, SYMBOLS_PER_REEL_VISIBLE } from '../config/gameSettings.js';
+import {
+    SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, SYMBOLS_PER_REEL_VISIBLE,
+    ENABLE_FREE_SPINS // Ensure this is imported
+} from '../config/gameSettings.js';
 import { state, updateState } from '../core/GameState.js'; // Assuming state management
 import { drawWinLines } from './PaylineGraphics.js'; // Assuming graphics handling
 import { playWinAnimations, animateWinningSymbols } from './Animations.js'; // Assuming animation handling
@@ -23,10 +26,12 @@ export function evaluateWin() {
     let calculatedTotalWin = 0;
     let calculatedWinningLines = []; // Initialize as empty array
     const resultsGrid = getResultsGrid();
+    console.log("WinEvaluation - Results Grid:", JSON.stringify(resultsGrid)); // DEBUG: Log the grid
     let scatterCount = 0;
 
     // --- Calculate Line Wins ---
     PAYLINES.forEach((linePath, lineIndex) => {
+        // console.log(`--- Checking Line ${lineIndex} --- Path: ${linePath}`); // DEBUG: Line Start
         let lineSymbolIds = [];
         let lineSymbolObjects = []; // Store references to the actual symbol objects on screen
 
@@ -51,9 +56,14 @@ export function evaluateWin() {
                 lineSymbolObjects.push(null);
             }
         }
+        // console.log(`Line ${lineIndex} Symbols: ${lineSymbolIds}`); // DEBUG: Symbols on line
 
         const firstSymbolId = lineSymbolIds[0];
-        if (!firstSymbolId || !PAYTABLE[firstSymbolId]) return; // Skip if first symbol isn't payable
+        // console.log(`Line ${lineIndex} First Symbol: ${firstSymbolId}`); // DEBUG: First symbol
+        if (!firstSymbolId || !PAYTABLE[firstSymbolId]) {
+            // console.log(`Line ${lineIndex}: Skipping - First symbol invalid or not payable.`); // DEBUG
+            return; // Skip if first symbol isn't payable
+        }
 
         let matchCount = 1;
         for (let i = 1; i < state.numReels; i++) {
@@ -63,18 +73,24 @@ export function evaluateWin() {
                 break; // Symbols must match consecutively from the left
             }
         }
+        // console.log(`Line ${lineIndex} Match Count: ${matchCount}`); // DEBUG: Match count
 
         const payoutInfo = PAYTABLE[firstSymbolId];
-        if (matchCount >= 3 && payoutInfo && payoutInfo[matchCount]) {
-            const lineWin = payoutInfo[matchCount] * state.currentBetPerLine;
+        const expectedPayout = payoutInfo ? payoutInfo[matchCount] : undefined;
+        // console.log(`Line ${lineIndex} Payout Info: ${JSON.stringify(payoutInfo)}, Expected Payout for ${matchCount}: ${expectedPayout}`); // DEBUG: Payout check
+
+        if (matchCount >= 3 && payoutInfo && expectedPayout !== undefined) { // Check expectedPayout specifically
+            const lineWin = expectedPayout * state.currentBetPerLine;
             calculatedTotalWin += lineWin;
-            calculatedWinningLines.push({
+            const winInfo = {
                 lineIndex: lineIndex,
                 symbolId: firstSymbolId,
                 count: matchCount,
                 winAmount: lineWin,
                 symbols: lineSymbolObjects.slice(0, matchCount).filter(s => s !== null), // Store refs to winning symbols
-            });
+            };
+            calculatedWinningLines.push(winInfo);
+            console.log("WinEvaluation - WIN FOUND:", winInfo); // DEBUG: Log found win
         }
     });
 
@@ -107,8 +123,9 @@ export function evaluateWin() {
         updateDisplays(); // Ensure win display is cleared if needed
     }
 
-    // --- Trigger Free Spins (if applicable) ---
-    if (!state.isInFreeSpins && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS) {
+    // --- Trigger Free Spins (if applicable and enabled) ---
+    if (ENABLE_FREE_SPINS && !state.isInFreeSpins && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS) {
+        console.log(`WinEvaluation: ${scatterCount} scatters found. Triggering free spins (Enabled: ${ENABLE_FREE_SPINS}).`); // DEBUG
         // Delay slightly after win animations if any
         const delay = (calculatedTotalWin > 0 ? 1000 : 100) * state.winAnimDelayMultiplier;
         updateState({ isTransitioning: true }); // Prevent actions during transition
