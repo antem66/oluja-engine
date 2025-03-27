@@ -22,12 +22,13 @@ import { initAnimations, updateParticles } from '../features/Animations.js'; // 
 import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManager.js'; // Assuming UIManager exists
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
 import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
+import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
 
 // --- Module-level variables ---
 let app = null;
 let reels = [];
 let reelContainer, uiContainer, winLineGraphics, overlayContainer, particleContainer;
-let infoOverlayElement; // DOM element reference
+let infoOverlayElement;
 
 // --- Game Class ---
 export class Game {
@@ -129,6 +130,9 @@ export class Game {
                 console.warn("Game Setup: infoOverlay element not found in DOM.");
             }
 
+            // --- Initialize Debug Panel ---
+            initDebugPanel(app);
+
             // --- Final Setup ---
             updateDisplays(); // Initial UI text update
             setButtonsEnabled(true); // Enable buttons initially
@@ -193,8 +197,8 @@ export class Game {
 
         // Bet Buttons (Using iconType)
         // Pass empty string for text and empty object for style when using iconType
-        createButton("+", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
-        createButton("-", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 200, bottomUIY + 55, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 140, bottomUIY + 55, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
 
         // Spin Button (Circular with Icon)
         createButton("", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 + 50, handlers.startSpin, {}, uiContainer, 80, 80, true, 'spin').name = "spinButton";
@@ -209,14 +213,6 @@ export class Game {
         createButton("$", SETTINGS.GAME_WIDTH - 75, SETTINGS.GAME_HEIGHT / 2 - 50, () => {}, buttonTextStyle, uiContainer, 60, 60, true).alpha = 0.3;
         createButton("☰", SETTINGS.GAME_WIDTH - 55, 20 + 20, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
         // Removed overlapping 'X' button: createButton("X", 30 + 20, bottomUIY + 55, () => {}, buttonTextStyle, uiContainer, btnW, btnH).alpha = 0.3;
-
-        // Add all created buttons from ButtonFactory to the uiContainer
-        // (ButtonFactory now returns the button, it doesn't add it)
-        // We need a way to get references to buttons created by createButton if UIManager needs them.
-        // Option 1: createButton adds to uiContainer (simpler now)
-        // Option 2: Game collects buttons and passes to UIManager (more complex)
-        // Let's modify ButtonFactory to add to uiContainer for now.
-        // --> Requires reading/modifying ButtonFactory.js again. Let's do that *after* this file.
 
     }
 
@@ -241,7 +237,7 @@ export class Game {
             if (state.isSpinning && !anyReelMoving) {
                 this.handleSpinEnd();
             }
-
+            
         } catch (err) {
             console.error("Error in game loop:", err);
             // Ensure app and ticker exist before stopping
@@ -296,6 +292,35 @@ export function startSpinLoop(isTurbo) {
     // Start all reels spinning and schedule their stops
     reels.forEach((reel, i) => {
         reel.startSpinning(isTurbo); // Start spinning visually
+        
+        // Force a winning outcome if debug mode is enabled and "Force Win" is checked
+        if (state.isDebugMode && state.forceWin) {
+            // Find a common symbol to force on the payline
+            const targetSymbol = "FACE1"; 
+            const strip = REEL_STRIPS[i];
+            
+            // Find positions where our target symbol appears
+            const symbolPositions = [];
+            for (let j = 0; j < strip.length; j++) {
+                if (strip[j] === targetSymbol) {
+                    symbolPositions.push(j);
+                }
+            }
+            
+            if (symbolPositions.length > 0) {
+                // Choose one of the positions randomly
+                const randomPosition = symbolPositions[Math.floor(Math.random() * symbolPositions.length)];
+                
+                // We want the symbol to appear in the middle row (index 1)
+                // Offset the index to align properly in the middle (this is where the win line is)
+                const stopIndex = (randomPosition - 1 + strip.length) % strip.length;
+                
+                // Override the reel's stop index directly
+                reel.stopIndex = stopIndex;
+                reel.finalStopPosition = stopIndex;
+                console.log(`Debug - Forcing reel ${i} to stop at index ${stopIndex} to show ${targetSymbol}`);
+            }
+        }
 
         // Calculate the absolute time this reel should come to a complete stop
         // Select duration and stagger based on turbo state
@@ -313,6 +338,3 @@ export function startSpinLoop(isTurbo) {
     // No need for targetStoppingReelIndex or setTimeout for initiation
     updateState({ targetStoppingReelIndex: -1 });
 }
-
-// Removed triggerNextReelStop function as it's no longer needed
-// Removed old initiateStop logic using setTimeout

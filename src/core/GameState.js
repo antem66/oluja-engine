@@ -27,6 +27,10 @@ export let state = {
     freeSpinsRemaining: 0,
     totalFreeSpinsWin: 0,
 
+    // Debug features
+    isDebugMode: false,     // Master toggle for debug features
+    forceWin: false,        // When true, every spin will result in a win
+
     // References (can be set during initialization if needed, though maybe better managed in Game.js)
     // reels: [], // Maybe keep reel references in Game.js instead?
     // uiElements: {}, // Maybe keep UI references in UIManager.js?
@@ -54,6 +58,10 @@ export function initGameState() {
         isInFreeSpins: false,
         freeSpinsRemaining: 0,
         totalFreeSpinsWin: 0,
+        
+        // Debug features - reset to false on game init
+        isDebugMode: false,
+        forceWin: false,
     };
     console.log("GameState Initialized:", state);
 }
