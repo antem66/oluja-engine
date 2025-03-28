@@ -511,6 +511,8 @@ export class Game {
  * @param {PIXI.Container} container - The container to add the indicator to (e.g., overlayContainer).
  */
 function createFreeSpinsIndicator(container) {
+    console.log("=== Creating Free Spins Indicator ===");
+    
     // Create container for free spins UI elements
     freeSpinsIndicator = new PIXI.Container();
     freeSpinsIndicator.visible = false; // Hide initially
@@ -576,6 +578,27 @@ function createFreeSpinsIndicator(container) {
 
     // Add to the specified container (should be overlayContainer)
     container.addChild(freeSpinsIndicator);
+    
+    // Log the setup status
+    console.log(`Free Spins Indicator setup: x=${freeSpinsIndicator.x}, y=${freeSpinsIndicator.y}, visible=${freeSpinsIndicator.visible}`);
+    console.log(`Added to container: ${container ? 'Yes' : 'No'}, Container children: ${container?.children?.length}`);
+    console.log("=== Free Spins Indicator Created ===");
+    
+    // Force visibility once (for debug only) then hide again
+    setTimeout(() => {
+        if (freeSpinsIndicator) {
+            console.log("DEBUG: Testing Free Spins indicator visibility");
+            freeSpinsIndicator.visible = true;
+            freeSpinsIndicator.alpha = 1;
+            
+            setTimeout(() => {
+                if (freeSpinsIndicator) {
+                    freeSpinsIndicator.visible = false;
+                    console.log("DEBUG: Reset Free Spins indicator visibility");
+                }
+            }, 500);
+        }
+    }, 2000);
 }
 
 /**
@@ -588,28 +611,37 @@ function updateFreeSpinsIndicator() {
     }
 
     if (!freeSpinsIndicator || !freeSpinsCountText || !freeSpinsTotalWinText) {
-        // Log this specific condition only once if elements are missing, maybe during init?
-        // Or keep logging if it's unexpected during gameplay. For now, let's comment it out to avoid potential loops if elements become null.
-        // console.log("[Trace] updateFreeSpinsIndicator returning early - elements missing.");
         return;
     }
 
-    // Show/hide based on free spins state
+    // Add debounce mechanism to prevent rapid toggling
+    // Store last state change time if not already set
+    freeSpinsIndicator._lastStateChange = freeSpinsIndicator._lastStateChange || 0;
+    const now = performance.now();
+    const debounceTime = 250; // Reduced from 1000ms to 250ms - allow more frequent updates
+    
+    // Always update text content if in free spins mode
     const inFreeSpin = state.isInFreeSpins;
     if (inFreeSpin) {
-        // Log only when actively updating within Free Spins
-        // console.log("[Trace] In Free Spins - Updating indicator text.");
-
-        // Update text content
         freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
         freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+    }
 
+    // Only check debounce for hiding the indicator, not for showing it!
+    // Allow showing immediately when entering free spins
+    if (inFreeSpin) {
         // Show indicator if not already visible
         if (!freeSpinsIndicator.visible) {
-            console.log("[Trace] Indicator not visible - Animating in."); // Keep this log as it's a state change event
+            console.log("[Trace] Indicator not visible - Animating in."); 
             freeSpinsIndicator.visible = true;
             freeSpinsIndicator.alpha = 0;
             freeSpinsIndicator.y = -50; // Start above screen
+
+            // Store time of state change
+            freeSpinsIndicator._lastStateChange = now;
+
+            // Kill any existing animations to prevent conflicts
+            gsap.killTweensOf(freeSpinsIndicator);
 
             // Animate it in
             gsap.to(freeSpinsIndicator, {
@@ -639,7 +671,20 @@ function updateFreeSpinsIndicator() {
         freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
 
     } else if (freeSpinsIndicator.visible) {
-        console.log("[Trace] Not in Free Spins & indicator visible - Animating out."); // Keep this log as it's a state change event
+        // Only apply debounce to hiding the indicator
+        // This prevents flickering when exiting
+        if (state.isTransitioning || (now - freeSpinsIndicator._lastStateChange < debounceTime)) {
+            return; // Don't hide during transitions or too soon after showing
+        }
+        
+        console.log("[Trace] Not in Free Spins & indicator visible - Animating out."); 
+        
+        // Store time of state change
+        freeSpinsIndicator._lastStateChange = now;
+        
+        // Kill any existing animations to prevent conflicts
+        gsap.killTweensOf(freeSpinsIndicator);
+        
         // Animate it out
         gsap.to(freeSpinsIndicator, {
             y: -50,
