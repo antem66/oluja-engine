@@ -1,10 +1,10 @@
-# Heavens Ten Deluxe / Project Phoenix - Slot Engine
+# Oluja Slot Engine
 
 **Last Updated:** March 28, 2025
 
 ## 1. Introduction
 
-Welcome to the Heavens Ten Deluxe / Project Phoenix Slot Engine! This project provides a client-side foundation for creating engaging, modern slot machine games using web technologies. It is built with:
+Welcome to the Oluja Slot Engine! This project provides a client-side foundation for creating engaging, modern slot machine games using web technologies. It is built with:
 
 * **PixiJS (v8):** For high-performance 2D WebGL rendering.
 * **GSAP (v3):** For smooth, powerful animations, especially for reel physics and UI transitions.
