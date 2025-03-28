@@ -9,6 +9,7 @@ lerna-debug.log*
 
 # Dependencies
 node_modules
+snapshots
 dist
 dist-ssr
 *.local

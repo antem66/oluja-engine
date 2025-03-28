@@ -1,57 +1,185 @@
-# Heavens Ten Deluxe - PixiJS Slot Machine
+# Heavens Ten Deluxe / Project Phoenix - Slot Engine
 
-This is a simple slot machine game built using HTML5 Canvas and the PixiJS rendering library.
+**Last Updated:** March 28, 2025
 
-## Features
+## 1. Introduction
 
-*   5 Reels, 4 Rows
-*   Multiple Paylines
-*   Configurable Symbols and Payouts
-*   Reel Spinning Animation with Blur and Bounce
-*   Chained Reel Stops (Sequential)
-*   Win Evaluation and Line Drawing
-*   Winning Symbol Animations
-*   Autoplay Feature
-*   Turbo Mode
-*   Free Spins Bonus Round
-*   Particle Effects for Wins
+Welcome to the Heavens Ten Deluxe / Project Phoenix Slot Engine! This project provides a client-side foundation for creating engaging, modern slot machine games using web technologies. It is built with:
 
-## Running the Game
+* **PixiJS (v8):** For high-performance 2D WebGL rendering.
+* **GSAP (v3):** For smooth, powerful animations, especially for reel physics and UI transitions.
+* **JavaScript (ES Modules):** For modern, modular code structure.
+* **Vite:** For a fast development server and optimized production builds.
 
-Simply open the `index.html` file in a modern web browser that supports ES Modules.
+While currently functional as a client-side simulator, the engine is designed with the "Project Phoenix" vision (`docs/project.md`) in mind – evolving into a **production-ready** engine where critical logic (like RNG and win validation) is driven by an authoritative backend server.
 
-No build step is required for the basic version.
+This README provides an overview of the project structure, core mechanics, and key features to help developers understand and work with the codebase.
 
-## Project Structure
+## 2. Getting Started
 
-*   `index.html`: Main HTML file.
-*   `public/`: Static assets (images, audio - currently unused).
-*   `src/`: JavaScript source code and CSS.
-    *   `main.js`: Entry point.
-    *   `styles/`: CSS files.
-    *   `config/`: Game configuration data.
-    *   `core/`: Core game classes/modules.
-    *   `ui/`: User interface components and logic.
-    *   `features/`: Specific game features (Free Spins, Autoplay, etc.).
-    *   `utils/`: Utility functions.
-*   `package.json`: Project metadata.
+### Prerequisites
 
-## Development (Optional)
+* Node.js (LTS version recommended)
+* npm or yarn
 
-For a better development experience (live reload, bundling), consider using a tool like Vite:
+### Installation
+
+Clone the repository and install dependencies:
 
 ```bash
-# Navigate to the project directory
-cd heavens-ten-deluxe
-
-# Install Vite (if not already installed globally)
-npm install -g create-vite
-
-# Initialize Vite in the current project (choose Vanilla JS template)
-npm create vite@latest . -- --template vanilla
-
-# Install dependencies
+git clone <your-repo-url>
+cd <project-directory>
 npm install
+# or: yarn install
+```
 
-# Run the development server
+### Development
+
+Run the Vite development server with hot module replacement:
+
+```bash
 npm run dev
+# or: yarn dev
+```
+
+This will typically start the server at `http://localhost:5173` (or the next available port).
+
+### Production Build
+
+Create an optimized build for deployment:
+
+```bash
+npm run build
+# or: yarn build
+```
+
+The output will be generated in the `dist/` folder.
+
+## 3. Project Structure (`src/`)
+
+```
+src/
+├── main.js             # Application entry point
+├── assets/             # Static assets (images, audio, svgs, spritesheets)
+│   ├── control/        # Button icons (SVGs)
+│   ├── images/         # Symbol textures, background images
+│   ├── audio/          # Sound effects, music (Needs population)
+│   └── spritesheets/   # Animation sprite sheets (Needs population)
+├── config/             # Game configuration files (MOST LIKELY TO EDIT FOR NEW GAMES)
+│   ├── animationSettings.js # Speeds, durations, delays (Normal & Turbo)
+│   ├── gameSettings.js    # Core parameters (dimensions, reels, symbols, features)
+│   ├── paylines.js        # Payline definitions
+│   ├── reelStrips.js      # Symbol sequences for each reel
+│   └── symbolDefinitions.js # Symbol properties (texture ID, payouts) -> PAYTABLE
+├── core/               # Core engine logic
+│   ├── ApiService.js    # Handles backend communication (NEEDS IMPLEMENTATION FOR PRODUCTION)
+│   ├── Game.js          # Main game class, orchestrator, loop
+│   ├── GameState.js     # Centralized game state management
+│   ├── Reel.js          # Individual reel mechanics, state, GSAP stopping
+│   └── Symbol.js        # Symbol sprite class and creation
+├── features/           # Specific game features modules
+│   ├── AnimationDemo.js   # Example registration of custom symbol animations
+│   ├── Animations.js      # Win presentation (rollup, big wins, particles, symbol anims)
+│   ├── Autoplay.js        # Autoplay sequence logic
+│   ├── FreeSpins.js       # Free spins bonus round logic
+│   ├── PaylineGraphics.js # Drawing winning paylines
+│   ├── SpriteSheetAnimations.js # Helpers for using sprite sheet animations
+│   ├── TurboMode.js       # Logic related to turbo speed state
+│   └── WinEvaluation.js   # Win calculation/verification logic
+├── styles/             # CSS styles
+│   └── main.css         # Basic page and canvas styling
+├── ui/                 # User Interface components and logic
+│   ├── ButtonFactory.js # Creates reusable Button components
+│   ├── ButtonHandlers.js # Event handlers for UI buttons
+│   ├── DebugPanel.js    # Optional on-screen debug controls
+│   ├── InfoOverlay.js   # Manages the external DOM overlay for status
+│   ├── Notifications.js # Overlay messages, element flashing
+│   └── UIManager.js       # Manages Pixi Text displays, button states
+└── utils/              # Utility functions
+    └── helpers.js       # General helper functions (easing, etc.)
+```
+
+## 4. Core Architecture & Data Flow
+
+1.  **Initialization (`main.js` -> `core/Game.js`):**
+    * `main.js` waits for the DOM and creates a `Game` instance.
+    * `Game.init()` sets up the PixiJS Application, loads essential assets (`PIXI.Assets`), creates main PIXI Containers (background, reels, UI, overlays), initializes modules (`initUIManager`, `initPaylineGraphics`, etc.), creates `Reel` instances, sets up the UI (`setupUI`), and starts the main game loop (`app.ticker.add(this.update)`).
+
+2.  **State (`core/GameState.js`):**
+    * A single `state` object holds all mutable game data (balance, bet, spin status, feature flags).
+    * `updateState(updates)` is used by various modules to modify the state.
+    * **Production Note:** Critical state like `balance` and feature status *must* be ultimately validated and updated based on authoritative data from the server.
+
+3.  **Game Loop (`core/Game.js` -> `update`):**
+    * Called every frame by `app.ticker`.
+    * Updates each `Reel` instance (`reel.update`).
+    * Updates ongoing effects like particles (`updateParticles`).
+    * Checks if all reels have stopped (`!anyReelMoving`) and if the game was previously spinning (`state.isSpinning`) to trigger `handleSpinEnd`.
+
+4.  **Spin Cycle:**
+    * **Input (`ui/ButtonHandlers.js` -> `startSpin`):** The Spin button click triggers `startSpin`.
+    * **Server Request (Production - `core/ApiService.js`):** `startSpin` calls `ApiService.requestSpin(betInfo)` to ask the backend for a result. (Currently, the client generates random results).
+    * **Response & Scheduling (Production):** The backend replies with stop positions, win data, feature triggers, and new balance.
+    * **Initiation (`core/Game.js` -> `startSpinLoop`):**
+        * Clears previous win lines (`clearWinLines`).
+        * Determines spin duration/stagger based on `state.isTurboMode`.
+        * Calculates the absolute `targetStopTime` for each reel.
+        * Calls `reel.startSpinning()` for visual effects.
+        * Calls `reel.scheduleStop(targetStopTime)` for each reel, passing the calculated time. **Crucially**, the target *position* (`finalStopPosition`) inside the Reel instance should be set based on the server result *before* the stop tween begins.
+    * **Reel Spinning (`core/Reel.js` -> `update`):**
+        * Manages state transitions (`accelerating`, `spinning`).
+        * Updates `position` based on speed or GSAP tween.
+        * Updates visual effects (blur, shimmer) based on speed.
+        * Constantly updates visible symbols using `alignReelSymbols`.
+    * **Reel Stopping (`core/Reel.js` -> `update`):**
+        * When `now >= targetStopTime - stopTweenDuration`, it initiates a **GSAP tween** on the `position` property.
+        * The tween animates the `position` from its current value to the `finalStopPosition` over `stopTweenDuration`, using easing (e.g., `quad.out`).
+        * The tween's `onUpdate` calls `alignReelSymbols` and fades out spin effects.
+        * The tween's `onComplete` sets the state to `stopped`, ensures exact final position, and disables effects.
+    * **Spin End Detection (`core/Game.js` -> `update`):** Detects when all reels are `stopped`.
+    * **Result Handling (`core/Game.js` -> `handleSpinEnd`):**
+        * Calls `evaluateWin`.
+        * After a brief delay, checks `GameState` to see if the next action is another Free Spin, an Autoplay spin, or enabling the UI for manual play.
+
+5.  **Win Evaluation & Presentation:**
+    * **Evaluation (`features/WinEvaluation.js` -> `evaluateWin`):**
+        * Gets the visible grid (`getResultsGrid`).
+        * **Production:** Primarily *validates* win data received from the server. Identifies the specific `SymbolSprite` instances on screen that correspond to the server-defined winning lines.
+        * **Client-Side (Current):** Iterates `PAYLINES`, compares symbols against `PAYTABLE`, calculates wins.
+        * Checks for scatter triggers (should use server data).
+        * Updates `state.lastTotalWin` and `state.winningLinesInfo`.
+        * Triggers `PaylineGraphics.drawWinLines`.
+        * Triggers `Animations.playWinAnimations` (rollup, big win text, particles).
+        * Triggers `Animations.animateWinningSymbols`.
+        * Triggers `FreeSpins.enterFreeSpins` if applicable (using server data).
+    * **Graphics (`features/PaylineGraphics.js`):** Draws lines connecting winning symbols.
+    * **Animations (`features/Animations.js`):** Handles the win amount rollup (using GSAP), Big Win text overlays, particle effects, and triggering symbol animations (including custom ones registered via `registerSymbolAnimation`).
+
+## 5. Key Feature Implementations
+
+* **Configuration (`config/`):** Nearly all aspects of a specific game (symbols, payouts, reels, lines, speeds, feature rules) are defined here, allowing developers to create new game variants largely by modifying these files.
+* **UI (`ui/`):** A reusable system for creating interactive buttons (with SVG support), displaying game information dynamically, showing notifications, and providing debug tools. Uses GSAP for button feedback and transitions.
+* **Reel Mechanics (`core/Reel.js`):** Features smooth, precisely timed stopping using GSAP tweens, visual spin effects (blur, shimmer), and efficient symbol swapping.
+* **Symbol Animation (`features/Animations.js`, `features/AnimationDemo.js`):** A system (`registerSymbolAnimation`) allows defining unique win animations per symbol type, using GSAP properties, PIXI filters, or potentially sprite sheets (`features/SpriteSheetAnimations.js`). See `docs/CustomAnimationGuide.md`.
+* **Free Spins (`features/FreeSpins.js`):** A complete bonus round implementation with state management, entry/exit transitions (visual and background changes), spin tracking, win multipliers, and automatic triggering of spins. **Relies on server results for triggers and state in production.**
+* **Autoplay / Turbo:** Standard quality-of-life features modifying spin initiation and animation speeds.
+* **Debug Panel (`ui/DebugPanel.js`):** An invaluable tool during development, allowing forcing wins, adding balance, and adjusting visual elements like the background in real-time.
+
+## 6. Development & Customization
+
+* **Creating New Games:** Primarily involves defining new configurations in the `config/` folder (symbols, payouts, reel strips, etc.) and providing corresponding assets (symbol textures in `assets/images/`).
+* **Customizing Animations:** Use `registerSymbolAnimation` in `features/AnimationDemo.js` (or a similar setup file) to add unique visual flair to winning symbols. Follow the patterns in `docs/CustomAnimationGuide.md`.
+* **Adding Features:** Create new modules in the `features/` directory, integrate them into the `Game.js` logic and state management, and ensure communication with the server (`ApiService`) if server-side logic is required.
+* **Further Details:** Refer to the documents in the `docs/` folder, especially `project.md` for the overall vision and planned enhancements.
+
+## 7. Production Considerations (IMPORTANT!)
+
+* **Server Authority is Paramount:** This cannot be stressed enough. For any real-money or fair-play scenario, the client **must not** determine game outcomes (RNG/stop positions) or validate wins independently. The client's role is to send player actions to the server and visually present the results returned by the server. The `ApiService` module is the intended integration point.
+* **Security:** Client-side code is inherently insecure. Do not place sensitive logic or data here. Rely on the server for validation.
+* **Testing:** A production engine requires thorough testing (Unit, Integration, E2E) to ensure reliability and prevent regressions. See Epic 10.
+* **Error Handling:** Implement robust error handling for API calls and unexpected client-side issues. See Epic 11.
+* **Performance:** Profile and optimize for target devices, especially mobile.
+
+## 8. Conclusion
+
+The Phoenix Engine provides a flexible and modern foundation for building slot games. Its strength lies in the use of PixiJS and GSAP for smooth visuals and animations, its configurable nature, and its clear (though currently client-focused) architecture. By implementing the planned server integration and focusing on robustness and polish as outlined in the roadmap and `docs/project.md`, this engine can become a powerful tool for deploying production-ready slot experiences.
