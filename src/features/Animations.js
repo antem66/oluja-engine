@@ -325,11 +325,10 @@ export function playWinAnimations(winAmount, currentTotalBet) {
             style: {
                 fontFamily: "Impact, Charcoal, sans-serif",
                 fontSize: 70,
-                fill: [0xffff00, 0xffaa00], // Use hex numbers
-                stroke: { color: "#8B0000", width: 5 },
-                dropShadow: { color: "#000", distance: 5, blur: 5, alpha: 0.8 },
-                align: 'center', // Use string literal
-                // lineSpacing: 10, // Removed invalid property
+                fill: 0xFFFF00, // Use single color instead of gradient array
+                stroke: { color: 0x8B0000, width: 5 },
+                dropShadow: { color: 0x000000, distance: 5, blur: 5, alpha: 0.8 },
+                align: 'center',
             },
         });
         winOverlayText.anchor.set(0.5);

@@ -8,7 +8,8 @@
     "start": "echo \"Open index.html in your browser to run the game.\"",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "snapshot": "./list_files.sh ./src/"
   },
   "keywords": [
     "pixijs",

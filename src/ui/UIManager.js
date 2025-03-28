@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js';
 import { state } from '../core/GameState.js'; // Assuming state access
 import { GAME_WIDTH, bottomUIY } from '../config/gameSettings.js';
+import { gsap } from 'gsap'; // Import GSAP for animations
 
 // References to UI elements (Text objects, Buttons)
 let uiContainerRef = null;
@@ -91,9 +92,9 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     // Set initial button states
     updateAutoplayButtonState();
     updateTurboButtonState();
-
     console.log("UIManager initialized.");
 }
+
 
 /**
  * Updates the text displays (Balance, Bet, Win) based on the current game state.

@@ -1,4 +1,3 @@
-
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
@@ -82,26 +81,21 @@ export function showOverlayMessage(message, baseDuration, callback) {
   }
   overlayContainer.removeChildren(); // Clear previous messages
 
-  const messageStyle = {
-    fontFamily: "Impact, Charcoal, sans-serif",
-    fontSize: 60,
-    // Use an array for a simple linear gradient (top to bottom)
-    fill: [0xffffff, 0xdddddd],
-    stroke: { color: "#333333", width: 4 },
-    dropShadow: {
-        color: "#000",
-        distance: 4,
-        blur: 4,
-        angle: Math.PI / 4, // Add default angle
-        alpha: 0.7,        // Add default alpha
-    },
+  // Create style for overlay message text
+  const style = new PIXI.TextStyle({
+    fontFamily: 'Arial, sans-serif',
+    fontSize: 28,
+    fontWeight: 'bold',
+    fill: 0xFFFFFF, // Single color instead of gradient
+    stroke: { color: 0x000000, width: 4 },
     align: 'center',
-    lineSpacing: 10,
-  }; // Define style object
+    wordWrap: true,
+    wordWrapWidth: GAME_WIDTH * 0.8
+  });
 
   const messageText = new PIXI.Text({
     text: message,
-    style: messageStyle, // Pass the style object directly
+    style: style, // Pass the style object directly
   });
   messageText.anchor.set(0.5);
   messageText.x = GAME_WIDTH / 2;

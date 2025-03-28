@@ -2,7 +2,7 @@ import { PAYLINES, NUM_PAYLINES } from '../config/paylines.js';
 import { PAYTABLE } from '../config/symbolDefinitions.js';
 import {
     SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, SYMBOLS_PER_REEL_VISIBLE,
-    ENABLE_FREE_SPINS // Ensure this is imported
+    ENABLE_FREE_SPINS, FREE_SPINS_AWARDED
 } from '../config/gameSettings.js';
 import { state, updateState } from '../core/GameState.js'; // Assuming state management
 import { drawWinLines } from './PaylineGraphics.js'; // Assuming graphics handling
@@ -164,12 +164,16 @@ export function evaluateWin() {
     }
 
     // --- Trigger Free Spins (if applicable and enabled) ---
-    if (ENABLE_FREE_SPINS && !state.isInFreeSpins && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS) {
-        console.log(`WinEvaluation: ${scatterCount} scatters found. Triggering free spins (Enabled: ${ENABLE_FREE_SPINS}).`); // DEBUG
+    if (scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS && ENABLE_FREE_SPINS) {
+        console.log(`WinEvaluation: ${scatterCount} scatters found. Triggering free spins (Enabled: ${ENABLE_FREE_SPINS}).`);
         // Delay slightly after win animations if any
         const delay = (calculatedTotalWin > 0 ? 1000 : 100) * state.winAnimDelayMultiplier;
         updateState({ isTransitioning: true }); // Prevent actions during transition
-        setTimeout(() => enterFreeSpins(), delay);
+        setTimeout(() => {
+            import('../features/FreeSpins.js').then(module => {
+                module.enterFreeSpins(FREE_SPINS_AWARDED); // Pass FREE_SPINS_AWARDED explicitly
+            });
+        }, delay);
     }
 }
 
