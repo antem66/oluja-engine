@@ -1,4 +1,856 @@
-<file_content path="./src//ui/InfoOverlay.js">
+<file_content path="index.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heavens Ten Deluxe</title>
+    <link rel="stylesheet" href="src/styles/main.css">
+    <style>
+        /* Basic centering styles */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #1a1a1a; /* Match CSS file */
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        #game-container canvas {
+             /* Styles from main.css will apply, but ensure it's block or similar */
+             display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Container for the PixiJS canvas -->
+    <div id="game-container"></div>
+
+    <!-- Overlay for Autoplay/Free Spins info -->
+    <div id="infoOverlay" class="info-overlay"></div>
+
+    <!-- Load the main game script as a module -->
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+</file_content>
+
+<file_content path="docs/project.md">
+Project Phoenix: Slot Engine Enhancement Master Document
+
+Version: 1.0
+Date: 2024-07-25
+Author: AI Assistant (based on provided code and request)
+
+1. Vision & Goals
+
+Vision: To evolve the existing PixiJS-based slot engine ("The Engine") into a highly performant, visually spectacular, feature-rich, and robust platform ("Phoenix Engine") capable of powering slot games that rival those from leading studios like Pragmatic Play and Hacksaw Gaming.
+
+Goals:
+
+Achieve top-tier performance and smoothness across desktop and mobile.
+
+Enable stunning visual effects, animations, and high-fidelity graphics.
+
+Implement a rich, immersive audio experience.
+
+Support a wide range of modern and innovative slot features.
+
+Establish a flexible architecture for rapid game development and iteration.
+
+Integrate seamlessly with a server-side backend for real-money gaming (RNG) and compliance.
+
+Create a highly polished and engaging player experience ("juice").
+
+2. Current State Analysis (How the Code Works)
+
+The Engine is currently a functional client-side slot machine simulator built with PixiJS and modern JavaScript.
+
+Core (/core):
+
+Game.js: The main orchestrator. Initializes PixiJS, sets up containers (reels, UI, overlays), creates Reel instances, manages the game loop (update), and handles the spin start/end logic (startSpinLoop, handleSpinEnd). It uses performance.now() and scheduled stop times for reel coordination.
+
+Reel.js: Manages a single reel. It holds symbol graphics (PIXI.Containers containing Symbol instances), manages its position on a virtual strip, and controls its state (idle, accelerating, spinning, tweeningStop, stopped). It uses a sophisticated time-based tweening approach (scheduleStop, lerpAngle, easeOutQuad) to land precisely on a stopIndex. Currently, this stopIndex is generated randomly client-side. It applies a blur filter during spins. Symbol alignment logic (alignReelSymbols) replaces symbol graphics as the reel spins.
+
+GameState.js: A simple module holding the central state object (state) including balance, bet, win, spin status, feature flags (Autoplay, Turbo, Free Spins). Provides updateState for centralized modification and initGameState for reset.
+
+Symbol.js: Represents a single symbol. Currently, it extends PIXI.Container and draws the symbol using PIXI.Graphics based on definitions (symbolDefinitions.js). It holds the symbolId.
+
+UI (/ui):
+
+UIManager.js: Manages updates to core PIXI Text elements (balance, bet, win) based on GameState. It also handles enabling/disabling buttons and updating their visual state (autoplay/turbo active colors) by accessing button instances created by ButtonFactory.
+
+ButtonFactory.js: Creates reusable button components (Button class extending PIXI.Container). Buttons are currently drawn using PIXI.Graphics for different states (idle, hover, down). Handles basic pointer events. Can create circular buttons and includes logic for a specific 'spin' icon graphic.
+
+ButtonHandlers.js: Contains the event handler functions called by the buttons (e.g., increaseBet, toggleAutoplay, startSpin). These functions interact with GameState (via updateState) and trigger actions in other modules (Game.js, UIManager.js). startSpin includes basic balance checks.
+
+InfoOverlay.js: Manages a DOM element outside the Pixi canvas to display Autoplay/Free Spins status. Updated via updateInfoOverlay based on GameState.
+
+Notifications.js: Handles displaying temporary overlay messages (showOverlayMessage using PIXI.Text) and flashing elements (flashElement by manipulating tint) within a dedicated Pixi container.
+
+Features (/features):
+
+WinEvaluation.js: Calculates wins after reels stop. It gets the visible symbol grid (getResultsGrid) based on reel stopIndexes, iterates through PAYLINES, compares symbols against the PAYTABLE, sums wins, and identifies winning lines/symbols. It also checks for scatter counts. Triggers win display updates, line drawing, and animations. Crucially, it depends on client-side determined results. Includes logic to trigger enterFreeSpins if enabled and enough scatters land.
+
+PaylineGraphics.js: Draws winning paylines using PIXI.Graphics based on the winning symbol positions provided by WinEvaluation. Includes basic fade-in/fade-out logic using setInterval/setTimeout.
+
+Animations.js: Handles win presentation. animateWinningSymbols provides a basic scale bounce effect (currently direct scale setting with setTimeout). playWinAnimations shows large text overlays for Big/Mega wins (animated via setInterval) and triggers basic particle effects (createParticles, updateParticles using PIXI.Graphics).
+
+FreeSpins.js: Manages the free spins state. enterFreeSpins updates state, shows an overlay, changes the background color, and starts the first spin. handleFreeSpinEnd updates the total FS win, decrements spins, and either starts the next spin or calls exitFreeSpins. exitFreeSpins shows a summary and resets the state/background.
+
+Autoplay.js: handleAutoplayNextSpin checks conditions (spins remaining, balance) and schedules the next spin via setTimeout or stops autoplay.
+
+TurboMode.js: Primarily intended to modify animation timings (though current implementation mainly references settings directly). applyTurboSettings is called when toggled.
+
+Configuration (/config): Centralizes game settings, paylines, symbol definitions, animation timings, and reel strips. This is well-structured.
+
+Utilities (/utils): Contains helper functions like lerpAngle and easing functions.
+
+Entry Point (/main.js): Initializes the Game class when the DOM is ready.
+
+Strengths:
+
+Good modular structure foundation.
+
+Centralized state management (GameState.js).
+
+Modern JavaScript (ES Modules) and PixiJS usage.
+
+Advanced, precise time-based reel stop mechanism (Reel.js).
+
+Clear separation of configuration data.
+
+Basic implementations of core features (FS, Autoplay, Turbo).
+
+Weaknesses:
+
+Performance Bottleneck: Heavy reliance on PIXI.Graphics for symbols and buttons is inefficient.
+
+Visual Fidelity: Limited by PIXI.Graphics; lacks textures, spritesheets, and advanced effects.
+
+Audio: Completely absent – a major gap in player experience.
+
+Animation Quality: Basic, often uses setInterval/setTimeout, lacking smoothness, complexity, and robust control (needs a dedicated library like GSAP).
+
+Client-Side RNG: Fundamentally unsuitable for real-money or fair-play scenarios. Requires server-side result determination.
+
+Limited Features: Lacks common modern slot features (cascades, advanced wilds, complex bonuses, anticipation).
+
+Lack of Polish ("Juice"): Missing sophisticated visual/audio feedback, smooth transitions, satisfying win celebrations.
+
+UI Limitations: Basic button component, inconsistent DOM overlay usage.
+
+Development Tooling: No build system (Webpack/Vite) or testing framework apparent.
+
+3. Target State Vision: Defining the "Phoenix Engine"
+
+The Phoenix Engine should embody the following qualities:
+
+Visually Stunning: Support for high-resolution spritesheets, intricate animations, shaders, and advanced particle effects. Easily skinnable for diverse game themes.
+
+Immersive Audio: A rich, dynamic soundscape managed by a dedicated engine, reacting fluidly to game events.
+
+Buttery Smooth Performance: Optimized rendering pipeline, efficient object pooling, smooth animations locked to the display refresh rate, even on mobile devices.
+
+Feature-Rich & Flexible: Easily accommodate diverse gameplay mechanics (cascades, ways-to-win, expanding symbols, various bonus types) through a modular and extensible design.
+
+Server-Driven: Reliant on a secure backend for spin results (RNG), ensuring fairness and regulatory compliance.
+
+Highly Polished ("Juiced"): Abundant visual and auditory feedback for every player action and game event, creating a satisfying and engaging experience.
+
+Developer-Friendly: Clear architecture, good tooling, and streamlined workflows for creating and configuring new games rapidly.
+
+Cross-Platform: Performant and responsive on both desktop and mobile browsers.
+
+4. Feature Brainstorm & Potential Roadmap
+
+(Prioritization: M=Must-Have, S=Should-Have, C=Could-Have)
+
+4.1 Core Engine & Architecture
+
+(M) Texture/Sprite Rendering: Replace all PIXI.Graphics for symbols, buttons, UI elements with PIXI.Sprites using texture atlases.
+
+(M) Animation Library Integration: Integrate GSAP for all animations (reels, symbols, UI, transitions, wins).
+
+(M) Sound Engine Integration: Integrate Howler.js or PixiSound with a dedicated SoundManager.
+
+(M) Server-Side Integration: Implement API communication for spin initiation and result reception. Adapt client logic to use server results.
+
+(M) Build System: Implement Vite or Webpack for development/production builds.
+
+(S) Asset Management: Robust asset loading screen (PIXI.Assets) with progress reporting.
+
+(S) Symbol/Object Pooling: Implement pooling for reel symbols to optimize performance.
+
+(S) State Management Refinement: Consider event bus or state library if complexity increases.
+
+(S) Advanced Error Handling & Logging: Implement more robust error catching and reporting.
+
+(C) Shader Integration: Basic framework for using custom filters/shaders.
+
+(C) TypeScript Conversion: Gradually migrate to TypeScript for better type safety and tooling.
+
+4.2 Gameplay Mechanics
+
+(M) Wild Symbol Logic: Basic substitution.
+
+(S) Anticipation Effects: Reel slowdowns/effects for near-miss scatter/bonus landings.
+
+(S) Scatter Pays: Handle scatter wins independent of paylines.
+
+(S) Advanced Wilds: Expanding, Sticky, Walking, Multiplier Wilds.
+
+(S) Cascading / Tumbling Reels Mechanic.
+
+(S) Ways-to-Win / Megaways™ style evaluation (requires different grid evaluation).
+
+(C) Mystery Symbols.
+
+(C) Symbol Collection / Meter Mechanics.
+
+(C) Gamble Feature.
+
+4.3 Bonus Features
+
+(M) Enhanced Free Spins: Retriggers, basic multiplier.
+
+(S) Progressive Free Spins: Increasing multipliers, symbol removal/upgrade.
+
+(S) Pick-Me Bonus Game: Basic screen with selectable items.
+
+(C) Wheel Bonus Feature.
+
+(C) Trail / Map Bonus Feature.
+
+(C) Multi-stage / Narrative Bonus Rounds.
+
+(C) Buy Feature Mechanic (requires server support).
+
+4.4 Presentation & Polish ("Juice")
+
+(M) Basic Soundscape: Spin, stop, win, button sounds.
+
+(S) Dynamic Win Line Animations: More engaging than static lines.
+
+(S) Enhanced Symbol Win Animations: Unique animations per symbol/win level.
+
+(S) Animated Win Counter Rollup (GSAP).
+
+(S) Big/Mega Win Sequence Enhancement: Multi-stage, better particles, dedicated sounds (using GSAP Timelines).
+
+(S) Smooth Screen Transitions: Fade/wipe/zoom between game states (base, FS, bonus).
+
+(S) Advanced Particle Effects: Integrate pixi-particles or similar.
+
+(S) Ambient Background Music & SFX: Dynamic changes based on game state.
+
+(C) Subtle UI Animations: Button pulses, text effects.
+
+(C) Reel Spin/Stop Effects: Visual flourishes beyond blur (e.g., squash/stretch, anticipation shakes).
+
+(C) Idle Animations: Subtle animations on symbols or background elements when idle.
+
+4.5 User Experience (UX) & Meta
+
+(M) Polished UI Skin: Visually appealing UI matching top studios (requires design input).
+
+(S) Interactive Paytable Screen.
+
+(S) Clear Game Rules Screen.
+
+(S) Advanced Autoplay Options: Loss limit, win limit, stop on feature.
+
+(S) Mobile Responsiveness & Layout Adaptation.
+
+(S) Refined Bet Configuration UI.
+
+(C) Comprehensive Game History.
+
+(C) Localization Framework: Support for multiple languages.
+
+(C) Currency Formatting.
+
+(C) Responsible Gaming Integration Hooks.
+
+5. Phased Action Plan
+
+This plan prioritizes foundational changes first, then builds features and polish on top.
+
+Phase 1: Foundation Overhaul (Estimated Time: TBD)
+
+Objective: Replace core rendering/animation/audio systems, establish build process, and implement basic server communication hooks.
+
+Key Tasks:
+
+Setup Build System: Integrate Vite/Webpack. Configure dev/prod builds, asset handling.
+
+Integrate GSAP: Add GSAP library. Refactor one simple animation (e.g., showOverlayMessage fade) to use GSAP via the Pixi ticker.
+
+Graphics Overhaul - Symbols: Define texture atlas format. Create placeholder symbol textures. Refactor Symbol.js and Reel.js (alignReelSymbols) to use PIXI.Sprites and pooling.
+
+Graphics Overhaul - Buttons: Create button state textures. Refactor ButtonFactory.js to use sprites.
+
+Integrate Sound Engine: Add Howler.js/PixiSound. Create SoundManager.js. Implement basic sound playback for spin start/stop and button clicks. Load sounds via asset manager.
+
+Server Hooks - Basic API: Define simple spin API (request bet -> receive stop positions). Modify ButtonHandlers.js (startSpin) to simulate sending a request and receiving hardcoded stop positions. Modify Reel.js to use these provided stops. (Full backend integration deferred).
+
+Refactor Reel Stop: Migrate Reel.js tweening logic (lerpAngle, easeOutQuad) to use GSAP's tweening capabilities for potentially smoother results and more easing options.
+
+Phase 2: Gameplay Core & Server Integration (Estimated Time: TBD)
+
+Objective: Implement full server communication, core win presentation enhancements, and the first major feature (enhanced Free Spins).
+
+Key Tasks:
+
+Full Server Integration: Connect client spin request/response to a real (or mock) backend game server providing RNG results. Handle API states (loading, error).
+
+Win Presentation - Basics: Refactor PaylineGraphics.js to use GSAP/animated sprites. Refactor animateWinningSymbols and playWinAnimations (Big Win) to use GSAP timelines for smoother, more controllable sequences. Implement animated win counter rollup.
+
+Sound Design - Core Loop: Add distinct reel stop sounds, win sounds (small/medium/large), FS trigger sound.
+
+Anticipation Logic: Implement basic reel anticipation effects (visual/audio) when 2 scatters land (requires server result pre-check).
+
+Feature: Enhanced Free Spins: Implement FS retriggers and a simple win multiplier mechanic. Add distinct FS entry/exit transitions (using GSAP). Add FS background music loop.
+
+UI Refinement: Implement basic interactive Paytable screen showing symbol payouts.
+
+Phase 3: Advanced Features & Polish (Estimated Time: TBD)
+
+Objective: Introduce more complex gameplay mechanics and significantly elevate the visual/audio polish ("juice").
+
+Key Tasks:
+
+Feature: Cascading Reels OR Advanced Wilds: Implement one major modern mechanic (requires significant logic changes).
+
+Feature: Pick-Me Bonus: Design and implement a simple pick-bonus game screen and logic.
+
+VFX Enhancement: Integrate pixi-particles for advanced win/feature effects. Explore simple shaders for background effects or transitions.
+
+Audio Deep Dive: Add sounds for specific symbol wins, feature nuances, richer ambient sounds. Implement volume controls.
+
+Transition Polish: Refine all screen/state transitions (base->FS, FS->bonus, etc.) to be seamless and visually interesting.
+
+Mobile Optimization & Responsiveness: Test thoroughly on mobile. Implement layout adjustments if needed.
+
+Phase 4: Productionization & Iteration (Ongoing)
+
+Objective: Prepare the engine for production game development, ensure robustness, and enable easy iteration.
+
+Key Tasks:
+
+Optimization: Profile performance across devices. Optimize rendering, code execution, and memory usage.
+
+Testing: Implement unit/integration tests for core systems. Establish QA process.
+
+Tooling: Develop or integrate tools for easier game configuration (reel strips, payouts, features).
+
+Documentation: Thoroughly document the engine architecture, modules, and configuration process.
+
+Meta Features: Implement localization framework, responsible gaming hooks, advanced autoplay options.
+
+Iteration: Continuously refine features, add polish, and incorporate feedback.
+
+6. Progress Tracking & Management
+
+Tooling: Use a project management tool like Jira, Trello, Asana, or GitHub Projects. A Kanban board visualizing tasks in columns (Backlog, To Do, In Progress, Review, Done) is highly recommended.
+
+Task Management:
+
+Break down Phase tasks into smaller, manageable user stories or technical tasks within the chosen tool.
+
+Assign owners to each task.
+
+Estimate effort (Story Points or Time) for planning purposes.
+
+Workflow:
+
+Sprints/Cycles: Work in defined iterations (e.g., 1-2 weeks). Plan tasks for each sprint.
+
+Daily Stand-ups: Brief daily check-ins to discuss progress, blockers, and next steps.
+
+Code Reviews: Mandatory peer reviews for all code changes before merging.
+
+Sprint Reviews/Demos: At the end of each sprint, demonstrate completed work and gather feedback.
+
+Retrospectives: Regularly discuss what went well, what didn't, and how to improve the process.
+
+Branching Strategy: Use Git with a standard branching model (e.g., Gitflow or GitHub Flow) for managing code changes.
+
+Communication: Maintain open communication channels (e.g., Slack/Teams) for quick questions and collaboration.
+
+7. Conclusion
+
+Project Phoenix is an ambitious but achievable endeavor. The current engine provides a solid, albeit basic, foundation. By systematically executing this phased plan, focusing on core architectural improvements first (graphics, animation, sound, server), and then layering on features and polish, we can transform this engine into a truly competitive platform. This document will serve as our living guide, evolving as we progress and learn. Let the transformation begin!</file_content>
+
+<file_content path="docs/README.md">
+# Heavens Ten Deluxe - Code Documentation
+
+## 1. Overview
+
+This document provides an overview of the "Heavens Ten Deluxe" slot game codebase, designed to help new developers understand the structure, core mechanics, and features. The game is built using JavaScript modules and the PixiJS library for rendering.
+
+## 2. Project Structure
+
+The codebase is organized within the `/src` directory:
+
+```
+src/
+├── main.js             # Entry point, initializes the game
+├── config/             # Configuration files for game settings, symbols, paylines, etc.
+├── core/               # Core game logic (Game class, Reel class, Game State)
+├── features/           # Modules for specific game features (Win Eval, Free Spins, Turbo, etc.)
+├── styles/             # CSS styles (if any, currently basic)
+├── ui/                 # UI elements management (Buttons, Text Displays)
+└── utils/              # Utility functions (helpers)
+```
+
+## 3. Core Game Loop & Mechanics
+
+*   **`main.js`**: Waits for the DOM to load, creates a `Game` instance, and calls its `init()` method.
+*   **`core/Game.js`**:
+    *   The main class orchestrating the game.
+    *   `constructor`: Gets the canvas container.
+    *   `init()`: Sets up the PixiJS application, creates containers (reels, UI, overlays), initializes reels, sets up UI elements, and starts the game loop (`app.ticker`).
+    *   `setupUI()`: Creates and positions static UI elements like the title, panel, and buttons (using `ButtonFactory`). Initializes `UIManager`.
+    *   `update()`: The main game loop function called by the PixiJS ticker. Updates all reels and checks if the spin has ended.
+    *   `handleSpinEnd()`: Called when all reels stop moving. Triggers win evaluation and handles the next action (autoplay, free spins, enabling buttons).
+    *   `startSpinLoop()`: Called by button handlers. Initiates the spin, calculates target stop times for each reel based on normal/turbo mode, and calls `reel.scheduleStop()`.
+*   **`core/Reel.js`**:
+    *   Represents a single reel.
+    *   `constructor`: Creates the container, symbols, and blur filter.
+    *   `startSpinning()`: Sets the state to 'accelerating', determines a random `stopIndex`.
+    *   `scheduleStop()`: Stores the absolute `targetStopTime` calculated by `Game.js`.
+    *   `update()`: Handles state transitions (accelerating, spinning, tweeningStop, stopped).
+        *   In 'accelerating'/'spinning', moves the reel position based on speed.
+        *   Checks if the current time (`now`) is close to `targetStopTime` to initiate the 'tweeningStop' state.
+        *   In 'tweeningStop', uses `lerpAngle` and an easing function (`easeOutQuad`) to smoothly animate the reel `position` from its current spot to the `finalStopPosition` over the `stopTweenDuration`.
+    *   `alignReelSymbols()`: Updates the visual symbols based on the current `position`.
+*   **`core/GameState.js`**:
+    *   Exports a central `state` object holding all mutable game data (balance, bet, win, spinning status, feature flags, etc.).
+    *   `initGameState()`: Resets the state to default values.
+    *   `updateState()`: A function to merge updates into the state object.
+*   **`core/Symbol.js`**: Creates the visual representation (PixiJS Container with Graphics/Text) for a single symbol based on its definition.
+
+## 4. Configuration (`/src/config/`)
+
+*   **`animationSettings.js`**: Defines speeds, delays, and durations for reel animations (acceleration, max speed, stagger, base duration, tween duration). Includes separate constants for Turbo mode.
+*   **`gameSettings.js`**: Defines core game parameters (dimensions, number of reels, symbols visible, reel width, symbol size, scatter ID, free spins rules, bet levels, background colors, `ENABLE_FREE_SPINS` flag).
+*   **`paylines.js`**: Defines the paths for each payline as arrays of row indices (0-3) across the reels. Exports `PAYLINES` and `NUM_PAYLINES`.
+*   **`reelStrips.js`**: Defines the sequence of symbol IDs for each reel strip (`REEL_STRIPS`).
+*   **`symbolDefinitions.js`**: Defines properties for each symbol ID (color, text, payout table). Exports `SYMBOL_DEFINITIONS` and a derived `PAYTABLE` for easy lookup.
+
+## 5. Features (`/src/features/`)
+
+*   **`WinEvaluation.js`**:
+    *   `evaluateWin()`: Called after reels stop.
+    *   `getResultsGrid()`: Determines the visible symbols based on each reel's `stopIndex`.
+    *   Iterates through `PAYLINES`, checks the grid for consecutive matching symbols from left-to-right using the `PAYTABLE`.
+    *   Calculates total win and identifies winning line details.
+    *   Checks for scatter count.
+    *   Updates game state (`lastTotalWin`, `balance`, `winningLinesInfo`).
+    *   Triggers win animations and graphics (`PaylineGraphics.js`, `Animations.js`).
+    *   Triggers free spins (`FreeSpins.js`) if conditions are met and `ENABLE_FREE_SPINS` is true.
+*   **`FreeSpins.js`**: (Assumed structure - needs implementation details) Handles entering/exiting free spins mode, tracking remaining spins, potentially changing background/music. `enterFreeSpins` is called by `WinEvaluation`.
+*   **`TurboMode.js`**:
+    *   `applyTurboSettings()`: Currently minimal, mainly handles legacy `skipBounce` flag (unused by current tween logic). The core turbo speed logic is now handled directly in `Game.js`'s `startSpinLoop` by checking `state.isTurboMode` and using turbo constants from `animationSettings.js`.
+*   **`Autoplay.js`**: (Assumed structure) Handles starting/stopping autoplay sequences and triggering spins automatically. `handleAutoplayNextSpin` is called by `Game.js`.
+*   **`PaylineGraphics.js`**: `drawWinLines` function takes winning line info and draws the lines on the reels. `clearWinLines` removes them.
+*   **`Animations.js`**: `playWinAnimations` triggers general win effects (e.g., sounds, particles). `animateWinningSymbols` applies effects directly to the winning symbol instances. `updateParticles` updates ongoing particle effects.
+
+## 6. UI (`/src/ui/`)
+
+*   **`UIManager.js`**:
+    *   `initUIManager`: Creates and positions text displays (Balance, Win, Bet) using styles passed from `Game.js`. Stores references.
+    *   `updateDisplays`: Updates the text content based on the current `GameState`.
+    *   `setButtonsEnabled`: Enables/disables buttons based on game state (spinning, free spins).
+    *   `updateAutoplayButtonState`, `updateTurboButtonState`: Update visual appearance (color, icon) of specific buttons based on their active state.
+*   **`ButtonFactory.js`**: (Assumed structure) A utility to create standardized button graphics and interactive elements. Used by `Game.js`.
+*   **`ButtonHandlers.js`**: Contains the functions executed when UI buttons are clicked (e.g., `startSpin`, `toggleTurbo`, `toggleAutoplay`, `increaseBet`, `decreaseBet`). These handlers update the `GameState` and trigger actions in other modules (like `Game.js` or `TurboMode.js`).
+*   **`Notifications.js`**: (Assumed structure) Handles displaying temporary messages or effects (like flashing).
+*   **`InfoOverlay.js`**: (Assumed structure) Manages the separate DOM overlay for displaying info/paytable.
+
+## 7. Utilities (`/src/utils/`)
+
+*   **`helpers.js`**: Contains utility functions like `lerpAngle` (for tweening reel position correctly with wrap-around) and easing functions (`easeOutQuad`).
+
+## 8. Adding New Features
+
+1.  **Configuration:** Add any necessary settings to `/src/config/` files (e.g., new symbol payouts, feature flags).
+2.  **State:** Add any required state variables to `/src/core/GameState.js`.
+3.  **Core Logic:**
+    *   If it's a core mechanic change, modify `Game.js` or `Reel.js`.
+    *   If it's a distinct feature, create a new file in `/src/features/`.
+4.  **UI:**
+    *   Add buttons or displays in `Game.js` (`setupUI`).
+    *   Add corresponding text elements or references in `UIManager.js`.
+    *   Create button handlers in `ButtonHandlers.js`.
+    *   Update `UIManager.js` to manage the new elements' state/appearance if needed.
+5.  **Integration:** Call new feature logic from appropriate places (e.g., call a new feature's evaluation function from `Game.js`'s `handleSpinEnd`, trigger UI updates from handlers or feature modules).
+6.  **Testing:** Thoroughly test the new feature and its interaction with existing ones (especially state changes, Turbo mode, Autoplay, Free Spins).
+</file_content>
+
+<file_content path="docs/IMPROVEMENTS.md">
+# Potential Improvements for Heavens Ten Deluxe
+
+This document lists potential areas for improvement to enhance the visual appeal, engagement, and overall quality of the slot game, inspired by professional studios like Pragmatic Play and Nolimit City.
+
+## 1. Visual Polish & Theming
+
+*   **Symbol Graphics:** Replace current text-based symbols (`(:`, `K`, `~`) with actual image sprites based on a chosen theme (e.g., mythology, gems, classic fruit).
+*   **Background & Reel Frame:**
+    *   Replace the solid background color with a thematic image or subtly animated background.
+    *   Consider different backgrounds for the base game vs. free spins.
+    *   Add a decorative frame around the reel area.
+*   **UI Styling:**
+    *   Create custom graphics for buttons (Spin, Bet, Turbo, Autoplay) with improved hover/click feedback.
+    *   Use more thematic fonts for the game title, win displays, balance, etc.
+    *   Integrate the bottom UI panel more smoothly with the overall theme/frame.
+*   **Logo Enhancement:** Improve the "HEAVENS TEN" title design (style, prominence).
+
+## 2. Animations & Effects ("Juice")
+
+*   **Anticipation Effects:** When 2 scatters land, make the remaining reels spin longer or add visual/audio effects to build tension.
+*   **Winning Symbol Animations:** Make winning symbols stand out more (e.g., pulse, scale, glow, emit particles, frame-by-frame sprite animation).
+*   **Win Presentation:**
+    *   **Big Win Sequences:** Implement special animations, sounds, and text displays ("BIG WIN", "MEGA WIN") for wins exceeding certain bet multipliers.
+    *   **Coin Effects:** Add particle animations simulating coins showering/exploding on wins.
+    *   **Win Count-up:** Animate the win amount rapidly counting up in the win display, synchronized with sound.
+*   **Payline Highlighting:** Improve the visual clarity of winning lines (e.g., brighter/animated lines, highlighting only winning symbols).
+*   **Reel Stop Effects:** Add subtle visual/audio feedback when reels land (e.g., very slight bounce, particle puff, screen nudge, distinct sound).
+
+## 3. Audio
+
+*   **Background Music:** Add distinct looping background music for the base game and free spins.
+*   **Sound Effects:** Implement sound effects for:
+    *   Reel spin start/stop.
+    *   Symbol landing (especially scatters).
+    *   Win line notification.
+    *   Win amount count-up ticks.
+    *   Button clicks.
+    *   Feature triggers (scatter anticipation, free spins entry).
+    *   Big Win celebrations.
+
+## 4. Gameplay Features
+
+*   **Wild Symbols:** Add a Wild symbol that substitutes for other paying symbols.
+*   **Multipliers:** Introduce win multipliers (e.g., on Wilds, random triggers, increasing in free spins).
+*   **Cascading/Tumbling Reels:** Winning symbols are removed, and new symbols fall into place, allowing potential chain reactions.
+*   **Enhanced Free Spins:** Add unique mechanics to free spins (e.g., increasing multipliers, symbol upgrades/removals, extra spins, special wilds).
+*   **(Advanced) Special Symbol Mechanics:** Introduce symbols that modify the reels or other symbols (e.g., splitting symbols, adding wilds, transforming symbols - inspired by Nolimit City's xWays/xSplit).
+
+## 5. UI/UX Improvements
+
+*   **Info/Paytable Screen:** Implement a screen showing symbol payouts, feature rules, and payline visualizations, accessible via a UI button.
+*   **Bet Controls Refinement:** Improve the bet adjustment interface (e.g., separate coin value and bet level controls).
+*   **Mobile Responsiveness:** Ensure the layout adapts reasonably well to different screen sizes (though primarily designed for desktop currently).
+</file_content>
+
+<file_content path="docs/CustomAnimationGuide.md">
+# Custom Symbol Animation Guide
+
+This guide explains how to create custom animations for the symbols in your slot machine game.
+
+## Quick Start
+
+1. **Register a Basic Animation**
+
+```javascript
+import { registerSymbolAnimation } from './features/Animations.js';
+
+// In your initialization code
+registerSymbolAnimation("FACE1", (symbol, timeline, config) => {
+  // Add animation to the timeline
+  timeline.to(symbol, {
+    rotation: symbol.rotation + Math.PI * 2, // Full rotation
+    duration: config.duration,
+    ease: "power1.inOut"
+  });
+  
+  return timeline;
+});
+```
+
+2. **Apply Your Animation**
+
+Your animation will automatically be applied when this symbol is part of a winning line!
+
+## Types of Animations
+
+You can create several types of animations for your symbols:
+
+### 1. GSAP Property Animations
+
+Animate any PIXI.js properties using GSAP:
+- `position` (x, y)
+- `scale` (scale.x, scale.y)
+- `rotation`
+- `alpha` (transparency)
+- `tint` (color overlay)
+
+```javascript
+registerSymbolAnimation("SCAT", (symbol, tl, config) => {
+  // Bounce up and down
+  tl.to(symbol, {
+    y: symbol.y - 20, // Move up
+    duration: 0.3,
+    ease: "power1.out"
+  }).to(symbol, {
+    y: symbol.y, // Back to original position
+    duration: 0.5,
+    ease: "bounce.out"
+  });
+  
+  return tl;
+});
+```
+
+### 2. Filter-Based Animations
+
+Use PIXI.js filters for advanced effects:
+- Glow
+- Blur
+- Displacement (wave effects)
+- Color matrix effects
+- and more!
+
+```javascript
+registerSymbolAnimation("KNIFE", (symbol, tl, config) => {
+  // Create a glow filter
+  const glowFilter = new PIXI.GlowFilter();
+  glowFilter.innerStrength = 0;
+  glowFilter.outerStrength = 0;
+  glowFilter.color = 0xFF0000; // Red glow
+  
+  // Add filter to symbol
+  symbol.addFilter(glowFilter, "glow");
+  
+  // Animate the glow
+  tl.to(glowFilter, {
+    outerStrength: 15,
+    duration: 0.5,
+    ease: "power2.out"
+  }).to(glowFilter, {
+    outerStrength: 0,
+    duration: 0.5,
+    ease: "power2.in"
+  });
+  
+  // Clean up after animation
+  const currentOnComplete = tl.eventCallback("onComplete");
+  tl.eventCallback("onComplete", () => {
+    if (currentOnComplete) currentOnComplete();
+    symbol.removeFilter("glow");
+  });
+  
+  return tl;
+});
+```
+
+### 3. Sprite Sheet Animations
+
+Replace the symbol with an animated sprite sheet sequence:
+
+```javascript
+import { createSpriteSheetAnimationFn } from './features/SpriteSheetAnimations.js';
+
+// First load your sprite sheet
+loadSpriteSheet(
+  'explosion',
+  'assets/spritesheets/explosion.png',
+  explosionJSON,
+  30 // fps
+);
+
+// Then register the animation
+registerSymbolAnimation(
+  "FACE3",
+  createSpriteSheetAnimationFn('explosion', 'explode', 0.8)
+);
+```
+
+## Animation Configuration
+
+The `config` parameter provides useful values:
+
+```javascript
+registerSymbolAnimation("CUP", (symbol, tl, config) => {
+  // Access these properties in config:
+  config.duration            // Base animation duration
+  config.originalScaleX      // Original symbol scale.x
+  config.originalScaleY      // Original symbol scale.y
+  config.originalAlpha       // Original symbol alpha
+  config.originalRotation    // Original symbol rotation
+  config.originalTint        // Original symbol tint
+  config.targetScaleUp       // Suggested max scale factor
+  config.initialDipScale     // Suggested initial dip scale
+  config.easeType            // Suggested ease type
+  config.easeBack            // Suggested elastic ease
+  config.goldTint            // Gold color for highlights
+  
+  // Your animation code...
+  return tl;
+});
+```
+
+## Creating Sprite Sheets
+
+1. Use tools like TexturePacker, Aseprite, or Spine to create sprite sheet animations
+2. Export as a spritesheet image + JSON data
+3. Place in your assets folder
+4. Load using the `loadSpriteSheet` function
+5. Register using `createSpriteSheetAnimationFn`
+
+## Best Practices
+
+1. **Always clean up after yourself**
+   - Remove any added filters
+   - Return to original properties
+
+2. **Be mindful of animation duration**
+   - Use `config.duration` to scale your animation timing
+   - Adjust for turbo mode automatically
+   
+3. **Stagger animations for multiple wins**
+   - Use the `index` parameter to add slight delays
+
+4. **Test different win combinations**
+   - Ensure animations look good for both single and multiple wins
+
+## Advanced Tips
+
+1. **Chaining Animations**
+   
+   ```javascript
+   // Create a sequence of different effects
+   tl.to(symbol, {...}, 0)          // Start together
+     .to(symbol.scale, {...}, 0.3)  // Start at 0.3 seconds
+     .to(symbol, {...}, 0.6);       // Start at 0.6 seconds
+   ```
+
+2. **Combining Different Animation Types**
+
+   ```javascript
+   // Mix property animations with filters
+   const glowFilter = new PIXI.GlowFilter();
+   symbol.addFilter(glowFilter);
+   
+   tl.to(symbol.scale, {...})  // Scale animation
+     .to(glowFilter, {...});   // Filter animation
+   ```
+
+3. **Interactive Animations**
+
+   Make animations that react to player interaction:
+   
+   ```javascript
+   // Register a click event
+   symbol.interactive = true;
+   symbol.on('pointerdown', () => {
+     // Trigger special animation on click
+   });
+   ```
+
+## Need Help?
+
+- Check the [PIXI.js documentation](https://pixijs.download/release/docs/index.html) for display object properties
+- See [GSAP documentation](https://greensock.com/docs/) for animation techniques
+- Look at the example animations in `src/features/AnimationDemo.js` </file_content>
+
+<file_content path="README.md">
+# Heavens Ten Deluxe - PixiJS Slot Machine
+
+This is a simple slot machine game built using HTML5 Canvas and the PixiJS rendering library.
+
+## Features
+
+*   5 Reels, 4 Rows
+*   Multiple Paylines
+*   Configurable Symbols and Payouts
+*   Reel Spinning Animation with Blur and Bounce
+*   Chained Reel Stops (Sequential)
+*   Win Evaluation and Line Drawing
+*   Winning Symbol Animations
+*   Autoplay Feature
+*   Turbo Mode
+*   Free Spins Bonus Round
+*   Particle Effects for Wins
+
+## Running the Game
+
+Simply open the `index.html` file in a modern web browser that supports ES Modules.
+
+No build step is required for the basic version.
+
+## Project Structure
+
+*   `index.html`: Main HTML file.
+*   `public/`: Static assets (images, audio - currently unused).
+*   `src/`: JavaScript source code and CSS.
+    *   `main.js`: Entry point.
+    *   `styles/`: CSS files.
+    *   `config/`: Game configuration data.
+    *   `core/`: Core game classes/modules.
+    *   `ui/`: User interface components and logic.
+    *   `features/`: Specific game features (Free Spins, Autoplay, etc.).
+    *   `utils/`: Utility functions.
+*   `package.json`: Project metadata.
+
+## Development (Optional)
+
+For a better development experience (live reload, bundling), consider using a tool like Vite:
+
+```bash
+# Navigate to the project directory
+cd heavens-ten-deluxe
+
+# Install Vite (if not already installed globally)
+npm install -g create-vite
+
+# Initialize Vite in the current project (choose Vanilla JS template)
+npm create vite@latest . -- --template vanilla
+
+# Install dependencies
+npm install
+
+# Run the development server
+npm run dev
+</file_content>
+
+<file_content path="package.json">
+{
+  "name": "heavens-ten-deluxe",
+  "version": "1.0.0",
+  "description": "PixiJS Slot Machine - Heavens Ten Deluxe",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "echo \"Open index.html in your browser to run the game.\"",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "snapshot": "./list_files.sh ./"
+  },
+  "keywords": [
+    "pixijs",
+    "slot",
+    "game",
+    "html5"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "gsap": "^3.12.7",
+    "pixi.js": "^8.9.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^6.0.2",
+    "vite": "^6.2.3"
+  }
+}
+</file_content>
+
+<file_content path="src/ui/InfoOverlay.js">
 // Placeholder import for game state
 import { state } from '../core/GameState.js';
 
@@ -47,7 +899,7 @@ export function updateInfoOverlay() {
 }
 </file_content>
 
-<file_content path="./src//ui/ButtonHandlers.js">
+<file_content path="src/ui/ButtonHandlers.js">
 /* global PIXI */ // Might be needed for flashing elements later
 import { BET_PER_LINE_LEVELS } from '../config/gameSettings.js';
 import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
@@ -190,7 +1042,7 @@ export function startSpin(isFreeSpin = false) {
 }
 </file_content>
 
-<file_content path="./src//ui/UIManager.js">
+<file_content path="src/ui/UIManager.js">
 import * as PIXI from 'pixi.js';
 import { state } from '../core/GameState.js'; // Assuming state access
 import { GAME_WIDTH, bottomUIY } from '../config/gameSettings.js';
@@ -467,13 +1319,37 @@ function stopGlowAnimation() {
 export function updateDisplays() {
     if (balanceText) balanceText.text = `€${state.balance.toFixed(2)}`;
     if (betText) betText.text = `€${state.currentTotalBet.toFixed(2)}`;
-    if (winText) {
-        // Hide static win text if rollup is active (or about to be)
-        const rollupVisible = winRollupText && winRollupText.visible;
+    
+    // Win text handling - ensure only one win display is visible at a time
+    if (winText && winRollupText) {
+        // Update the text content for both displays
         winText.text = `€${state.lastTotalWin.toFixed(2)}`;
-        // Only show static win if > 0 AND rollup is not visible
-        winText.visible = state.lastTotalWin > 0 && !rollupVisible;
+        
+        // PRIORITY LOGIC: Rollup takes absolute priority when visible
+        // When rollup is active (visible OR alpha > 0), always hide static win text
+        const rollupActive = winRollupText.visible || winRollupText.alpha > 0;
+        
+        // Set visibility with a safe check to ensure they're never both visible
+        if (rollupActive) {
+            winText.visible = false;
+            // Only log when state changes to avoid console spam
+            if (winText._lastVisible !== false) {
+                console.log(`Win Display: Hiding static text (rollup active)`);
+                winText._lastVisible = false;
+            }
+        } else {
+            // Only show winText if we have a win amount
+            const shouldShow = state.lastTotalWin > 0;
+            winText.visible = shouldShow;
+            
+            // Only log when state changes to avoid console spam
+            if (winText._lastVisible !== shouldShow) {
+                console.log(`Win Display: Static=${shouldShow}, amount=${state.lastTotalWin.toFixed(2)}`);
+                winText._lastVisible = shouldShow;
+            }
+        }
     }
+    
     // Update Info Overlay (DOM) - called separately by Game or state change listener
     // updateInfoOverlay();
 
@@ -555,7 +1431,7 @@ export function getWinRollupText() {
 }
 </file_content>
 
-<file_content path="./src//ui/DebugPanel.js">
+<file_content path="src/ui/DebugPanel.js">
 import * as PIXI from 'pixi.js';
 import { state, updateState } from '../core/GameState.js';
 
@@ -974,7 +1850,7 @@ function addBackgroundAdjustmentSection(debugPanel) {
     debugPanel.currentY += 30;
 } </file_content>
 
-<file_content path="./src//ui/ButtonFactory.js">
+<file_content path="src/ui/ButtonFactory.js">
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 
@@ -1544,7 +2420,7 @@ class Button extends PIXI.Container {
 }
 </file_content>
 
-<file_content path="./src//ui/Notifications.js">
+<file_content path="src/ui/Notifications.js">
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
@@ -1676,14 +2552,14 @@ export function showOverlayMessage(message, baseDuration, callback) {
 }
 </file_content>
 
-<file_content path="./src//Game.js">
+<file_content path="src/Game.js">
 import { setupCustomAnimations } from './features/AnimationDemo.js';
 
 // Add the following call after the game is initialized:
 // Find the game's initialization function/method and add this after other initialization code
 setupCustomAnimations().catch(err => console.error("Failed to setup custom animations:", err)); </file_content>
 
-<file_content path="./src//core/Reel.js">
+<file_content path="src/core/Reel.js">
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 import { SYMBOL_SIZE, SYMBOLS_PER_REEL_VISIBLE, REEL_WIDTH } from '../config/gameSettings.js';
@@ -2091,7 +2967,7 @@ export class Reel {
 }
 </file_content>
 
-<file_content path="./src//core/Game.js">
+<file_content path="src/core/Game.js">
 import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
@@ -2117,6 +2993,7 @@ import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManage
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
 import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
 import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
+import { gsap } from 'gsap'; // Import GSAP for animations
 
 
 // --- Module-level variables ---
@@ -2125,8 +3002,17 @@ let reels = [];
 let reelContainer, uiContainer, winLineGraphics, overlayContainer, particleContainer;
 let infoOverlayElement;
 
+// Free Spins UI Elements (moved from UIManager)
+let freeSpinsIndicator = null;
+let freeSpinsCountText = null;
+let freeSpinsTotalWinText = null;
+let freeSpinsGlow = null;
+
+
 // --- Game Class ---
 export class Game {
+    backgroundSprite = null; // Ensure no TS type annotation here
+
     constructor(canvasContainerId) {
         this.canvasContainer = document.getElementById(canvasContainerId);
         if (!this.canvasContainer) {
@@ -2144,7 +3030,7 @@ export class Game {
                 // @ts-ignore - Dynamically adding gameApp property
                 window.gameApp = this;
             }
-            
+
             // --- PixiJS App Setup ---
             app = new PIXI.Application();
             await app.init({
@@ -2167,17 +3053,17 @@ export class Game {
                 alias: def.id, // Use symbol ID as alias
                 src: `assets/images/${def.id}.png` // Construct path
             }));
-            
+
             // Add background image to assets
             symbolAssets.push({
                 alias: 'BG_IMAGE',
                 src: 'assets/images/background/bg.png'
             });
-            
+
             console.log("Loading symbol assets:", symbolAssets);
             await PIXI.Assets.load(symbolAssets);
             console.log("Symbol assets loaded.");
-            
+
             // Load button SVG assets
             console.log("Loading button assets...");
             await loadButtonAssets();
@@ -2188,14 +3074,14 @@ export class Game {
             // --- Create Main Containers ---
             // Create background layer first (lowest z-index)
             const backgroundLayer = new PIXI.Container();
-            
+
             // Create the background sprite
             const bgSprite = new PIXI.Sprite(PIXI.Assets.get('BG_IMAGE'));
-            
+
             // Position the background
             bgSprite.x = SETTINGS.GAME_WIDTH / 2 + SETTINGS.BG_OFFSET_X;
             bgSprite.y = SETTINGS.GAME_HEIGHT / 2 + SETTINGS.BG_OFFSET_Y;
-            
+
             // Scale based on the configured mode
             let scale = 1;
             if (SETTINGS.BG_SCALE_MODE === 'cover') {
@@ -2212,55 +3098,57 @@ export class Game {
                 // Exact mode: use the scale factor directly
                 scale = SETTINGS.BG_SCALE_FACTOR;
             }
-            
+
             // Center anchor and apply scale
             bgSprite.anchor.set(0.5);
             bgSprite.scale.set(scale);
-            
+
             // Ensure background doesn't interfere with game play
             bgSprite.eventMode = 'none';
-            
+
             // Add the background to its container
             backgroundLayer.addChild(bgSprite);
-            
+
             // Add background layer to stage
             if (!app?.stage) throw new Error("Pixi stage not available after init.");
             app.stage.addChild(backgroundLayer);
-            
+
             // Store reference to background sprite for adjustments
             this.backgroundSprite = bgSprite;
-            
+
             // Create reel container (middle z-index)
             reelContainer = new PIXI.Container();
             reelContainer.x = SETTINGS.reelAreaX;
             reelContainer.y = SETTINGS.reelAreaY;
-            
+
             // Add slight shadow to reels container for depth
             const reelShadow = new PIXI.Graphics()
                 .rect(0, 0, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
                 .fill({ color: 0x000000, alpha: 0.2 });
             reelContainer.addChild(reelShadow);
-            
+
             app.stage.addChild(reelContainer);
 
             uiContainer = new PIXI.Container();
-            app.stage.addChild(uiContainer); // Add UI container first? Or last? Check layering.
+            app.stage.addChild(uiContainer); // Add UI container
 
             winLineGraphics = new PIXI.Graphics();
             // Position set in initPaylineGraphics
             app.stage.addChild(winLineGraphics);
 
-            overlayContainer = new PIXI.Container(); // For win messages, etc.
-            app.stage.addChild(overlayContainer);
-
+            // Create overlay and particle containers but add them LATER
+            overlayContainer = new PIXI.Container(); // For win messages, FS indicator, etc.
             particleContainer = new PIXI.Container(); // For particle effects
-            app.stage.addChild(particleContainer);
 
             // --- Initialize Feature/UI Modules with Containers ---
             initPaylineGraphics(winLineGraphics);
             initNotifications(overlayContainer); // Pass overlay container
             initAnimations(overlayContainer, particleContainer); // Pass relevant containers
             initTurboMode(reels); // Pass reels array reference
+
+            // --- Create Free Spins Indicator (moved from UIManager) ---
+            // Add it to the overlayContainer so it's on top
+            createFreeSpinsIndicator(overlayContainer);
 
             // --- Create Reels ---
             for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
@@ -2279,8 +3167,14 @@ export class Game {
                app.stage.addChild(reelMask); // Mask needs to be added to stage
             }
 
-            // --- Setup UI ---
+            // --- Setup UI (adds title text directly to stage) ---
             this.setupUI(); // Call UI setup method
+
+            // --- Add Overlay and Particle Containers AFTER UI Setup ---
+            // This ensures they render on top of the title text
+            app.stage.addChild(overlayContainer);
+            app.stage.addChild(particleContainer);
+
 
             // --- Initialize Info Overlay (DOM) ---
             infoOverlayElement = document.getElementById('infoOverlay'); // Get DOM element
@@ -2327,14 +3221,14 @@ export class Game {
              stroke: { color: "#8B0000", width: 3 },
              dropShadow: { color: "#000000", distance: 4, blur: 4, angle: Math.PI / 4, alpha: 0.7 }
             };
-        const titleText = new PIXI.Text({ text: "MAD SCIENTIST", style: titleStyle });
-        titleText.anchor.set(0.5, 0);
-        titleText.x = SETTINGS.GAME_WIDTH / 2;
-        titleText.y = 15;
-        // Ensure app and stage exist before adding title
-        if (app && app.stage) { // More explicit check
-            app.stage.addChild(titleText); // Add title directly to stage
-        }
+        // const titleText = new PIXI.Text({ text: "MAD SCIENTIST", style: titleStyle });
+        // titleText.anchor.set(0.5, 0);
+        // titleText.x = SETTINGS.GAME_WIDTH / 2;
+        // titleText.y = 15;
+        // // Ensure app and stage exist before adding title
+        // if (app && app.stage) { // More explicit check
+        //     app.stage.addChild(titleText); // Add title directly to stage
+        // }
 
         // --- UI Panel ---
         const panelHeight = 100;
@@ -2380,25 +3274,41 @@ export class Game {
         let anyReelMoving = false;
 
         try {
+            // console.log(`[Trace] Game.update start. Delta: ${delta.toFixed(2)}ms, Now: ${now.toFixed(0)}ms`); // Keep this commented for now to reduce noise
+
+            // console.log("[Trace] Updating reels..."); // Log before reel update loop
             // Update all reels
-            reels.forEach(reel => {
+            reels.forEach((reel, index) => {
+                // console.log(`[Trace] Updating reel ${index}...`); // Optional: Log each reel update start
                 const isActive = reel.update(delta, now);
                 if (isActive) {
                     anyReelMoving = true;
                 }
+                // console.log(`[Trace] Reel ${index} updated. isActive: ${isActive}`); // Optional: Log each reel update end
             });
+            // console.log(`[Trace] Reels updated. anyReelMoving: ${anyReelMoving}`); // Log after reel update loop
 
+            // console.log("[Trace] Updating particles..."); // Log before particle update
             // Update particle animations
-            updateParticles(delta);
+            updateParticles(delta); // Restore this call
+            // console.log("[Trace] Particles updated."); // Log after particle update
+
+            // console.log("[Trace] Updating FS indicator..."); // Log before indicator update
+            // Update Free Spins Indicator (moved from UIManager)
+            updateFreeSpinsIndicator();
+            // console.log("[Trace] FS indicator updated."); // Log after indicator update
 
             // Update button states in improved UI if state changes
            // updateButtonStates();
 
-            // Check if the spin has just ended
-            if (state.isSpinning && !anyReelMoving) {
+            // console.log(`[Trace] Checking spin end condition: isSpinning=${state.isSpinning}, anyReelMoving=${anyReelMoving}, isTransitioning=${state.isTransitioning}`); // Log before spin end check
+            // Check if the spin has just ended AND we are not already handling a previous spin end
+            if (state.isSpinning && !anyReelMoving && !state.isTransitioning) {
+                // console.log("[Trace] Spin end condition met. Calling handleSpinEnd..."); // Log handleSpinEnd call
                 this.handleSpinEnd();
             }
-            
+            // console.log("[Trace] Game.update end."); // Log end of try block
+
         } catch (err) {
             console.error("Error in game loop:", err);
             // Ensure app and ticker exist before stopping
@@ -2438,24 +3348,24 @@ export class Game {
     startSpinLoop() {
         // Schedule each reel to stop after a delay
         let winPattern = null;
-        
+
         // If force win is enabled, generate a winning pattern before starting the spins
         if (state.isDebugMode && state.forceWin) {
           console.log("Debug mode active: Forcing a win pattern");
           winPattern = this.generateRandomWinPattern();
           console.log("Generated win pattern:", winPattern);
         }
-        
+
         for (let i = 0; i < reels.length; i++) {
           const reel = reels[i];
-          
+
           // Start spinning the reel
           reel.startSpinning();
-          
+
           // Schedule when to stop the reel
           // Use the animation settings constants
           const stopDelay = baseSpinDuration + (i * REEL_STOP_STAGGER);
-          
+
           setTimeout(() => {
             // If in debug mode and force win is enabled, use the predetermined winning pattern
             if (state.isDebugMode && state.forceWin && winPattern) {
@@ -2470,7 +3380,7 @@ export class Game {
           }, stopDelay);
         }
     }
-    
+
     /**
      * Generate a random winning pattern
      * @returns {{symbol: string, positions: number[]}} A winning pattern with symbol and positions
@@ -2478,16 +3388,16 @@ export class Game {
     generateRandomWinPattern() {
         // Use only high-value symbols for testing
         const highValueSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
-        
+
         // Choose a random high-value symbol
         const winSymbol = highValueSymbols[Math.floor(Math.random() * highValueSymbols.length)];
-        
+
         // For simplicity, always use the middle row (index 1) for our winning line
         const rowIndex = 1;
-        
+
         // Determine win length - favor longer wins for testing
         const winLength = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5
-        
+
         // Generate positions array (showing which row the symbol should appear on each reel)
         const positions = [];
         for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
@@ -2499,39 +3409,40 @@ export class Game {
             positions.push(Math.floor(Math.random() * SETTINGS.SYMBOLS_PER_REEL_VISIBLE));
           }
         }
-        
+
         return {
           symbol: winSymbol,
           positions: positions
         };
     }
-    
+
     /**
      * Find the stop index that will show the target symbol in the target position
-     * @param {Object} reel - The reel object
+     * @param {Reel} reel - The reel object
      * @param {string} targetSymbol - The symbol we want to show
      * @param {number} targetPosition - The position where we want the symbol (0=top, 1=middle, 2=bottom)
      * @returns {number} The stop index that will show the target symbol in position
      */
     findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
         // Get the current sequence of symbols on the reel
-        const symbols = reel.symbolsSequence;
-        
+        // Assuming reel.strip holds the symbol IDs
+        const symbols = reel.strip;
+        if (!symbols) return Math.floor(Math.random() * (reel.strip?.length || 1)); // Fallback
+
         // Try to find the target symbol
         for (let i = 0; i < symbols.length; i++) {
-          if (symbols[i].name === targetSymbol) {
+          if (symbols[i] === targetSymbol) {
             // Calculate the stop index that would place this symbol at the target position
             // The stop index must be adjusted for the target position
-            let stopIndex = (i - targetPosition) % symbols.length;
-            if (stopIndex < 0) stopIndex += symbols.length;
-            
+            let stopIndex = (i - targetPosition + symbols.length) % symbols.length; // Ensure positive result
+
             return stopIndex;
           }
         }
-        
+
         // Fallback: if the symbol isn't found, use a random stop position
-        console.log(`Could not find symbol ${targetSymbol} on reel - using random position`);
-        return Math.floor(Math.random() * reel.totalSymbols);
+        console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
+        return Math.floor(Math.random() * symbols.length);
     }
 
     /**
@@ -2542,25 +3453,208 @@ export class Game {
      */
     adjustBackground(offsetX, offsetY, scale) {
         if (!this.backgroundSprite) return;
-        
+
         // Update position
         this.backgroundSprite.x = SETTINGS.GAME_WIDTH / 2 + offsetX;
         this.backgroundSprite.y = SETTINGS.GAME_HEIGHT / 2 + offsetY;
-        
+
         // Update scale with current factor
-        const baseScale = SETTINGS.BG_SCALE_MODE === 'cover' 
-            ? Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width, 
+        const baseScale = SETTINGS.BG_SCALE_MODE === 'cover'
+            ? Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width,
                       SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
             : SETTINGS.BG_SCALE_MODE === 'contain'
                 ? Math.min(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width,
                           SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
                 : 1;
-                
+
         this.backgroundSprite.scale.set(baseScale * scale);
-        
+
         console.log(`Background adjusted: offset(${offsetX}, ${offsetY}), scale: ${scale}`);
     }
 }
+
+
+// --- Free Spins UI Functions (Moved from UIManager) ---
+
+/**
+ * Creates the free spins indicator overlay and adds it to the specified container.
+ * @param {PIXI.Container} container - The container to add the indicator to (e.g., overlayContainer).
+ */
+function createFreeSpinsIndicator(container) {
+    // Create container for free spins UI elements
+    freeSpinsIndicator = new PIXI.Container();
+    freeSpinsIndicator.visible = false; // Hide initially
+
+    // Position at the top center of the screen
+    freeSpinsIndicator.x = SETTINGS.GAME_WIDTH / 2;
+    freeSpinsIndicator.y = 60; // Adjusted Y position to be below title
+
+    // Create background panel
+    const panel = new PIXI.Graphics();
+    panel.beginFill(0x9932CC, 0.85); // Deep purple with transparency
+    panel.lineStyle(3, 0xFFD700, 1); // Gold border
+    panel.drawRoundedRect(-150, 0, 300, 80, 10); // Centered rectangle
+    panel.endFill();
+
+    // Add glow filter
+    freeSpinsGlow = new PIXI.Graphics();
+    freeSpinsGlow.beginFill(0xFFD700, 0.3);
+    freeSpinsGlow.drawRoundedRect(-155, -5, 310, 90, 12);
+    freeSpinsGlow.endFill();
+    freeSpinsGlow.alpha = 0;
+
+    // Create title text
+    const titleStyle = new PIXI.TextStyle({
+        fontFamily: 'Impact, Charcoal, sans-serif',
+        fontSize: 24,
+        fontWeight: 'bold',
+        fill: 0xFFD700, // Single gold color as hex number
+        stroke: { color: 0x000000, width: 3 },
+        dropShadow: { color: 0x000000, alpha: 0.5, blur: 2, distance: 2 },
+        align: 'center'
+    });
+
+    const title = new PIXI.Text("FREE SPINS", titleStyle);
+    title.anchor.set(0.5, 0);
+    title.y = 10;
+
+    // Create free spins count text
+    const countStyle = new PIXI.TextStyle({
+        fontFamily: '"Arial Black", Gadget, sans-serif',
+        fontSize: 18,
+        fill: 0xFFFFFF, // Use hex number instead of string
+        fontWeight: 'bold',
+        align: 'center'
+    });
+
+    freeSpinsCountText = new PIXI.Text("Remaining: 10", countStyle);
+    freeSpinsCountText.anchor.set(0.5, 0);
+    freeSpinsCountText.y = 45;
+
+    // Create total win text
+    freeSpinsTotalWinText = new PIXI.Text("Total Win: €0.00", countStyle);
+    freeSpinsTotalWinText.anchor.set(0.5, 0);
+    freeSpinsTotalWinText.y = 45;
+    freeSpinsTotalWinText.x = 180; // Position to the right of spins count
+
+    // Add all elements to container
+    freeSpinsIndicator.addChild(freeSpinsGlow);
+    freeSpinsIndicator.addChild(panel);
+    freeSpinsIndicator.addChild(title);
+    freeSpinsIndicator.addChild(freeSpinsCountText);
+    freeSpinsIndicator.addChild(freeSpinsTotalWinText);
+
+    // Add to the specified container (should be overlayContainer)
+    container.addChild(freeSpinsIndicator);
+}
+
+/**
+ * Updates the free spins indicator with current state. Called in Game.update()
+ */
+function updateFreeSpinsIndicator() {
+    // Only log if something interesting might happen (entering/exiting FS or indicator visible)
+    if (state.isInFreeSpins || freeSpinsIndicator?.visible) {
+        console.log(`[Trace] updateFreeSpinsIndicator called. isInFreeSpins: ${state.isInFreeSpins}, indicator visible: ${freeSpinsIndicator?.visible}`);
+    }
+
+    if (!freeSpinsIndicator || !freeSpinsCountText || !freeSpinsTotalWinText) {
+        // Log this specific condition only once if elements are missing, maybe during init?
+        // Or keep logging if it's unexpected during gameplay. For now, let's comment it out to avoid potential loops if elements become null.
+        // console.log("[Trace] updateFreeSpinsIndicator returning early - elements missing.");
+        return;
+    }
+
+    // Show/hide based on free spins state
+    const inFreeSpin = state.isInFreeSpins;
+    if (inFreeSpin) {
+        // Log only when actively updating within Free Spins
+        // console.log("[Trace] In Free Spins - Updating indicator text.");
+
+        // Update text content
+        freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
+        freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+
+        // Show indicator if not already visible
+        if (!freeSpinsIndicator.visible) {
+            console.log("[Trace] Indicator not visible - Animating in."); // Keep this log as it's a state change event
+            freeSpinsIndicator.visible = true;
+            freeSpinsIndicator.alpha = 0;
+            freeSpinsIndicator.y = -50; // Start above screen
+
+            // Animate it in
+            gsap.to(freeSpinsIndicator, {
+                y: 60, // Target Y position (below title)
+                alpha: 1,
+                duration: 0.5,
+                ease: "back.out(1.7)"
+            });
+
+            // Start pulsing glow animation
+            startGlowAnimation();
+        }
+
+        // Flash when spins count changes (using a temporary property to track last count)
+        // Only flash if the count has actually changed and is defined
+        if (freeSpinsIndicator._lastCount !== undefined && freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
+            gsap.to(freeSpinsCountText.scale, {
+                x: 1.2, y: 1.2,
+                duration: 0.2,
+                repeat: 1,
+                yoyo: true,
+                ease: "power1.inOut"
+            });
+        }
+
+        // Store current count for comparison on next update
+        freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
+
+    } else if (freeSpinsIndicator.visible) {
+        console.log("[Trace] Not in Free Spins & indicator visible - Animating out."); // Keep this log as it's a state change event
+        // Animate it out
+        gsap.to(freeSpinsIndicator, {
+            y: -50,
+            alpha: 0,
+            duration: 0.5,
+            ease: "back.in(1.7)",
+            onComplete: () => {
+                freeSpinsIndicator.visible = false;
+                stopGlowAnimation();
+                delete freeSpinsIndicator._lastCount; // Clean up temporary property
+            }
+        });
+    }
+}
+
+/**
+ * Starts pulsing glow animation for free spins indicator
+ */
+function startGlowAnimation() {
+    if (!freeSpinsGlow) return;
+
+    // Kill any existing animations
+    gsap.killTweensOf(freeSpinsGlow);
+
+    // Create pulsing animation
+    gsap.to(freeSpinsGlow, {
+        alpha: 0.7,
+        duration: 1,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut"
+    });
+}
+
+/**
+ * Stops glow animation for free spins indicator
+ */
+function stopGlowAnimation() {
+    if (!freeSpinsGlow) return;
+
+    // Kill animation and reset
+    gsap.killTweensOf(freeSpinsGlow);
+    freeSpinsGlow.alpha = 0;
+}
+
 
 // --- Global Functions used by other modules ---
 
@@ -2586,7 +3680,7 @@ export function startSpinLoop(isTurbo) {
     // Start all reels spinning and schedule their stops
     reels.forEach((reel, i) => {
         reel.startSpinning(isTurbo); // Start spinning visually
-        
+
         // Apply the winning pattern if debug mode is enabled
         if (winPattern) {
             reel.stopIndex = winPattern.stopIndices[i];
@@ -2610,6 +3704,11 @@ export function startSpinLoop(isTurbo) {
     updateState({ targetStoppingReelIndex: -1 });
 }
 
+// Note: generateRandomWinPattern and findStopIndexForSymbol were previously outside the class,
+// but they are called by startSpinLoop which is inside the class.
+// They should ideally be methods of the Game class or utility functions.
+// For now, keeping them as module-level functions as they were, but this might need refactoring.
+
 /**
  * Generates a random winning pattern for the reels
  * @returns {Object} Object containing symbol, line number, and stop indices
@@ -2617,27 +3716,27 @@ export function startSpinLoop(isTurbo) {
 function generateRandomWinPattern() {
     // Use high-value symbols for better wins
     const winningSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
-    
+
     // Choose a random symbol
     const symbolIndex = Math.floor(Math.random() * winningSymbols.length);
     const symbol = winningSymbols[symbolIndex];
-    
+
     // For simplicity and reliability, use the middle row (line index 1)
     // This is the most reliable way to create wins
     const paylineIndex = 1;
-    
+
     // Choose a random win length (3, 4, or 5)
     // Bias toward 5 to get bigger wins for testing
     const winLength = Math.random() < 0.5 ? 5 : (Math.random() < 0.7 ? 4 : 3);
-    
+
     console.log(`Debug - Creating win pattern with ${symbol} for ${winLength} reels on middle row`);
-    
+
     // For each reel, find positions where our symbol can appear
     const stopIndices = [];
-    
+
     for (let i = 0; i < REEL_STRIPS.length; i++) {
         const strip = REEL_STRIPS[i];
-        
+
         // For reels that should show the winning symbol
         if (i < winLength) {
             // Find all positions of the target symbol
@@ -2647,26 +3746,26 @@ function generateRandomWinPattern() {
                     symbolPositions.push(j);
                 }
             }
-            
+
             // If we couldn't find the symbol on this reel, look for any high value symbol
             if (symbolPositions.length === 0) {
                 // Use a fallback symbol from our list
                 for (const fallbackSymbol of winningSymbols) {
                     if (fallbackSymbol === symbol) continue; // Skip the one we already tried
-                    
+
                     // Check if this fallback symbol exists on the reel
                     for (let j = 0; j < strip.length; j++) {
                         if (strip[j] === fallbackSymbol) {
                             symbolPositions.push(j);
                         }
                     }
-                    
+
                     if (symbolPositions.length > 0) {
                         console.log(`Debug - Using fallback symbol ${fallbackSymbol} on reel ${i}`);
                         break; // Found a fallback symbol
                     }
                 }
-                
+
                 // Last resort fallback
                 if (symbolPositions.length === 0) {
                     const randomPos = Math.floor(Math.random() * strip.length);
@@ -2674,34 +3773,63 @@ function generateRandomWinPattern() {
                     console.log(`Debug - Using random position on reel ${i} as last resort`);
                 }
             }
-            
+
             // Choose random position from our found positions
             const randomPosition = symbolPositions[Math.floor(Math.random() * symbolPositions.length)];
-            
+
             // For middle row, offset is 1
             const offset = 1;
-            
+
             // Calculate the stop index that places the symbol in the middle row
             // We need to "back up" the strip by the offset to get the symbol at the right row
             const stopIndex = (randomPosition - offset + strip.length) % strip.length;
             stopIndices.push(stopIndex);
-        } 
+        }
         else {
             // For reels beyond our win length, place random symbols
             const stopIndex = Math.floor(Math.random() * strip.length);
             stopIndices.push(stopIndex);
         }
     }
-    
+
     return {
         symbol: symbol,
         line: paylineIndex,
         stopIndices: stopIndices
     };
 }
+/**
+ * Find the stop index that will show the target symbol in the target position
+ * @param {Reel} reel - The reel object
+ * @param {string} targetSymbol - The symbol we want to show
+ * @param {number} targetPosition - The position where we want the symbol (0=top, 1=middle, 2=bottom)
+ * @returns {number} The stop index that will show the target symbol in position
+ */
+function findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
+    // Get the current sequence of symbols on the reel
+    // Assuming reel.strip holds the symbol IDs
+    const symbols = reel.strip;
+    if (!symbols) return Math.floor(Math.random() * (reel.strip?.length || 1)); // Fallback
+
+    // Try to find the target symbol
+    for (let i = 0; i < symbols.length; i++) {
+      if (symbols[i] === targetSymbol) {
+        // Calculate the stop index that would place this symbol at the target position
+        // The stop index must be adjusted for the target position
+        let stopIndex = (i - targetPosition + symbols.length) % symbols.length; // Ensure positive result
+
+        return stopIndex;
+      }
+    }
+
+    // Fallback: if the symbol isn't found, use a random stop position
+    console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
+    return Math.floor(Math.random() * symbols.length);
+}
+
 </file_content>
 
-<file_content path="./src//core/Symbol.js">
+<file_content path="src/core/Symbol.js">
 import * as PIXI from 'pixi.js';
 // Removed SYMBOL_DEFINITIONS import for now, will be used later for texture mapping
 import { SYMBOL_SIZE, REEL_WIDTH } from '../config/gameSettings.js';
@@ -2847,7 +3975,7 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
 }
 </file_content>
 
-<file_content path="./src//core/GameState.js">
+<file_content path="src/core/GameState.js">
 import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS } from '../config/gameSettings.js'; // Import NUM_REELS
 import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
 
@@ -2933,7 +4061,7 @@ export function updateState(updates) {
 // ... etc.
 </file_content>
 
-<file_content path="./src//config/gameSettings.js">
+<file_content path="src/config/gameSettings.js">
 export const GAME_WIDTH = 1000;
 export const GAME_HEIGHT = 700;
 export const NUM_REELS = 5;
@@ -2962,7 +4090,7 @@ export const BG_SCALE_MODE = 'cover'; // 'cover', 'contain', or 'exact'
 export const BG_SCALE_FACTOR = 1.02; // Slight scale up to ensure full coverage
 </file_content>
 
-<file_content path="./src//config/paylines.js">
+<file_content path="src/config/paylines.js">
 export const PAYLINES = [
   [1, 1, 1, 1, 1], // Line 1 (Middle row)
   [0, 0, 0, 0, 0], // Line 2 (Top row)
@@ -2985,7 +4113,7 @@ export const PAYLINES = [
 export const NUM_PAYLINES = PAYLINES.length;
 </file_content>
 
-<file_content path="./src//config/symbolDefinitions.js">
+<file_content path="src/config/symbolDefinitions.js">
 export const SYMBOL_DEFINITIONS = [
   {
     id: "FACE1",
@@ -3044,7 +4172,7 @@ export const PAYTABLE = SYMBOL_DEFINITIONS.reduce((table, sym) => {
 }, {});
 </file_content>
 
-<file_content path="./src//config/animationSettings.js">
+<file_content path="src/config/animationSettings.js">
 // Base settings (can be modified by Turbo Mode)
 export let spinAcceleration = 0.1; // Increased from 0.05
 export let maxSpinSpeed = 1.4; // Increased from 1.0
@@ -3077,7 +4205,7 @@ export let skipBounceInTurbo = true; // Configurable turbo behavior (Currently u
 // Removed updateAnimationSettings function - settings are applied directly based on state.isTurboMode
 </file_content>
 
-<file_content path="./src//config/reelStrips.js">
+<file_content path="src/config/reelStrips.js">
 export const REEL_STRIPS = [
   [
     "FACE1",
@@ -3172,7 +4300,7 @@ export const REEL_STRIPS = [
 ];
 </file_content>
 
-<file_content path="./src//features/FreeSpins.js">
+<file_content path="src/features/FreeSpins.js">
 import { FREE_SPINS_AWARDED, freeSpinsBgColor, normalBgColor } from '../config/gameSettings.js';
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { state, updateState } from '../core/GameState.js'; // Assuming state management
@@ -3205,7 +4333,7 @@ export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
     app = pixiApp;
     reelsContainer = reelsContainerRef;
     reels = reelsRef;
-    
+
     // Create container for special animations
     specialAnimationsContainer = new PIXI.Container();
     app.stage.addChild(specialAnimationsContainer);
@@ -3217,41 +4345,63 @@ export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
  * @param {number} spinsAwarded - Number of free spins to award (defaults to FREE_SPINS_AWARDED)
  */
 export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
-    console.log(`Entering Free Spins mode with ${spinsAwarded} spins`);
-    
-    freeSpinsRemaining = spinsAwarded;
-    freeSpinsTotalWin = 0;
-    
-    // Update game state
-    updateState({ 
-        isInFreeSpins: true, 
-        freeSpinsRemaining: freeSpinsRemaining,
-        totalFreeSpinsWin: 0
-    });
-    
-    // Change background color with animation
-    if (app && app.renderer) {
-        gsap.to(app.renderer, {
-            duration: 1.5,
-            backgroundColor: freeSpinsBgColor,
-            ease: "power2.inOut"
+    const isRetrigger = state.isInFreeSpins;
+    let message = "";
+    console.log("!!! Entering Free Spins - State:", state.isInFreeSpins);
+
+    if (isRetrigger) {
+        console.log(`Retriggering Free Spins! Adding ${spinsAwarded} more spins.`);
+        freeSpinsRemaining = state.freeSpinsRemaining + spinsAwarded;
+        // Keep existing total win
+        updateState({
+            freeSpinsRemaining: freeSpinsRemaining
+        });
+        message = `${spinsAwarded} EXTRA FREE SPINS!`;
+
+        // Show retrigger message immediately and update display
+        showOverlayMessage(message, 2500, () => {
+            updateDisplays(); // Update the counter immediately
+            // No need to start spin here, it continues from handleFreeSpinEnd
+        });
+
+    } else {
+        console.log(`Entering Free Spins mode with ${spinsAwarded} spins`);
+        freeSpinsRemaining = spinsAwarded;
+        freeSpinsTotalWin = 0; // Reset total win only on initial entry
+
+        // Update game state for initial entry
+        console.log("[StateChange] Setting isInFreeSpins = true in enterFreeSpins"); // Log state change
+        updateState({
+            isInFreeSpins: true,
+            freeSpinsRemaining: freeSpinsRemaining,
+            totalFreeSpinsWin: 0
+        });
+        message = `${spinsAwarded} FREE SPINS AWARDED!`;
+
+        // Change background color with animation only on initial entry
+        if (app && app.renderer) {
+            gsap.to(app.renderer, {
+                duration: 1.5,
+                backgroundColor: freeSpinsBgColor,
+                ease: "power2.inOut"
+            });
+        } // Corrected closing brace
+
+        // Play entry animation and show message only on initial entry
+        playFreeSpinsEntryAnimation(() => {
+            // Callback after animation completes
+            showOverlayMessage(message, 3000, () => {
+                // Update UI elements
+                updateDisplays();
+                // Disable regular buttons since we're in auto mode
+                setButtonsEnabled(false);
+                // Start the first free spin automatically after the message
+                setTimeout(() => {
+                    startFreeSpin();
+                }, 500);
+            });
         });
     }
-    
-    // Play entry animation and show message
-    playFreeSpinsEntryAnimation(() => {
-        // Callback after animation completes
-        showOverlayMessage(`${spinsAwarded} FREE SPINS AWARDED!`, 3000, () => {
-            // Update UI elements
-            updateDisplays();
-            // Disable regular buttons since we're in auto mode
-            setButtonsEnabled(false);
-            // Start the first free spin automatically after the message
-            setTimeout(() => {
-                startFreeSpin();
-            }, 500);
-        });
-    });
 }
 
 /**
@@ -3261,12 +4411,12 @@ export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
 function playFreeSpinsEntryAnimation(onComplete = () => {}) {
     updateState({ isTransitioning: true }); // Prevent actions during transition
     setButtonsEnabled(false); // Disable controls during animation
-    
+
     // Create animation elements if container exists
     if (specialAnimationsContainer && app) {
         // Clear previous animations
         specialAnimationsContainer.removeChildren();
-        
+
         // Create text styles
         const titleStyle = new PIXI.TextStyle({
             fontFamily: 'Impact, Charcoal, sans-serif',
@@ -3277,7 +4427,7 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
             dropShadow: { color: 0x000000, alpha: 0.7, blur: 5, distance: 3 },
             align: 'center'
         });
-        
+
         // Create title text
         const title = new PIXI.Text("FREE SPINS", titleStyle);
         title.anchor.set(0.5);
@@ -3285,10 +4435,10 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
         title.y = app.screen.height / 2;
         title.alpha = 0;
         title.scale.set(0.5);
-        
+
         // Add to container
         specialAnimationsContainer.addChild(title);
-        
+
         // Add shine effect
         const shine = new PIXI.Graphics();
         shine.beginFill(0xFFFFFF);
@@ -3300,16 +4450,18 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
         shine.y = app.screen.height / 2;
         shine.visible = false;
         specialAnimationsContainer.addChild(shine);
-        
+
         // Animation sequence
         const tl = gsap.timeline({
             onComplete: () => {
-                // Clean up and call the completion callback
+                // Clean up animation elements
                 specialAnimationsContainer.removeChildren();
-                onComplete(); // Will use empty function if not provided
+                // Reset transitioning state BEFORE calling the next step
+                updateState({ isTransitioning: false });
+                onComplete(); // Call the original callback (which shows the message)
             }
         });
-        
+
         // Zoom in animation with bounce
         tl.to(title, {
             alpha: 1,
@@ -3317,7 +4469,7 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
             duration: 0.5,
             ease: "back.out(1.7)"
         });
-        
+
         // Add shine sweep effect
         tl.to(shine, {
             x: app.screen.width + 100,
@@ -3325,7 +4477,7 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
             onStart: () => { shine.visible = true; },
             onComplete: () => { shine.visible = false; }
         }, "-=0.2");
-        
+
         // Shrink and fade out
         tl.to(title, {
             scale: 0.8,
@@ -3352,35 +4504,35 @@ function startFreeSpin() {
         isSpinning: state.isSpinning,
         isTransitioning: state.isTransitioning
     });
-    
+
     if (!state.isInFreeSpins) {
         console.error("Cannot start free spin: Not in free spins mode");
         return;
     }
-    
+
     if (state.freeSpinsRemaining <= 0) {
         console.error("Cannot start free spin: No free spins remaining");
         return;
     }
-    
+
     if (state.isSpinning) {
         console.error("Cannot start free spin: Already spinning");
         return;
     }
-    
+
     if (state.isTransitioning) {
         console.error("Cannot start free spin: Game is in transition");
         return;
     }
-    
+
     // Update UI to reflect current free spins state
     updateDisplays();
-    
+
     // Ensure buttons remain disabled during free spins
     setButtonsEnabled(false);
-    
+
     console.log("Starting free spin #" + (FREE_SPINS_AWARDED - state.freeSpinsRemaining + 1));
-    
+
     // Call the main startSpin function, flagging it as a free spin
     startSpin(true);
 }
@@ -3398,7 +4550,7 @@ export function exitFreeSpins() {
     // Animate background color back to normal
     if (app.renderer && app.renderer.background) {
         const originalColor = app.renderer.background.color || freeSpinsBgColor;
-        
+
         // Animate background color change
         const colorObj = { value: originalColor };
         gsap.to(colorObj, {
@@ -3411,24 +4563,25 @@ export function exitFreeSpins() {
     }
 
     // Show summary message
-    const winText = state.totalFreeSpinsWin > 0 ? 
-        `FREE SPINS COMPLETE\nTOTAL WIN:\n€${state.totalFreeSpinsWin.toFixed(2)}` : 
+    const winText = state.totalFreeSpinsWin > 0 ?
+        `FREE SPINS COMPLETE\nTOTAL WIN:\n€${state.totalFreeSpinsWin.toFixed(2)}` :
         `FREE SPINS COMPLETE\nBETTER LUCK NEXT TIME!`;
-    
+
     showOverlayMessage(
         winText,
         state.totalFreeSpinsWin > 0 ? 3000 : 2000, // Longer display for big wins
         () => {
             // Reset state AFTER the message
+            console.log("[StateChange] Setting isInFreeSpins = false in exitFreeSpins callback"); // Log state change
             updateState({
                 isInFreeSpins: false,
                 freeSpinsRemaining: 0,
                 isTransitioning: false,
             });
-            
+
             // Update UI to remove free spins indicators
             updateDisplays();
-            
+
             // Re-enable controls
             setButtonsEnabled(true);
         }
@@ -3439,32 +4592,32 @@ export function exitFreeSpins() {
  * Handles the logic after a free spin completes.
  * Updates total win, decrements remaining spins, and decides whether to start next spin or exit.
  */
-export function handleFreeSpinEnd() {
+export function handleFreeSpinEnd() { // Ensure this is exported
     console.log("handleFreeSpinEnd called with state:", {
         isInFreeSpins: state.isInFreeSpins,
         freeSpinsRemaining: state.freeSpinsRemaining,
         lastTotalWin: state.lastTotalWin
     });
-    
+
     if (!state.isInFreeSpins) {
         console.error("handleFreeSpinEnd: Not in free spins mode");
         return;
     }
 
     console.log(`Free spin completed. Spins remaining: ${state.freeSpinsRemaining - 1}`);
-    
+
     // Apply multiplier to the win and add to total
     const multipliedWin = state.lastTotalWin * FREE_SPINS_MULTIPLIER;
     const totalWin = state.totalFreeSpinsWin + multipliedWin;
-    
+
     console.log(`Win: ${state.lastTotalWin} x ${FREE_SPINS_MULTIPLIER} = ${multipliedWin}, Total: ${totalWin}`);
-    
+
     // Update state with multiplied win
-    updateState({ 
+    updateState({
         totalFreeSpinsWin: totalWin,
-        freeSpinsRemaining: state.freeSpinsRemaining - 1 
+        freeSpinsRemaining: state.freeSpinsRemaining - 1
     });
-    
+
     // Update UI to show current free spins state
     updateDisplays();
 
@@ -3473,10 +4626,10 @@ export function handleFreeSpinEnd() {
     updateState({ isTransitioning: true });
 
     console.log(`Scheduling next action in ${delay}ms...`);
-    
+
     setTimeout(() => {
         updateState({ isTransitioning: false });
-        
+
         if (state.freeSpinsRemaining > 0) {
             console.log(`Starting next free spin. Remaining: ${state.freeSpinsRemaining}`);
             startFreeSpin(); // Start the next free spin
@@ -3496,7 +4649,7 @@ export function getFreeSpinsMultiplier() {
 }
 </file_content>
 
-<file_content path="./src//features/TurboMode.js">
+<file_content path="src/features/TurboMode.js">
 import { skipBounceInTurbo } from '../config/animationSettings.js'; // Removed updateAnimationSettings import
 import { state } from '../core/GameState.js'; // Assuming state access
 import { updateTurboButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
@@ -3540,7 +4693,7 @@ export function applyTurboSettings(isTurbo) {
 // and then calls the UIManager's updateTurboButtonState.
 </file_content>
 
-<file_content path="./src//features/WinEvaluation.js">
+<file_content path="src/features/WinEvaluation.js">
 import { PAYLINES, NUM_PAYLINES } from '../config/paylines.js';
 import { PAYTABLE } from '../config/symbolDefinitions.js';
 import {
@@ -3671,35 +4824,41 @@ export function evaluateWin() {
             updateState({ balance: state.balance + calculatedTotalWin });
         }
         console.log(`Win: €${calculatedTotalWin.toFixed(2)}`);
-        updateDisplays(); // Update balance/win text
-        // flashElement(winText, 0xffff00, 200, 3); // Needs UIManager reference to winText
-        drawWinLines(calculatedWinningLines); // Pass winning lines info
-        playWinAnimations(calculatedTotalWin, state.currentTotalBet); // Pass win and bet for threshold checks
         
-        // Collect all unique symbols to animate
-        const allSymbolsToAnimate = [];
-        const seenSymbols = new Set();
+        // IMPORTANT: Order of operations
+        // 1. Draw win lines first
+        drawWinLines(calculatedWinningLines);
         
-        calculatedWinningLines.forEach(info => {
-            // Check the symbols array in the winInfo object passed to animation
-            if (info.symbols && info.symbols.length > 0) {
-                // Add only unique symbols to the animation array
-                info.symbols.forEach(symbol => {
-                    if (symbol && !seenSymbols.has(symbol)) {
-                        seenSymbols.add(symbol);
-                        allSymbolsToAnimate.push(symbol);
-                    }
-                });
-                console.log(`[DEBUG] Collected ${info.symbols.length} symbols for line ${info.lineIndex}:`, info.symbols.map(s => s.symbolId));
-            } else {
-                console.warn(`[DEBUG] No valid symbols found to animate for line ${info.lineIndex}`);
+        // 2. Start win animations BEFORE updating static displays
+        // This ensures the rollup animation starts and hides static text
+        playWinAnimations(calculatedTotalWin, state.currentTotalBet);
+        
+        // 3. Now update displays (the animation code will properly handle visibility)
+        updateDisplays();
+        
+        // 4. Animate the winning symbols
+        if (calculatedWinningLines.length > 0) {
+            // Collect all unique symbols to animate
+            const allSymbolsToAnimate = [];
+            const seenSymbols = new Set();
+            
+            calculatedWinningLines.forEach(info => {
+                // Check the symbols array in the winInfo object
+                if (info.symbols && info.symbols.length > 0) {
+                    // Add only unique symbols to the animation array
+                    info.symbols.forEach(symbol => {
+                        if (symbol && !seenSymbols.has(symbol)) {
+                            seenSymbols.add(symbol);
+                            allSymbolsToAnimate.push(symbol);
+                        }
+                    });
+                }
+            });
+            
+            // Animate all winning symbols at once
+            if (allSymbolsToAnimate.length > 0) {
+                animateWinningSymbols(allSymbolsToAnimate);
             }
-        });
-        
-        // Animate all winning symbols at once
-        if (allSymbolsToAnimate.length > 0) {
-            console.log(`[DEBUG] Animating ${allSymbolsToAnimate.length} unique symbols across all winning lines`);
-            animateWinningSymbols(allSymbolsToAnimate);
         }
     } else {
         console.log("No line win.");
@@ -3751,7 +4910,7 @@ function getResultsGrid() {
 }
 </file_content>
 
-<file_content path="./src//features/SpriteSheetAnimations.js">
+<file_content path="src/features/SpriteSheetAnimations.js">
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
 
@@ -3931,7 +5090,7 @@ export function createSpriteSheetAnimationFn(spriteSheetId, animationName, durat
     };
 } </file_content>
 
-<file_content path="./src//features/Animations.js">
+<file_content path="src/features/Animations.js">
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 import { getWinRollupText } from '../ui/UIManager.js'; // Import function to get text element
@@ -4197,42 +5356,75 @@ export function playWinAnimations(winAmount, currentTotalBet) {
 
     // --- Win Rollup Animation ---
     if (winRollupElement && winAmount > 0) {
+        // Kill any existing animations on winRollupElement to prevent conflicts
+        gsap.killTweensOf(winRollupElement);
+        
+        // Ensure fresh start
         winRollupElement.text = `€0.00`; // Reset text
         winRollupElement.visible = true; // Make it visible
         winRollupElement.alpha = 1; // Ensure alpha is reset
-
-        // Use a temporary object for GSAP to tween a numeric value
-        const counter = { value: 0 };
-        // Duration based on win amount, e.g., 0.5s for small wins up to 2s for large wins
-        const rollupDuration = Math.max(0.5, Math.min(2.0, winAmount * 0.02));
-
-        gsap.to(counter, {
-            value: winAmount,
-            duration: rollupDuration * winAnimDelayMultiplier, // Apply turbo multiplier
-            ease: "power1.out",
-            onUpdate: () => {
-                if (winRollupElement) { // Check if element still exists
-                    winRollupElement.text = `€${counter.value.toFixed(2)}`;
-                }
-            },
-            onComplete: () => {
-                // Optionally hide rollup after a delay, or let it stay until next spin starts
-                // We'll hide it after 1.5 seconds delay
-                 if (winRollupElement) {
-                    gsap.to(winRollupElement, {
-                        alpha: 0,
-                        delay: 1.5 * winAnimDelayMultiplier,
-                        duration: 0.3 * winAnimDelayMultiplier,
-                        onComplete: () => { if (winRollupElement) winRollupElement.visible = false; }
-                    });
-                 }
+        
+        // IMPORTANT: Update UI state IMMEDIATELY before starting animation
+        // This ensures winText is hidden before user can see both
+        import('../ui/UIManager.js').then(module => {
+            if (typeof module.updateDisplays === 'function') {
+                module.updateDisplays();
+                
+                // Only start the animation AFTER updateDisplays has been called
+                console.log(`Starting win rollup animation for €${winAmount.toFixed(2)}`);
+                
+                // Use a temporary object for GSAP to tween a numeric value
+                const counter = { value: 0 };
+                // Duration based on win amount, e.g., 0.5s for small wins up to 2s for large wins
+                const rollupDuration = Math.max(0.5, Math.min(2.0, winAmount * 0.02));
+        
+                gsap.to(counter, {
+                    value: winAmount,
+                    duration: rollupDuration * winAnimDelayMultiplier, // Apply turbo multiplier
+                    ease: "power1.out",
+                    onUpdate: () => {
+                        if (winRollupElement) { // Check if element still exists
+                            winRollupElement.text = `€${counter.value.toFixed(2)}`;
+                        }
+                    },
+                    onComplete: () => {
+                        // When rollup is complete, schedule hiding it after a delay
+                        if (winRollupElement) {
+                            gsap.to(winRollupElement, {
+                                alpha: 0,
+                                delay: 1.5 * winAnimDelayMultiplier,
+                                duration: 0.3 * winAnimDelayMultiplier,
+                                onComplete: () => { 
+                                    if (winRollupElement) {
+                                        // First hide the element
+                                        winRollupElement.visible = false;
+                                        // THEN update UI to show static win text
+                                        // This prevents any overlap in visibility
+                                        setTimeout(() => {
+                                            import('../ui/UIManager.js').then(module => {
+                                                if (typeof module.updateDisplays === 'function') {
+                                                    module.updateDisplays();
+                                                }
+                                            });
+                                        }, 50); // Small delay to ensure visual separation
+                                    }
+                                }
+                            });
+                        }
+                    }
+                });
             }
         });
     } else if (winRollupElement) {
         // Ensure rollup is hidden if there's no win
         winRollupElement.visible = false;
+        // Make sure static win display is updated
+        import('../ui/UIManager.js').then(module => {
+            if (typeof module.updateDisplays === 'function') {
+                module.updateDisplays();
+            }
+        });
     }
-
 
     // --- Big/Mega Win Text Animation (Keep existing logic) ---
     if (!overlayContainer) {
@@ -4378,7 +5570,7 @@ export function updateParticles(delta) {
 }
 </file_content>
 
-<file_content path="./src//features/Autoplay.js">
+<file_content path="src/features/Autoplay.js">
 import { state, updateState } from '../core/GameState.js'; // Assuming state management
 import { setButtonsEnabled, updateAutoplayButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
 import { startSpin } from '../ui/ButtonHandlers.js'; // Assuming spin initiation
@@ -4445,7 +5637,7 @@ export function handleAutoplayNextSpin() {
 // but updating button appearance feels like a UI Manager responsibility.
 </file_content>
 
-<file_content path="./src//features/AnimationDemo.js">
+<file_content path="src/features/AnimationDemo.js">
 import { registerSymbolAnimation } from './Animations.js';
 import { 
     loadSpriteSheet, 
@@ -4676,7 +5868,7 @@ export async function setupCustomAnimations() {
  * setupCustomAnimations();
  */ </file_content>
 
-<file_content path="./src//features/PaylineGraphics.js">
+<file_content path="src/features/PaylineGraphics.js">
 import * as PIXI from 'pixi.js';
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { REEL_WIDTH, reelAreaX, reelAreaY } from '../config/gameSettings.js'; // Import positioning constants
@@ -4808,7 +6000,7 @@ export function clearWinLines() {
 }
 </file_content>
 
-<file_content path="./src//utils/helpers.js">
+<file_content path="src/utils/helpers.js">
 /**
  * Linearly interpolates between two angles, handling wrapping around a range (e.g., 360 degrees or 2*PI radians).
  * @param {number} start - The starting angle.
@@ -4843,7 +6035,7 @@ export const easeOutQuad = (t) => t * (2 - t);
 // Add other general utility functions here if needed later.
 </file_content>
 
-<file_content path="./src//main.js">
+<file_content path="src/main.js">
 import { Game } from './core/Game.js';
 
 // --- Entry Point ---
@@ -4866,7 +6058,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </file_content>
 
-<file_content path="./src//styles/main.css">
+<file_content path="src/styles/main.css">
 body {
   margin: 0;
   padding: 0;

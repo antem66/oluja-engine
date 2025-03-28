@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "snapshot": "./list_files.sh ./src/"
+    "snapshot": "./list_files.sh ./"
   },
   "keywords": [
     "pixijs",
