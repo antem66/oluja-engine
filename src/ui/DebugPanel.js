@@ -11,13 +11,21 @@ const checkboxStates = new Map();
 /**
  * Initializes the debug panel
  * @param {PIXI.Application} app - The PIXI application instance
+ * @param {PIXI.Container} layerDebug - The layer to add the debug panel to.
  */
-export function initDebugPanel(app) {
+export function initDebugPanel(app, layerDebug) { // Added layerDebug parameter
     // Create a new container for debug elements
     debugContainer = new PIXI.Container();
-    debugContainer.visible = false; // Hidden by default
-    app.stage.addChild(debugContainer);
-    
+    // debugContainer.visible = false; // Visibility controlled by layerDebug now
+    // app.stage.addChild(debugContainer); // Add to layerDebug instead
+    if (layerDebug) {
+        layerDebug.addChild(debugContainer);
+    } else {
+        console.error("DebugPanel: layerDebug not provided!");
+        // Fallback: Add to stage if layer is missing? Or just fail?
+        app.stage.addChild(debugContainer); // Keep original behavior as fallback
+    }
+
     // Position in top-right corner
     debugContainer.x = app.screen.width - 250;
     debugContainer.y = 10;
@@ -203,20 +211,27 @@ function createCheckbox(x, y, initialState = false, id) {
 }
 
 /**
- * Toggles the visibility of the debug panel
+ * Toggles the visibility of the debug panel layer
  */
 function toggleDebugPanel() {
-    debugContainer.visible = !debugContainer.visible;
-    // Also set master debug flag
-    updateState({ isDebugMode: debugContainer.visible });
-    console.log(`Debug Panel: Toggled panel visibility to ${debugContainer.visible}`);
-    console.log(`Debug Panel: isDebugMode=${state.isDebugMode}, forceWin=${state.forceWin}`);
-    
-    // Update the state of debug controls to match the game state
-    if (debugContainer.visible) {
-        if (forceWinCheckbox) {
-            checkboxStates.set('forceWin', state.forceWin);
-            forceWinCheckbox.getChildAt(1).visible = state.forceWin;
+    // Find the layerDebug container (assuming it's a direct child of stage for now)
+    // A better approach might be to pass layerDebug to this function or store it globally.
+    // @ts-ignore - Accessing potentially null property
+    const layerDebug = window.gameApp?.layerDebug;
+
+    if (layerDebug) {
+        layerDebug.visible = !layerDebug.visible;
+        // Also set master debug flag
+        updateState({ isDebugMode: layerDebug.visible });
+        console.log(`Debug Panel: Toggled layer visibility to ${layerDebug.visible}`);
+        console.log(`Debug Panel: isDebugMode=${state.isDebugMode}, forceWin=${state.forceWin}`);
+
+        // Update the state of debug controls to match the game state when panel becomes visible
+        if (layerDebug.visible) {
+            if (forceWinCheckbox) {
+                checkboxStates.set('forceWin', state.forceWin);
+                forceWinCheckbox.getChildAt(1).visible = state.forceWin;
+            }
         }
     }
 }
@@ -414,4 +429,4 @@ function addBackgroundAdjustmentSection(debugPanel) {
     }
     
     debugPanel.currentY += 30;
-} 
+}

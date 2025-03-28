@@ -20,6 +20,7 @@ import { initFreeSpins, handleFreeSpinEnd } from '../features/FreeSpins.js';
 import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
 import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManager.js'; // Assuming UIManager exists
+import { LogoManager } from '../ui/LogoManager.js'; // Import LogoManager
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
 import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
 import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
@@ -27,12 +28,11 @@ import { gsap } from 'gsap'; // Import GSAP for animations
 
 
 // --- Module-level variables ---
-let app = null;
-let reels = [];
-let reelContainer, uiContainer, winLineGraphics, overlayContainer, particleContainer;
-let infoOverlayElement;
+let app = null; // Pixi Application instance
+let reels = []; // Array of Reel instances
+let infoOverlayElement; // DOM element for info overlay
 
-// Free Spins UI Elements (moved from UIManager)
+// Free Spins UI Elements (moved from UIManager, will be added to layerOverlays)
 let freeSpinsIndicator = null;
 let freeSpinsCountText = null;
 let freeSpinsTotalWinText = null;
@@ -41,7 +41,18 @@ let freeSpinsGlow = null;
 
 // --- Game Class ---
 export class Game {
-    backgroundSprite = null; // Ensure no TS type annotation here
+    // Layer Containers
+    layerBackground = null;
+    layerReels = null;
+    layerWinLines = null;
+    layerUI = null;
+    layerLogo = null;
+    layerOverlays = null;
+    layerParticles = null;
+    layerDebug = null;
+
+    // Other properties
+    backgroundSprite = null;
 
     constructor(canvasContainerId) {
         this.canvasContainer = document.getElementById(canvasContainerId);
@@ -98,14 +109,63 @@ export class Game {
             console.log("Loading button assets...");
             await loadButtonAssets();
 
+            // --- Create Layer Containers (Task 1.1) ---
+            this.layerBackground = new PIXI.Container();
+            this.layerBackground.name = "Layer: Background";
+            this.layerBackground.zIndex = 0;
+
+            this.layerReels = new PIXI.Container();
+            this.layerReels.name = "Layer: Reels";
+            this.layerReels.zIndex = 10;
+
+            this.layerWinLines = new PIXI.Container();
+            this.layerWinLines.name = "Layer: Win Lines";
+            this.layerWinLines.zIndex = 20;
+
+            this.layerUI = new PIXI.Container();
+            this.layerUI.name = "Layer: UI";
+            this.layerUI.zIndex = 30;
+
+            this.layerLogo = new PIXI.Container();
+            this.layerLogo.name = "Layer: Logo";
+            this.layerLogo.zIndex = 40;
+
+            this.layerOverlays = new PIXI.Container();
+            this.layerOverlays.name = "Layer: Overlays";
+            this.layerOverlays.zIndex = 50;
+            this.layerOverlays.sortableChildren = true; // For potential internal sorting
+
+            this.layerParticles = new PIXI.Container();
+            this.layerParticles.name = "Layer: Particles";
+            this.layerParticles.zIndex = 60;
+
+            this.layerDebug = new PIXI.Container();
+            this.layerDebug.name = "Layer: Debug";
+            this.layerDebug.zIndex = 100;
+            this.layerDebug.visible = false; // Debug layer starts hidden
+
+            // Add all layers to the stage
+            app.stage.addChild(this.layerBackground);
+            app.stage.addChild(this.layerReels);
+            app.stage.addChild(this.layerWinLines);
+            app.stage.addChild(this.layerUI);
+            app.stage.addChild(this.layerLogo);
+            app.stage.addChild(this.layerOverlays);
+            app.stage.addChild(this.layerParticles);
+            app.stage.addChild(this.layerDebug);
+
+            // --- Create Temporary Containers (will be moved into layers in Phase 2) ---
+            const reelContainer = new PIXI.Container(); // Temporary local var for now
+            const uiContainer = new PIXI.Container(); // Temporary local var for now
+            const winLineGraphics = new PIXI.Graphics(); // Temporary local var for now
+
             // --- Initialize Core Modules ---
-            initFreeSpins(app, reelContainer, reels); // Pass app, reelContainer and reels references
+            // Pass app, reelContainer, and reels (Original argument order)
+            initFreeSpins(app, reelContainer, reels);
+            // Task 2.5: Instantiate LogoManager with the logo layer
+            new LogoManager(this, this.layerLogo);
 
-            // --- Create Main Containers ---
-            // Create background layer first (lowest z-index)
-            const backgroundLayer = new PIXI.Container();
-
-            // Create the background sprite
+            // --- Create Background Sprite ---
             const bgSprite = new PIXI.Sprite(PIXI.Assets.get('BG_IMAGE'));
 
             // Position the background
@@ -136,55 +196,46 @@ export class Game {
             // Ensure background doesn't interfere with game play
             bgSprite.eventMode = 'none';
 
-            // Add the background to its container
-            backgroundLayer.addChild(bgSprite);
-
-            // Add background layer to stage
-            if (!app?.stage) throw new Error("Pixi stage not available after init.");
-            app.stage.addChild(backgroundLayer);
-
             // Store reference to background sprite for adjustments
             this.backgroundSprite = bgSprite;
+            // Task 2.1: Add background sprite to its layer
+            if (this.layerBackground && this.backgroundSprite) {
+                this.layerBackground.addChild(this.backgroundSprite);
+            }
 
-            // Create reel container (middle z-index)
-            reelContainer = new PIXI.Container();
+            // --- Populate Temporary Reel Container ---
             reelContainer.x = SETTINGS.reelAreaX;
             reelContainer.y = SETTINGS.reelAreaY;
-
-            // Add slight shadow to reels container for depth
+            // Add slight shadow
             const reelShadow = new PIXI.Graphics()
                 .rect(0, 0, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
                 .fill({ color: 0x000000, alpha: 0.2 });
             reelContainer.addChild(reelShadow);
+            // Task 2.2: Add reelContainer to its layer
+            if (this.layerReels) {
+                this.layerReels.addChild(reelContainer);
+            }
 
-            app.stage.addChild(reelContainer);
-
-            uiContainer = new PIXI.Container();
-            app.stage.addChild(uiContainer); // Add UI container
-
-            winLineGraphics = new PIXI.Graphics();
-            // Position set in initPaylineGraphics
-            app.stage.addChild(winLineGraphics);
-
-            // Create overlay and particle containers but add them LATER
-            overlayContainer = new PIXI.Container(); // For win messages, FS indicator, etc.
-            particleContainer = new PIXI.Container(); // For particle effects
-
-            // --- Initialize Feature/UI Modules with Containers ---
-            initPaylineGraphics(winLineGraphics);
-            initNotifications(overlayContainer); // Pass overlay container
-            initAnimations(overlayContainer, particleContainer); // Pass relevant containers
+            // --- Initialize Feature/UI Modules with NEW Layers ---
+            // Task 2.3: Add winLineGraphics to its layer
+            if (this.layerWinLines) {
+                this.layerWinLines.addChild(winLineGraphics);
+            }
+            initPaylineGraphics(winLineGraphics); // Still uses the graphics object directly
+            initNotifications(this.layerOverlays); // Pass overlay layer
+            initAnimations(this.layerOverlays, this.layerParticles); // Pass relevant layers
             initTurboMode(reels); // Pass reels array reference
 
-            // --- Create Free Spins Indicator (moved from UIManager) ---
-            // Add it to the overlayContainer so it's on top
-            createFreeSpinsIndicator(overlayContainer);
+            // --- Create Free Spins Indicator (using new layer) ---
+            // (Task 2.6 will modify createFreeSpinsIndicator and call it here)
+            createFreeSpinsIndicator(this.layerOverlays); // Pass overlay layer
 
-            // --- Create Reels ---
+            // --- Create Reels and add to Temporary Container ---
             for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
                 const reel = new Reel(i, REEL_STRIPS[i], app.ticker);
                 reels.push(reel);
-                reelContainer.addChild(reel.container);
+                // (Task 2.2 will add reel.container to the main reelContainer)
+                reelContainer.addChild(reel.container); // Add to temp container for now
             }
             initWinEvaluation(reels); // Pass reels array reference
 
@@ -192,19 +243,19 @@ export class Game {
             const reelMask = new PIXI.Graphics()
                 .rect(SETTINGS.reelAreaX, SETTINGS.reelAreaY, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
                 .fill(0xffffff);
-            reelContainer.mask = reelMask;
-            if (app?.stage) { // Check again before adding mask
-               app.stage.addChild(reelMask); // Mask needs to be added to stage
+            reelContainer.mask = reelMask; // Apply mask to the container
+            // Mask graphic itself needs to be added to a common ancestor, stage is fine.
+            // It doesn't render visually, just defines the mask area.
+            if (app?.stage) {
+               app.stage.addChild(reelMask);
             }
 
-            // --- Setup UI (adds title text directly to stage) ---
-            this.setupUI(); // Call UI setup method
-
-            // --- Add Overlay and Particle Containers AFTER UI Setup ---
-            // This ensures they render on top of the title text
-            app.stage.addChild(overlayContainer);
-            app.stage.addChild(particleContainer);
-
+            // --- Setup UI ---
+            // Task 2.4: Add uiContainer to its layer
+            if (this.layerUI) {
+                this.layerUI.addChild(uiContainer);
+            }
+            this.setupUI(uiContainer); // Pass the temporary UI container
 
             // --- Initialize Info Overlay (DOM) ---
             infoOverlayElement = document.getElementById('infoOverlay'); // Get DOM element
@@ -216,9 +267,19 @@ export class Game {
             }
 
             // --- Initialize Debug Panel ---
-            initDebugPanel(app);
+            // Task 2.8: Pass the debug layer to initDebugPanel
+            if (this.layerDebug) { // Add null check for TS
+                initDebugPanel(app, this.layerDebug);
+            } else {
+                 console.error("Game Init: layerDebug is unexpectedly null before initDebugPanel call.");
+                 // Fallback or further error handling might be needed
+            }
 
             // --- Final Setup ---
+            // Task 2.9: Ensure stage is sorted once and log the result
+            app.stage.sortChildren(); // Sort stage based on zIndex
+            console.log("Stage children sorted by zIndex:", app.stage.children.map(c => ({ name: c.name, zIndex: c.zIndex })));
+
             updateDisplays(); // Initial UI text update
             setButtonsEnabled(true); // Enable buttons initially
             applyTurboSettings(state.isTurboMode); // Apply initial turbo settings
@@ -241,8 +302,11 @@ export class Game {
         }
     }
 
-    setupUI() {
+    // Modify setupUI to accept the container it should add elements to
+    setupUI(container) {
         // --- Title ---
+        // NOTE: Title was previously added directly to stage.
+        // It should probably be part of the UI layer now.
         const titleStyle = {
              fontFamily: "Impact, Charcoal, sans-serif",
              fontSize: 40,
@@ -255,18 +319,15 @@ export class Game {
         // titleText.anchor.set(0.5, 0);
         // titleText.x = SETTINGS.GAME_WIDTH / 2;
         // titleText.y = 15;
-        // // Ensure app and stage exist before adding title
-        // if (app && app.stage) { // More explicit check
-        //     app.stage.addChild(titleText); // Add title directly to stage
-        // }
+        // container.addChild(titleText); // Add title to the passed UI container
 
         // --- UI Panel ---
         const panelHeight = 100;
         const panel = new PIXI.Graphics()
             .rect(0, SETTINGS.GAME_HEIGHT - panelHeight, SETTINGS.GAME_WIDTH, panelHeight)
             .fill({ color: 0x1a1a1a, alpha: 0.85 });
-        if (uiContainer) { // Add check for uiContainer
-            uiContainer.addChild(panel);
+        if (container) { // Use the passed container
+            container.addChild(panel);
         }
 
         // --- Text Styles ---
@@ -276,7 +337,7 @@ export class Game {
 
         // --- Create UI Elements (using UIManager) ---
         // UIManager should handle creation and storing references
-        initUIManager(uiContainer, uiTextStyle, uiValueStyle);
+        initUIManager(container, uiTextStyle, uiValueStyle); // Pass the container
 
         // --- Create Buttons (using ButtonFactory and handlers) ---
         const bottomUIY = SETTINGS.bottomUIY;
@@ -285,17 +346,17 @@ export class Game {
 
         // Improved button positioning
         // Bet Buttons (Using iconType)
-        createButton("", SETTINGS.GAME_WIDTH - 180, bottomUIY + 52, handlers.decreaseBet, {}, uiContainer, btnW, btnH, false, 'minus').name = "betDecreaseButton";
-        createButton("", SETTINGS.GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, uiContainer, btnW, btnH, false, 'plus').name = "betIncreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 180, bottomUIY + 52, handlers.decreaseBet, {}, container, btnW, btnH, false, 'minus').name = "betDecreaseButton";
+        createButton("", SETTINGS.GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, container, btnW, btnH, false, 'plus').name = "betIncreaseButton";
 
         // Spin Button (Circular with Icon) - Positioned more prominently
-        createButton("", SETTINGS.GAME_WIDTH - 80, SETTINGS.GAME_HEIGHT / 2 + 80, handlers.startSpin, {}, uiContainer, spinBtnSize, spinBtnSize, true, 'spin').name = "spinButton";
+        createButton("", SETTINGS.GAME_WIDTH - 80, SETTINGS.GAME_HEIGHT / 2 + 80, handlers.startSpin, {}, container, spinBtnSize, spinBtnSize, true, 'spin').name = "spinButton";
 
         // Turbo Button (Using iconType) - Positioned with better spacing
-        createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, uiContainer, btnW, btnH, false, 'turbo').name = "turboButton";
+        createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, container, btnW, btnH, false, 'turbo').name = "turboButton";
 
         // Autoplay Button (Using iconType)
-        createButton("", 180, bottomUIY + 52, handlers.toggleAutoplay, {}, uiContainer, btnW, btnH, false, 'autoplay').name = "autoplayButton";
+        createButton("", 180, bottomUIY + 52, handlers.toggleAutoplay, {}, container, btnW, btnH, false, 'autoplay').name = "autoplayButton";
     }
 
     update(ticker) {
@@ -482,24 +543,34 @@ export class Game {
      * @param {number} scale - Scale adjustment factor
      */
     adjustBackground(offsetX, offsetY, scale) {
-        if (!this.backgroundSprite) return;
+        // Add null check at the beginning
+        if (!this.backgroundSprite) {
+            console.warn("adjustBackground called before backgroundSprite was initialized.");
+            return;
+        }
 
-        // Update position
+        // Suppress TS errors in JS file for property access after null check
+        // @ts-ignore
         this.backgroundSprite.x = SETTINGS.GAME_WIDTH / 2 + offsetX;
+        // @ts-ignore
         this.backgroundSprite.y = SETTINGS.GAME_HEIGHT / 2 + offsetY;
 
         // Update scale with current factor
+        // @ts-ignore
+        const textureWidth = this.backgroundSprite.texture.width;
+        // @ts-ignore
+        const textureHeight = this.backgroundSprite.texture.height;
+
         const baseScale = SETTINGS.BG_SCALE_MODE === 'cover'
-            ? Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width,
-                      SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
+            ? Math.max(SETTINGS.GAME_WIDTH / textureWidth, SETTINGS.GAME_HEIGHT / textureHeight)
             : SETTINGS.BG_SCALE_MODE === 'contain'
-                ? Math.min(SETTINGS.GAME_WIDTH / this.backgroundSprite.texture.width,
-                          SETTINGS.GAME_HEIGHT / this.backgroundSprite.texture.height)
+                ? Math.min(SETTINGS.GAME_WIDTH / textureWidth, SETTINGS.GAME_HEIGHT / textureHeight)
                 : 1;
 
+        // @ts-ignore
         this.backgroundSprite.scale.set(baseScale * scale);
 
-        console.log(`Background adjusted: offset(${offsetX}, ${offsetY}), scale: ${scale}`);
+        console.log(`Background adjusted: offset(${offsetX}, ${offsetY}), scale: ${scale.toFixed(2)}`);
     }
 }
 
@@ -507,10 +578,10 @@ export class Game {
 // --- Free Spins UI Functions (Moved from UIManager) ---
 
 /**
- * Creates the free spins indicator overlay and adds it to the specified container.
- * @param {PIXI.Container} container - The container to add the indicator to (e.g., overlayContainer).
+ * Creates the free spins indicator overlay and adds it to the specified parent layer.
+ * @param {PIXI.Container} parentLayer - The layer to add the indicator to (e.g., layerOverlays).
  */
-function createFreeSpinsIndicator(container) {
+function createFreeSpinsIndicator(parentLayer) { // Renamed parameter
     // Create container for free spins UI elements
     freeSpinsIndicator = new PIXI.Container();
     freeSpinsIndicator.visible = false; // Hide initially
@@ -519,28 +590,28 @@ function createFreeSpinsIndicator(container) {
     freeSpinsIndicator.x = SETTINGS.GAME_WIDTH / 2;
     freeSpinsIndicator.y = 60; // Adjusted Y position to be below title
 
-    // Create background panel
+    // Create background panel (Task 3.3 Enhancement)
     const panel = new PIXI.Graphics();
-    panel.beginFill(0x9932CC, 0.85); // Deep purple with transparency
-    panel.lineStyle(3, 0xFFD700, 1); // Gold border
-    panel.drawRoundedRect(-150, 0, 300, 80, 10); // Centered rectangle
+    panel.beginFill(0x8A2BE2, 0.9); // Slightly brighter BlueViolet, less transparent
+    panel.lineStyle(4, 0xFFFF00, 1); // Thicker Yellow border
+    panel.drawRoundedRect(-150, 0, 300, 80, 15); // More rounded corners
     panel.endFill();
 
-    // Add glow filter
+    // Add glow filter (Task 3.3 Enhancement)
     freeSpinsGlow = new PIXI.Graphics();
-    freeSpinsGlow.beginFill(0xFFD700, 0.3);
-    freeSpinsGlow.drawRoundedRect(-155, -5, 310, 90, 12);
+    freeSpinsGlow.beginFill(0xFFFF00, 0.4); // Brighter yellow glow
+    freeSpinsGlow.drawRoundedRect(-160, -8, 320, 96, 17); // Slightly larger glow area
     freeSpinsGlow.endFill();
-    freeSpinsGlow.alpha = 0;
+    freeSpinsGlow.alpha = 0; // Starts hidden
 
-    // Create title text
+    // Create title text (Task 3.3 Enhancement - slightly larger)
     const titleStyle = new PIXI.TextStyle({
         fontFamily: 'Impact, Charcoal, sans-serif',
-        fontSize: 24,
+        fontSize: 26, // Slightly larger
         fontWeight: 'bold',
-        fill: 0xFFD700, // Single gold color as hex number
+        fill: 0xFFD700, // Gold
         stroke: { color: 0x000000, width: 3 },
-        dropShadow: { color: 0x000000, alpha: 0.5, blur: 2, distance: 2 },
+        dropShadow: { color: 0x000000, alpha: 0.6, blur: 3, distance: 3 }, // Slightly stronger shadow
         align: 'center'
     });
 
@@ -574,8 +645,8 @@ function createFreeSpinsIndicator(container) {
     freeSpinsIndicator.addChild(freeSpinsCountText);
     freeSpinsIndicator.addChild(freeSpinsTotalWinText);
 
-    // Add to the specified container (should be overlayContainer)
-    container.addChild(freeSpinsIndicator);
+    // Add to the specified parent layer
+    parentLayer.addChild(freeSpinsIndicator);
 }
 
 /**
@@ -611,12 +682,13 @@ function updateFreeSpinsIndicator() {
             freeSpinsIndicator.alpha = 0;
             freeSpinsIndicator.y = -50; // Start above screen
 
-            // Animate it in
+            // Animate it in (Task 3.2 Enhancement)
             gsap.to(freeSpinsIndicator, {
                 y: 60, // Target Y position (below title)
                 alpha: 1,
-                duration: 0.5,
-                ease: "back.out(1.7)"
+                rotation: 0.05, // Add slight rotation on entry
+                duration: 0.7, // Slightly longer duration
+                ease: "elastic.out(1, 0.8)" // More dynamic ease
             });
 
             // Start pulsing glow animation
@@ -640,10 +712,11 @@ function updateFreeSpinsIndicator() {
 
     } else if (freeSpinsIndicator.visible) {
         console.log("[Trace] Not in Free Spins & indicator visible - Animating out."); // Keep this log as it's a state change event
-        // Animate it out
+        // Animate it out (Task 3.2 Enhancement - return rotation to 0)
         gsap.to(freeSpinsIndicator, {
             y: -50,
             alpha: 0,
+            rotation: 0, // Return rotation to 0 on exit
             duration: 0.5,
             ease: "back.in(1.7)",
             onComplete: () => {
@@ -664,10 +737,10 @@ function startGlowAnimation() {
     // Kill any existing animations
     gsap.killTweensOf(freeSpinsGlow);
 
-    // Create pulsing animation
+    // Create pulsing animation (Task 3.3 Enhancement - faster pulse)
     gsap.to(freeSpinsGlow, {
-        alpha: 0.7,
-        duration: 1,
+        alpha: 0.8, // Slightly more visible glow
+        duration: 0.7, // Faster pulse
         repeat: -1,
         yoyo: true,
         ease: "sine.inOut"
@@ -691,6 +764,8 @@ function stopGlowAnimation() {
 /**
  * Starts the spinning process for all reels.
  * Called by ButtonHandlers.startSpin.
+ * NOTE: This is an exported function, not a class method.
+ * It accesses the module-level `reels` array.
  */
 export function startSpinLoop(isTurbo) {
     // Clear previous win lines before starting spin
@@ -741,7 +816,7 @@ export function startSpinLoop(isTurbo) {
 
 /**
  * Generates a random winning pattern for the reels
- * @returns {Object} Object containing symbol, line number, and stop indices
+ * @returns {Object | null} Object containing symbol, line number, and stop indices, or null if error
  */
 function generateRandomWinPattern() {
     // Use high-value symbols for better wins
@@ -764,8 +839,20 @@ function generateRandomWinPattern() {
     // For each reel, find positions where our symbol can appear
     const stopIndices = [];
 
-    for (let i = 0; i < REEL_STRIPS.length; i++) {
+    // Ensure REEL_STRIPS is defined and has the expected structure
+    if (!REEL_STRIPS || REEL_STRIPS.length !== SETTINGS.NUM_REELS) {
+        console.error("Debug - REEL_STRIPS is invalid or doesn't match NUM_REELS.");
+        return null; // Return null to indicate failure
+    }
+
+    for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
         const strip = REEL_STRIPS[i];
+        if (!strip || strip.length === 0) {
+            console.error(`Debug - Strip for reel ${i} is invalid.`);
+            // Handle error: maybe push a default stop index or return null
+            stopIndices.push(0); // Push a default index
+            continue; // Skip to next reel
+        }
 
         // For reels that should show the winning symbol
         if (i < winLength) {
@@ -856,4 +943,3 @@ function findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
     console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
     return Math.floor(Math.random() * symbols.length);
 }
-

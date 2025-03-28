@@ -3,10 +3,12 @@ import { Container, Sprite, Assets } from 'pixi.js';
 import { GAME_WIDTH } from '../config/gameSettings.js';
 
 export class LogoManager {
-    constructor(game) {
+    // Modified constructor to accept parentLayer
+    constructor(game, parentLayer) {
         this.game = game;
+        this.parentLayer = parentLayer; // Store the parent layer
         this.container = new Container();
-        this.container.zIndex = 5;
+        // Removed: this.container.zIndex = 5;
         this.logo = null;
         this.setup();
     }
@@ -35,13 +37,15 @@ export class LogoManager {
             this.logo.scale.set(0.2);
             
             this.container.addChild(this.logo);
-            
-            if (this.game?.app?.stage) {
-                this.game.app.stage.addChild(this.container);
-                this.game.app.stage.sortChildren();
+
+            // Add container to the provided parent layer instead of the stage
+            if (this.parentLayer) {
+                this.parentLayer.addChild(this.container);
+                // Removed: this.game.app.stage.sortChildren();
             } else {
-                console.error('Game app stage not available');
-                return;
+                console.error('LogoManager: Parent layer not provided');
+                // Fallback or error handling if needed, e.g., add to stage directly?
+                // For now, just log the error.
             }
 
             this.initAnimations();
@@ -61,6 +65,11 @@ export class LogoManager {
     initAnimations() {
         if (!this.logo) return;
 
+        // Kill existing tweens just in case
+        gsap.killTweensOf(this.logo);
+        gsap.killTweensOf(this.logo.scale);
+
+        // Initial entrance animation
         gsap.from(this.logo, {
             pixi: {
                 scale: 0,
@@ -68,37 +77,30 @@ export class LogoManager {
                 rotation: -0.5
             },
             duration: 1.2,
-            ease: "elastic.out(1, 0.75)"
+            ease: "elastic.out(1, 0.75)",
+            delay: 0.2 // Small delay after setup
         });
 
-        gsap.to(this.logo, {
-            pixi: {
-                y: "+=5"
-            },
-            duration: 2,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-        });
+        // Task 3.4: Combined Idle Animation Timeline
+        const idleTimeline = gsap.timeline({ repeat: -1, yoyo: true });
 
-        gsap.to(this.logo.scale, {
-            x: "*=1.05",
-            y: "*=1.05",
-            duration: 1.5,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-        });
-
-        gsap.to(this.logo, {
-            pixi: {
-                rotation: 0.03
-            },
-            duration: 3,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-        });
+        idleTimeline
+            .to(this.logo, { // Bobbing up/down
+                pixi: { y: "+=4" }, // Slightly less bob
+                duration: 2.5, // Slower bob
+                ease: "sine.inOut"
+            }, 0) // Start at time 0
+            .to(this.logo.scale, { // Subtle scale pulse
+                x: "*=1.03", // Less intense pulse
+                y: "*=1.03",
+                duration: 2.5, // Match bob duration
+                ease: "sine.inOut"
+            }, 0) // Start at time 0, runs concurrently with bob
+            .to(this.logo, { // Gentle rotation wobble
+                pixi: { rotation: 0.02 }, // Less rotation
+                duration: 3.5, // Slower wobble
+                ease: "sine.inOut"
+            }, 0.5); // Start slightly after bob/scale starts
     }
 
     setupFreeSpinsHandler() {
@@ -138,4 +140,4 @@ export class LogoManager {
         const scale = Math.min(GAME_WIDTH / 1920, 1) * 0.2;
         this.logo.scale.set(scale);
     }
-} 
+}
