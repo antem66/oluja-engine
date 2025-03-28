@@ -128,35 +128,41 @@ export function evaluateWin() {
             updateState({ balance: state.balance + calculatedTotalWin });
         }
         console.log(`Win: €${calculatedTotalWin.toFixed(2)}`);
-        updateDisplays(); // Update balance/win text
-        // flashElement(winText, 0xffff00, 200, 3); // Needs UIManager reference to winText
-        drawWinLines(calculatedWinningLines); // Pass winning lines info
-        playWinAnimations(calculatedTotalWin, state.currentTotalBet); // Pass win and bet for threshold checks
         
-        // Collect all unique symbols to animate
-        const allSymbolsToAnimate = [];
-        const seenSymbols = new Set();
+        // IMPORTANT: Order of operations
+        // 1. Draw win lines first
+        drawWinLines(calculatedWinningLines);
         
-        calculatedWinningLines.forEach(info => {
-            // Check the symbols array in the winInfo object passed to animation
-            if (info.symbols && info.symbols.length > 0) {
-                // Add only unique symbols to the animation array
-                info.symbols.forEach(symbol => {
-                    if (symbol && !seenSymbols.has(symbol)) {
-                        seenSymbols.add(symbol);
-                        allSymbolsToAnimate.push(symbol);
-                    }
-                });
-                console.log(`[DEBUG] Collected ${info.symbols.length} symbols for line ${info.lineIndex}:`, info.symbols.map(s => s.symbolId));
-            } else {
-                console.warn(`[DEBUG] No valid symbols found to animate for line ${info.lineIndex}`);
+        // 2. Start win animations BEFORE updating static displays
+        // This ensures the rollup animation starts and hides static text
+        playWinAnimations(calculatedTotalWin, state.currentTotalBet);
+        
+        // 3. Now update displays (the animation code will properly handle visibility)
+        updateDisplays();
+        
+        // 4. Animate the winning symbols
+        if (calculatedWinningLines.length > 0) {
+            // Collect all unique symbols to animate
+            const allSymbolsToAnimate = [];
+            const seenSymbols = new Set();
+            
+            calculatedWinningLines.forEach(info => {
+                // Check the symbols array in the winInfo object
+                if (info.symbols && info.symbols.length > 0) {
+                    // Add only unique symbols to the animation array
+                    info.symbols.forEach(symbol => {
+                        if (symbol && !seenSymbols.has(symbol)) {
+                            seenSymbols.add(symbol);
+                            allSymbolsToAnimate.push(symbol);
+                        }
+                    });
+                }
+            });
+            
+            // Animate all winning symbols at once
+            if (allSymbolsToAnimate.length > 0) {
+                animateWinningSymbols(allSymbolsToAnimate);
             }
-        });
-        
-        // Animate all winning symbols at once
-        if (allSymbolsToAnimate.length > 0) {
-            console.log(`[DEBUG] Animating ${allSymbolsToAnimate.length} unique symbols across all winning lines`);
-            animateWinningSymbols(allSymbolsToAnimate);
         }
     } else {
         console.log("No line win.");

@@ -263,42 +263,75 @@ export function playWinAnimations(winAmount, currentTotalBet) {
 
     // --- Win Rollup Animation ---
     if (winRollupElement && winAmount > 0) {
+        // Kill any existing animations on winRollupElement to prevent conflicts
+        gsap.killTweensOf(winRollupElement);
+        
+        // Ensure fresh start
         winRollupElement.text = `€0.00`; // Reset text
         winRollupElement.visible = true; // Make it visible
         winRollupElement.alpha = 1; // Ensure alpha is reset
-
-        // Use a temporary object for GSAP to tween a numeric value
-        const counter = { value: 0 };
-        // Duration based on win amount, e.g., 0.5s for small wins up to 2s for large wins
-        const rollupDuration = Math.max(0.5, Math.min(2.0, winAmount * 0.02));
-
-        gsap.to(counter, {
-            value: winAmount,
-            duration: rollupDuration * winAnimDelayMultiplier, // Apply turbo multiplier
-            ease: "power1.out",
-            onUpdate: () => {
-                if (winRollupElement) { // Check if element still exists
-                    winRollupElement.text = `€${counter.value.toFixed(2)}`;
-                }
-            },
-            onComplete: () => {
-                // Optionally hide rollup after a delay, or let it stay until next spin starts
-                // We'll hide it after 1.5 seconds delay
-                 if (winRollupElement) {
-                    gsap.to(winRollupElement, {
-                        alpha: 0,
-                        delay: 1.5 * winAnimDelayMultiplier,
-                        duration: 0.3 * winAnimDelayMultiplier,
-                        onComplete: () => { if (winRollupElement) winRollupElement.visible = false; }
-                    });
-                 }
+        
+        // IMPORTANT: Update UI state IMMEDIATELY before starting animation
+        // This ensures winText is hidden before user can see both
+        import('../ui/UIManager.js').then(module => {
+            if (typeof module.updateDisplays === 'function') {
+                module.updateDisplays();
+                
+                // Only start the animation AFTER updateDisplays has been called
+                console.log(`Starting win rollup animation for €${winAmount.toFixed(2)}`);
+                
+                // Use a temporary object for GSAP to tween a numeric value
+                const counter = { value: 0 };
+                // Duration based on win amount, e.g., 0.5s for small wins up to 2s for large wins
+                const rollupDuration = Math.max(0.5, Math.min(2.0, winAmount * 0.02));
+        
+                gsap.to(counter, {
+                    value: winAmount,
+                    duration: rollupDuration * winAnimDelayMultiplier, // Apply turbo multiplier
+                    ease: "power1.out",
+                    onUpdate: () => {
+                        if (winRollupElement) { // Check if element still exists
+                            winRollupElement.text = `€${counter.value.toFixed(2)}`;
+                        }
+                    },
+                    onComplete: () => {
+                        // When rollup is complete, schedule hiding it after a delay
+                        if (winRollupElement) {
+                            gsap.to(winRollupElement, {
+                                alpha: 0,
+                                delay: 1.5 * winAnimDelayMultiplier,
+                                duration: 0.3 * winAnimDelayMultiplier,
+                                onComplete: () => { 
+                                    if (winRollupElement) {
+                                        // First hide the element
+                                        winRollupElement.visible = false;
+                                        // THEN update UI to show static win text
+                                        // This prevents any overlap in visibility
+                                        setTimeout(() => {
+                                            import('../ui/UIManager.js').then(module => {
+                                                if (typeof module.updateDisplays === 'function') {
+                                                    module.updateDisplays();
+                                                }
+                                            });
+                                        }, 50); // Small delay to ensure visual separation
+                                    }
+                                }
+                            });
+                        }
+                    }
+                });
             }
         });
     } else if (winRollupElement) {
         // Ensure rollup is hidden if there's no win
         winRollupElement.visible = false;
+        // Make sure static win display is updated
+        import('../ui/UIManager.js').then(module => {
+            if (typeof module.updateDisplays === 'function') {
+                module.updateDisplays();
+            }
+        });
     }
-
 
     // --- Big/Mega Win Text Animation (Keep existing logic) ---
     if (!overlayContainer) {

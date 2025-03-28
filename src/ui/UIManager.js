@@ -274,13 +274,37 @@ function stopGlowAnimation() {
 export function updateDisplays() {
     if (balanceText) balanceText.text = `€${state.balance.toFixed(2)}`;
     if (betText) betText.text = `€${state.currentTotalBet.toFixed(2)}`;
-    if (winText) {
-        // Hide static win text if rollup is active (or about to be)
-        const rollupVisible = winRollupText && winRollupText.visible;
+    
+    // Win text handling - ensure only one win display is visible at a time
+    if (winText && winRollupText) {
+        // Update the text content for both displays
         winText.text = `€${state.lastTotalWin.toFixed(2)}`;
-        // Only show static win if > 0 AND rollup is not visible
-        winText.visible = state.lastTotalWin > 0 && !rollupVisible;
+        
+        // PRIORITY LOGIC: Rollup takes absolute priority when visible
+        // When rollup is active (visible OR alpha > 0), always hide static win text
+        const rollupActive = winRollupText.visible || winRollupText.alpha > 0;
+        
+        // Set visibility with a safe check to ensure they're never both visible
+        if (rollupActive) {
+            winText.visible = false;
+            // Only log when state changes to avoid console spam
+            if (winText._lastVisible !== false) {
+                console.log(`Win Display: Hiding static text (rollup active)`);
+                winText._lastVisible = false;
+            }
+        } else {
+            // Only show winText if we have a win amount
+            const shouldShow = state.lastTotalWin > 0;
+            winText.visible = shouldShow;
+            
+            // Only log when state changes to avoid console spam
+            if (winText._lastVisible !== shouldShow) {
+                console.log(`Win Display: Static=${shouldShow}, amount=${state.lastTotalWin.toFixed(2)}`);
+                winText._lastVisible = shouldShow;
+            }
+        }
     }
+    
     // Update Info Overlay (DOM) - called separately by Game or state change listener
     // updateInfoOverlay();
 
