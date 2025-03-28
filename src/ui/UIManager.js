@@ -16,6 +16,12 @@ let betDecreaseButton = null;
 let betIncreaseButton = null;
 // Add other buttons if they need state management
 
+// Add new variables for free spins UI elements
+let freeSpinsIndicator = null;
+let freeSpinsCountText = null;
+let freeSpinsTotalWinText = null;
+let freeSpinsGlow = null;
+
 /**
  * Initializes the UI Manager.
  * Creates text elements and stores references to them and the main UI container.
@@ -92,9 +98,175 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     // Set initial button states
     updateAutoplayButtonState();
     updateTurboButtonState();
+
+    // Create free spins indicator (hidden by default)
+    createFreeSpinsIndicator(uiContainer);
+
     console.log("UIManager initialized.");
 }
 
+/**
+ * Creates the free spins indicator overlay
+ * @param {PIXI.Container} container - The UI container
+ */
+function createFreeSpinsIndicator(container) {
+    // Create container for free spins UI elements
+    freeSpinsIndicator = new PIXI.Container();
+    freeSpinsIndicator.visible = false; // Hide initially
+    
+    // Position at the top center of the screen
+    freeSpinsIndicator.x = GAME_WIDTH / 2;
+    freeSpinsIndicator.y = 10;
+    
+    // Create background panel
+    const panel = new PIXI.Graphics();
+    panel.beginFill(0x9932CC, 0.85); // Deep purple with transparency
+    panel.lineStyle(3, 0xFFD700, 1); // Gold border
+    panel.drawRoundedRect(-150, 0, 300, 80, 10); // Centered rectangle
+    panel.endFill();
+    
+    // Add glow filter
+    freeSpinsGlow = new PIXI.Graphics();
+    freeSpinsGlow.beginFill(0xFFD700, 0.3);
+    freeSpinsGlow.drawRoundedRect(-155, -5, 310, 90, 12);
+    freeSpinsGlow.endFill();
+    freeSpinsGlow.alpha = 0;
+    
+    // Create title text
+    const titleStyle = new PIXI.TextStyle({
+        fontFamily: 'Impact, Charcoal, sans-serif',
+        fontSize: 24,
+        fontWeight: 'bold',
+        fill: 0xFFD700, // Single gold color as hex number
+        stroke: { color: 0x000000, width: 3 },
+        dropShadow: { color: 0x000000, alpha: 0.5, blur: 2, distance: 2 },
+        align: 'center'
+    });
+    
+    const title = new PIXI.Text("FREE SPINS", titleStyle);
+    title.anchor.set(0.5, 0);
+    title.y = 10;
+    
+    // Create free spins count text
+    const countStyle = new PIXI.TextStyle({
+        fontFamily: '"Arial Black", Gadget, sans-serif',
+        fontSize: 18,
+        fill: 0xFFFFFF, // Use hex number instead of string
+        fontWeight: 'bold',
+        align: 'center'
+    });
+    
+    freeSpinsCountText = new PIXI.Text("Remaining: 10", countStyle);
+    freeSpinsCountText.anchor.set(0.5, 0);
+    freeSpinsCountText.y = 45;
+    
+    // Create total win text
+    freeSpinsTotalWinText = new PIXI.Text("Total Win: €0.00", countStyle);
+    freeSpinsTotalWinText.anchor.set(0.5, 0);
+    freeSpinsTotalWinText.y = 45;
+    freeSpinsTotalWinText.x = 180; // Position to the right of spins count
+    
+    // Add all elements to container
+    freeSpinsIndicator.addChild(freeSpinsGlow);
+    freeSpinsIndicator.addChild(panel);
+    freeSpinsIndicator.addChild(title);
+    freeSpinsIndicator.addChild(freeSpinsCountText);
+    freeSpinsIndicator.addChild(freeSpinsTotalWinText);
+    
+    // Add to main container
+    container.addChild(freeSpinsIndicator);
+}
+
+/**
+ * Updates the free spins indicator with current state
+ */
+function updateFreeSpinsIndicator() {
+    if (!freeSpinsIndicator || !freeSpinsCountText || !freeSpinsTotalWinText) return;
+    
+    // Show/hide based on free spins state
+    const inFreeSpin = state.isInFreeSpins;
+    
+    if (inFreeSpin) {
+        // Update text content
+        freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
+        freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+        
+        // Show indicator if not already visible
+        if (!freeSpinsIndicator.visible) {
+            freeSpinsIndicator.visible = true;
+            freeSpinsIndicator.alpha = 0;
+            freeSpinsIndicator.y = -50;
+            
+            // Animate it in
+            gsap.to(freeSpinsIndicator, {
+                y: 10,
+                alpha: 1,
+                duration: 0.5,
+                ease: "back.out(1.7)"
+            });
+            
+            // Start pulsing glow animation
+            startGlowAnimation();
+        }
+        
+        // Flash when spins count changes
+        if (freeSpinsIndicator._lastCount && freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
+            gsap.to(freeSpinsCountText.scale, {
+                x: 1.2, y: 1.2,
+                duration: 0.2,
+                repeat: 1,
+                yoyo: true,
+                ease: "power1.inOut"
+            });
+        }
+        
+        // Store current count for comparison on next update
+        freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
+        
+    } else if (freeSpinsIndicator.visible) {
+        // Animate it out
+        gsap.to(freeSpinsIndicator, {
+            y: -50,
+            alpha: 0,
+            duration: 0.5,
+            ease: "back.in(1.7)",
+            onComplete: () => {
+                freeSpinsIndicator.visible = false;
+                stopGlowAnimation();
+            }
+        });
+    }
+}
+
+/**
+ * Starts pulsing glow animation
+ */
+function startGlowAnimation() {
+    if (!freeSpinsGlow) return;
+    
+    // Kill any existing animations
+    gsap.killTweensOf(freeSpinsGlow);
+    
+    // Create pulsing animation
+    gsap.to(freeSpinsGlow, {
+        alpha: 0.7,
+        duration: 1,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut"
+    });
+}
+
+/**
+ * Stops glow animation
+ */
+function stopGlowAnimation() {
+    if (!freeSpinsGlow) return;
+    
+    // Kill animation and reset
+    gsap.killTweensOf(freeSpinsGlow);
+    freeSpinsGlow.alpha = 0;
+}
 
 /**
  * Updates the text displays (Balance, Bet, Win) based on the current game state.
@@ -111,6 +283,9 @@ export function updateDisplays() {
     }
     // Update Info Overlay (DOM) - called separately by Game or state change listener
     // updateInfoOverlay();
+
+    // Update the free spins indicator
+    updateFreeSpinsIndicator();
 }
 
 /**

@@ -46,33 +46,19 @@ export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
     let message = "";
     console.log("!!! Entering Free Spins - State:", state.isInFreeSpins);
 
-    // IMMEDIATE STATE UPDATE: Set isInFreeSpins true first to make UI respond faster
-    updateState({ 
-        isInFreeSpins: true,
-        isTransitioning: false // Allow indicator to show immediately
-    });
-
     if (isRetrigger) {
         console.log(`Retriggering Free Spins! Adding ${spinsAwarded} more spins.`);
         freeSpinsRemaining = state.freeSpinsRemaining + spinsAwarded;
         // Keep existing total win
         updateState({
-            isInFreeSpins: true, // Ensure flag is set
-            freeSpinsRemaining: freeSpinsRemaining,
-            isTransitioning: false // Allow indicator to show immediately
+            freeSpinsRemaining: freeSpinsRemaining
         });
         message = `${spinsAwarded} EXTRA FREE SPINS!`;
 
         // Show retrigger message immediately and update display
         showOverlayMessage(message, 2500, () => {
             updateDisplays(); // Update the counter immediately
-            // Block other UI changes during transitioning
-            updateState({ isTransitioning: true });
-            
-            setTimeout(() => {
-                updateState({ isTransitioning: false });
-                // No need to start spin here, it continues from handleFreeSpinEnd
-            }, 300);
+            // No need to start spin here, it continues from handleFreeSpinEnd
         });
 
     } else {
@@ -80,13 +66,12 @@ export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
         freeSpinsRemaining = spinsAwarded;
         freeSpinsTotalWin = 0; // Reset total win only on initial entry
 
-        // Update game state for initial entry - keep transitioning false so indicator shows
+        // Update game state for initial entry
         console.log("[StateChange] Setting isInFreeSpins = true in enterFreeSpins"); // Log state change
         updateState({
             isInFreeSpins: true,
             freeSpinsRemaining: freeSpinsRemaining,
-            totalFreeSpinsWin: 0,
-            isTransitioning: false // Allow indicator to show immediately
+            totalFreeSpinsWin: 0
         });
         message = `${spinsAwarded} FREE SPINS AWARDED!`;
 
@@ -97,30 +82,22 @@ export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
                 backgroundColor: freeSpinsBgColor,
                 ease: "power2.inOut"
             });
-        }
+        } // Corrected closing brace
 
-        // Now that indicator should be visible, we can transition to entry animation
-        // Delay briefly to ensure indicator has time to appear
-        setTimeout(() => {
-            // Now set transitioning state for the entry animation
-            updateState({ isTransitioning: true });
-            
-            playFreeSpinsEntryAnimation(() => {
-                // Callback after animation completes
-                showOverlayMessage(message, 3000, () => {
-                    // Update UI elements
-                    updateDisplays();
-                    // Disable regular buttons since we're in auto mode
-                    setButtonsEnabled(false);
-                    // Clear transitioning state before starting first spin
-                    updateState({ isTransitioning: false });
-                    // Start the first free spin automatically after the message
-                    setTimeout(() => {
-                        startFreeSpin();
-                    }, 500);
-                });
+        // Play entry animation and show message only on initial entry
+        playFreeSpinsEntryAnimation(() => {
+            // Callback after animation completes
+            showOverlayMessage(message, 3000, () => {
+                // Update UI elements
+                updateDisplays();
+                // Disable regular buttons since we're in auto mode
+                setButtonsEnabled(false);
+                // Start the first free spin automatically after the message
+                setTimeout(() => {
+                    startFreeSpin();
+                }, 500);
             });
-        }, 300); // Brief delay to let indicator appear
+        });
     }
 }
 
@@ -265,12 +242,7 @@ export function exitFreeSpins() {
     if (!state.isInFreeSpins || !app) return;
 
     console.log(`Exit Free Spins. Total Win: €${state.totalFreeSpinsWin.toFixed(2)}`);
-    
-    // Explicitly set isTransitioning to true to prevent UI flicker during exit
-    updateState({ 
-        isTransitioning: true,
-        isInFreeSpins: true  // Keep free spins active until fully exited
-    });
+    updateState({ isTransitioning: true }); // Prevent actions during transition
 
     // Animate background color back to normal
     if (app.renderer && app.renderer.background) {
@@ -292,30 +264,23 @@ export function exitFreeSpins() {
         `FREE SPINS COMPLETE\nTOTAL WIN:\n€${state.totalFreeSpinsWin.toFixed(2)}` :
         `FREE SPINS COMPLETE\nBETTER LUCK NEXT TIME!`;
 
-    // Increased message display time for better visibility
-    const messageTime = state.totalFreeSpinsWin > 0 ? 4000 : 3000;
-    
     showOverlayMessage(
         winText,
-        messageTime,
+        state.totalFreeSpinsWin > 0 ? 3000 : 2000, // Longer display for big wins
         () => {
             // Reset state AFTER the message
-            console.log("[StateChange] Setting isInFreeSpins = false in exitFreeSpins callback");
-            
-            // Set a small delay before fully exiting to ensure UI has time to update
-            setTimeout(() => {
-                updateState({
-                    isInFreeSpins: false,
-                    freeSpinsRemaining: 0,
-                    isTransitioning: false,
-                });
-                
-                // Update UI to remove free spins indicators
-                updateDisplays();
-                
-                // Re-enable controls
-                setButtonsEnabled(true);
-            }, 300);
+            console.log("[StateChange] Setting isInFreeSpins = false in exitFreeSpins callback"); // Log state change
+            updateState({
+                isInFreeSpins: false,
+                freeSpinsRemaining: 0,
+                isTransitioning: false,
+            });
+
+            // Update UI to remove free spins indicators
+            updateDisplays();
+
+            // Re-enable controls
+            setButtonsEnabled(true);
         }
     );
 }
@@ -344,9 +309,8 @@ export function handleFreeSpinEnd() { // Ensure this is exported
 
     console.log(`Win: ${state.lastTotalWin} x ${FREE_SPINS_MULTIPLIER} = ${multipliedWin}, Total: ${totalWin}`);
 
-    // Ensure we stay in free spins mode by confirming the state
+    // Update state with multiplied win
     updateState({
-        isInFreeSpins: true, // Explicitly set to true to ensure consistency
         totalFreeSpinsWin: totalWin,
         freeSpinsRemaining: state.freeSpinsRemaining - 1
     });
@@ -354,20 +318,13 @@ export function handleFreeSpinEnd() { // Ensure this is exported
     // Update UI to show current free spins state
     updateDisplays();
 
-    // Increased delay to ensure better visual feedback between spins
-    const delay = Math.max((state.isTurboMode ? 400 : 1000) * winAnimDelayMultiplier, 500);
+    // Delay before next action (next spin or exit)
+    const delay = (state.isTurboMode ? 200 : 800) * winAnimDelayMultiplier;
     updateState({ isTransitioning: true });
 
     console.log(`Scheduling next action in ${delay}ms...`);
 
     setTimeout(() => {
-        // Only proceed if we're still in free spins mode
-        if (!state.isInFreeSpins) {
-            console.warn("Free spins state changed during transition - aborting next action");
-            updateState({ isTransitioning: false });
-            return;
-        }
-            
         updateState({ isTransitioning: false });
 
         if (state.freeSpinsRemaining > 0) {
