@@ -11,16 +11,20 @@ import { NUM_PAYLINES } from '../config/paylines.js';
  * then schedules the next spin or stops autoplay.
  */
 export function handleAutoplayNextSpin() {
-    // Stop conditions
-    if (!state.isAutoplaying || state.isInFreeSpins || state.isTransitioning) {
-        if (state.isAutoplaying) { // Only log/update if it was actually autoplaying
-            console.log("Autoplay stopped (condition met: FS/Transition).");
-            updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
-            updateBtnState(); // Update button appearance
-            // updateInfoOverlay(); // Handled by UIManager
-            // Enable buttons only if not transitioning into free spins or another state
-            setButtonsEnabled(!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning);
-        }
+    // Always check first if autoplay is still active - user might have cancelled it mid-spin
+    if (!state.isAutoplaying) {
+        console.log("Autoplay not active - skipping next spin.");
+        return;
+    }
+    
+    // Other stop conditions
+    if (state.isInFreeSpins || state.isTransitioning) {
+        console.log("Autoplay stopped (condition met: FS/Transition).");
+        updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+        updateBtnState(); // Update button appearance
+        
+        // Enable buttons only if not transitioning into free spins or another state
+        setButtonsEnabled(!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning);
         return;
     }
 
@@ -31,22 +35,20 @@ export function handleAutoplayNextSpin() {
             console.log("Autoplay stopped: Low balance.");
             updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
             updateBtnState();
-            // updateInfoOverlay(); // Handled by UIManager
             setButtonsEnabled(true);
-            // flashElement(balanceText, 0xe74c3c); // Needs UIManager reference
             return;
         }
 
         // Decrement spins and schedule next one
         updateState({ autoplaySpinsRemaining: state.autoplaySpinsRemaining - 1 });
-        // updateInfoOverlay(); // Handled by UIManager
 
         const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
-        // Removed: updateState({ isTransitioning: true }); // Prevent actions during the short delay
 
         setTimeout(() => {
-            // Removed: updateState({ isTransitioning: false });
-            startSpin(); // Start the next spin
+            // Check again if autoplay is still active (user might have cancelled during delay)
+            if (state.isAutoplaying) {
+                startSpin(); // Start the next spin
+            }
         }, delay);
 
     } else {
@@ -54,7 +56,6 @@ export function handleAutoplayNextSpin() {
         console.log("Autoplay finished.");
         updateState({ isAutoplaying: false });
         updateBtnState();
-        // updateInfoOverlay(); // Handled by UIManager
         setButtonsEnabled(true); // Re-enable buttons
     }
 }

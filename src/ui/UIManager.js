@@ -12,6 +12,9 @@ let balanceText = null;
 let winText = null;
 let betText = null;
 let winRollupText = null;
+let balanceLabel = null;
+let betLabel = null;
+let winLabel = null;
 let autoplayButton = null;
 let turboButton = null;
 let spinButton = null;
@@ -35,11 +38,10 @@ export function getSpinManagerStartFunction() {
  * Initializes the UI Manager.
  * Creates the UI panel, text elements, and buttons, adding them to the provided parent layer.
  * @param {PIXI.Container} parentLayer - The layer to add the UI elements to (e.g., layerUI).
- * @param {object} uiTextStyle - Style object for labels.
- * @param {object} uiValueStyle - Style object for value displays.
+ * @param {object} uiStyles - Object containing different PIXI.TextStyle definitions.
  * @param {object} spinManagerInstance - Instance of the SpinManager.
  */
-export function initUIManager(parentLayer, uiTextStyle, uiValueStyle, spinManagerInstance) {
+export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     if (!parentLayer) {
         console.error("UIManager: Parent layer is required!");
         return;
@@ -47,7 +49,6 @@ export function initUIManager(parentLayer, uiTextStyle, uiValueStyle, spinManage
     // Store the SpinManager instance
     if (!spinManagerInstance) {
          console.error("UIManager: SpinManager instance is required!");
-         // Decide how to handle: return? throw? For now, log and continue but spin won't work.
     } else {
         spinManagerRef = spinManagerInstance;
     }
@@ -56,97 +57,129 @@ export function initUIManager(parentLayer, uiTextStyle, uiValueStyle, spinManage
     internalContainer = new PIXI.Container();
     parentLayer.addChild(internalContainer);
 
+    // --- Define Sizes and Spacing ---
+    const panelHeight = 80; // Keep panel height
+    const panelY = GAME_HEIGHT - panelHeight;
+    const panelCenterY = panelY + panelHeight / 2;
+    
+    const btnSize = 40; // Reduced standard button diameter (was 45)
+    const spinBtnSize = 85; // Slightly reduced spin button size (was 90)
+    const sideMargin = 35; // Increased side margin for more padding (was 30)
+    const buttonSpacing = 20; // Increased button spacing (was 15)
+    const textButtonGap = 30; // Increased gap between text and buttons (was 25)
+    const labelOffset = -15; // Adjust vertical offsets
+    const valueOffset = 15;
+
     // --- Create UI Panel ---
-    const panelHeight = 100;
     const panel = new PIXI.Graphics()
-        .rect(0, GAME_HEIGHT - panelHeight, GAME_WIDTH, panelHeight)
-        .fill({ color: 0x1a1a1a, alpha: 0.85 });
+        .rect(0, panelY, GAME_WIDTH, panelHeight)
+        .fill({ color: 0x1a1a1a, alpha: 0.85 }); // Keep panel style for now
     internalContainer.addChild(panel);
 
-    // --- Create Text Labels and Value Displays ---
-
-    // Balance (Left Side)
-    const balanceLabel = new PIXI.Text({ text: "BALANCE", style: uiTextStyle });
-    balanceLabel.anchor.set(0, 0); // Left anchor
-    balanceLabel.x = 50; // Position from left
-    balanceLabel.y = bottomUIY + 15;
-    balanceText = new PIXI.Text({ text: `€${state.balance.toFixed(2)}`, style: uiValueStyle });
-    balanceText.anchor.set(0, 0); // Left anchor
-    balanceText.x = 50; // Position from left
-    balanceText.y = bottomUIY + 40;
-    internalContainer.addChild(balanceLabel, balanceText); // Add to internal container
-
-    // Win (Center)
-    const winLabel = new PIXI.Text({ text: "WIN", style: uiTextStyle });
-    winLabel.anchor.set(0.5, 0); // Center anchor
-    winLabel.x = GAME_WIDTH / 2;
-    winLabel.y = bottomUIY + 15;
-    winText = new PIXI.Text({ text: `€${state.lastTotalWin.toFixed(2)}`, style: { ...uiValueStyle, fill: 0xf1c40f, fontSize: 26 } });
-    winText.anchor.set(0.5, 0);
-    winText.x = GAME_WIDTH / 2;
-    winText.y = bottomUIY + 40;
-    winText.visible = state.lastTotalWin > 0; // Initially hide if no win
-    internalContainer.addChild(winLabel, winText); // Add to internal container
-
-    // Win Rollup Text (Initially hidden, positioned similarly to Win)
-    // Style can be adjusted for more prominence
-    const rollupStyle = { ...uiValueStyle, fill: 0xffd700, fontSize: 48, stroke: { color: 0x000000, width: 4 } };
-    winRollupText = new PIXI.Text({ text: `€0.00`, style: rollupStyle });
-    winRollupText.anchor.set(0.5, 0);
-    winRollupText.x = GAME_WIDTH / 2;
-    winRollupText.y = bottomUIY + 30; // Adjust Y position as needed
-    winRollupText.visible = false; // Hidden until a win animation starts
-    internalContainer.addChild(winRollupText); // Add to internal container
-
-
-    // Bet
-    const betLabel = new PIXI.Text({ text: "BET", style: uiTextStyle });
-    betLabel.anchor.set(1, 0);
-    betLabel.x = GAME_WIDTH - 50;
-    betLabel.y = bottomUIY + 15;
-    betText = new PIXI.Text({ text: `€${state.currentTotalBet.toFixed(2)}`, style: uiValueStyle });
-    betText.anchor.set(1, 0);
-    betText.x = GAME_WIDTH - 50;
-    betText.y = bottomUIY + 40;
-    internalContainer.addChild(betLabel, betText); // Add to internal container
-
     // --- Create Buttons ---
-    const btnW = 45, btnH = 45;
-    const spinBtnSize = 85;
+    const buttonY = panelCenterY - btnSize / 2; // Top Y for standard buttons
 
-    // Bet Buttons
-    betDecreaseButton = createButton("", GAME_WIDTH - 180, bottomUIY + 52, handlers.decreaseBet, {}, internalContainer, btnW, btnH, false, 'minus');
-    betDecreaseButton.name = "betDecreaseButton";
-    betIncreaseButton = createButton("", GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, internalContainer, btnW, btnH, false, 'plus');
-    betIncreaseButton.name = "betIncreaseButton";
-
-    // Spin Button - Use spinManagerRef for the callback
-    if (spinManagerRef) {
-         spinButton = createButton(
-             "",
-             GAME_WIDTH - 80,
-             GAME_HEIGHT / 2 + 80,
-             spinManagerRef.startSpin.bind(spinManagerRef), // Bind the method
-             {},
-             internalContainer,
-             spinBtnSize,
-             spinBtnSize,
-             true,
-             'spin'
-         );
-         spinButton.name = "spinButton";
-    } else {
-        console.error("UIManager: Spin button could not be created - SpinManager not provided.");
-        // Optionally create a disabled placeholder button
-    }
-
-    // Turbo Button
-    turboButton = createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, internalContainer, btnW, btnH, false, 'turbo');
+    // Left Buttons (Autoplay, Turbo)
+    const firstButtonX = sideMargin;
+    turboButton = createButton("", firstButtonX, buttonY, handlers.toggleTurbo, {}, internalContainer, btnSize, btnSize, true, 'turbo');
     turboButton.name = "turboButton";
 
-    // Autoplay Button
-    autoplayButton = createButton("", 180, bottomUIY + 52, handlers.toggleAutoplay, {}, internalContainer, btnW, btnH, false, 'autoplay');
+    const secondButtonX = firstButtonX + btnSize + buttonSpacing;
+    autoplayButton = createButton("", secondButtonX, buttonY, handlers.toggleAutoplay, {}, internalContainer, btnSize, btnSize, true, 'autoplay');
     autoplayButton.name = "autoplayButton";
+
+    // Right Buttons (Spin) - Move up slightly
+    const spinButtonTopLeftX = GAME_WIDTH - sideMargin - spinBtnSize;
+    const spinButtonTopLeftY = panelCenterY - spinBtnSize / 2 - 5; // Move up by 5px
+    if (spinManagerRef) {
+        spinButton = createButton(
+            "", spinButtonTopLeftX, spinButtonTopLeftY, 
+            spinManagerRef.startSpin.bind(spinManagerRef), {}, 
+            internalContainer, spinBtnSize, spinBtnSize, true, 'spin'
+        );
+        spinButton.name = "spinButton";
+    } else {
+        console.error("UIManager: Spin button could not be created.");
+    }
+    
+    // --- Create Text Labels and Value Displays (before Bet buttons for layout) ---
+    
+    // Bet Group Center Calculation (more dynamic)
+    const spinButtonLeftEdge = spinButtonTopLeftX;
+    const betAreaRightMargin = spinButtonLeftEdge - textButtonGap; // Right edge of the bet area
+    // Estimate bet text width (can be refined if PIXI.TextMetrics are available)
+    const estimatedBetTextWidth = 100; // Adjust this guess based on font/size
+    const betGroupWidth = btnSize + buttonSpacing + estimatedBetTextWidth + buttonSpacing + btnSize;
+    const betGroupCenterX = betAreaRightMargin - betGroupWidth / 2; 
+
+    // Bet Text & Label
+    betLabel = new PIXI.Text({ text: "BET", style: uiStyles.label });
+    betLabel.anchor.set(0.5, 0.5);
+    betLabel.x = betGroupCenterX;
+    betLabel.y = panelCenterY + labelOffset;
+    
+    betText = new PIXI.Text({ text: `€${state.currentTotalBet.toFixed(2)}`, style: uiStyles.betValue });
+    betText.anchor.set(0.5, 0.5);
+    betText.x = betGroupCenterX;
+    betText.y = panelCenterY + valueOffset;
+    internalContainer.addChild(betLabel, betText);
+    
+    // Bet Buttons (Positioned relative to the actual betText after creation)
+    // Use timeout to ensure betText has dimensions (hacky, better with metrics)
+    setTimeout(() => {
+        const betTextActualWidth = betText.width;
+        const betBtnY = panelCenterY + valueOffset - btnSize / 2; // Align vertically with value
+
+        // Add more spacing between bet amount and buttons
+        const betButtonSpacing = buttonSpacing + 10; // Extra padding for bet buttons
+
+        const betDecreaseButtonX = betGroupCenterX - betTextActualWidth / 2 - betButtonSpacing - btnSize;
+        betDecreaseButton = createButton("", betDecreaseButtonX, betBtnY, handlers.decreaseBet, {}, internalContainer, btnSize, btnSize, true, 'minus');
+        betDecreaseButton.name = "betDecreaseButton";
+
+        const betIncreaseButtonX = betGroupCenterX + betTextActualWidth / 2 + betButtonSpacing;
+        betIncreaseButton = createButton("", betIncreaseButtonX, betBtnY, handlers.increaseBet, {}, internalContainer, btnSize, btnSize, true, 'plus');
+        betIncreaseButton.name = "betIncreaseButton";
+        
+        // Initial enable/disable state might need setting here if buttons added late
+        setButtonsEnabled(!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning); 
+    }, 0); // Execute after current stack
+
+    // Balance (Right of Left Buttons)
+    const balanceAreaLeftEdge = secondButtonX + btnSize + textButtonGap * 2; // Increased gap
+    balanceLabel = new PIXI.Text({ text: "BALANCE", style: uiStyles.label });
+    balanceLabel.anchor.set(0, 0.5);
+    balanceLabel.x = balanceAreaLeftEdge;
+    balanceLabel.y = panelCenterY + labelOffset;
+    
+    balanceText = new PIXI.Text({ text: `€${state.balance.toFixed(2)}`, style: uiStyles.balanceValue });
+    balanceText.anchor.set(0, 0.5);
+    balanceText.x = balanceAreaLeftEdge;
+    balanceText.y = panelCenterY + valueOffset;
+    internalContainer.addChild(balanceLabel, balanceText);
+
+    // Win (Center Screen)
+    winLabel = new PIXI.Text({ text: "WIN", style: uiStyles.label });
+    winLabel.anchor.set(0.5, 0.5);
+    winLabel.x = GAME_WIDTH / 2;
+    winLabel.y = panelCenterY + labelOffset;
+    
+    winText = new PIXI.Text({ text: `€${state.lastTotalWin.toFixed(2)}`, style: uiStyles.winValue }); // Use winValue style
+    winText.anchor.set(0.5, 0.5);
+    winText.x = GAME_WIDTH / 2;
+    winText.y = panelCenterY + valueOffset;
+    winText.visible = state.lastTotalWin > 0;
+    internalContainer.addChild(winLabel, winText);
+
+    // Win Rollup Text
+    winRollupText = new PIXI.Text({ text: `€0.00`, style: uiStyles.winRollup }); // Use winRollup style
+    winRollupText.anchor.set(0.5, 0.5);
+    winRollupText.x = GAME_WIDTH / 2;
+    winRollupText.y = panelCenterY + valueOffset; // Position same as winText
+    winRollupText.visible = false;
+    internalContainer.addChild(winRollupText);
+
+    // --- Final Setup ---
 
     // Set initial button states
     updateAutoplayButtonState();
@@ -213,11 +246,25 @@ export function setButtonsEnabled(enabled) {
 
     const buttonsToToggle = [
         spinButton,
-        autoplayButton,
-        turboButton,
         betDecreaseButton,
         betIncreaseButton,
     ];
+
+    // Handle autoplay button separately to keep it interactive at ALL TIMES
+    if (autoplayButton) {
+        // Always keep autoplay button interactive regardless of state
+        autoplayButton.eventMode = 'static';
+        autoplayButton.alpha = 1.0;
+        autoplayButton.cursor = 'pointer';
+    }
+
+    // Handle turbo button separately to keep it interactive at ALL TIMES
+    if (turboButton) {
+        // Always keep turbo button interactive regardless of state
+        turboButton.eventMode = 'static';
+        turboButton.alpha = 1.0;
+        turboButton.cursor = 'pointer';
+    }
 
     buttonsToToggle.forEach(button => {
         if (!button) return; // Skip if button reference wasn't found
@@ -234,29 +281,82 @@ export function setButtonsEnabled(enabled) {
     // Update specific button states after general enable/disable
     updateAutoplayButtonState();
     updateTurboButtonState();
+    
+    // If buttons are being disabled, it means we're likely starting a spin
+    // Start the spin button rotation animation
+    if (!enabled && spinButton && spinButton.buttonIcon) {
+        animateSpinButtonRotation();
+    }
+}
+
+/**
+ * Animates the spin button rotation during spinning - rotates exactly once.
+ */
+function animateSpinButtonRotation() {
+    if (!spinButton || !spinButton.buttonIcon) return;
+    
+    // Kill any existing animation
+    if (spinButton.currentRotationTween) {
+        spinButton.currentRotationTween.kill();
+    }
+    
+    // Reset rotation to 0 before starting
+    spinButton.buttonIcon.angle = 0;
+    
+    // Simple single rotation with nice easing
+    spinButton.currentRotationTween = gsap.to(spinButton.buttonIcon, {
+        angle: 180, // Exactly one full rotation
+        duration: 0.6, // Duration of the single rotation
+        ease: "power1.inOut", // Smooth acceleration and deceleration
+        onComplete: () => {
+            // Reset angle when done
+            spinButton.buttonIcon.angle = 0;
+            spinButton.currentRotationTween = null;
+            spinButton._rotationActive = false;
+        }
+    });
+    
+    spinButton._rotationActive = true;
+}
+
+/**
+ * Stops the spin button rotation animation if it's still active.
+ */
+export function stopSpinButtonRotation() {
+    if (!spinButton || !spinButton.buttonIcon || !spinButton.currentRotationTween) return;
+    
+    // Just let the animation complete naturally since it's only one rotation
+    // No need for complicated stopping animations
 }
 
 /**
  * Updates the visual state of the Autoplay button (icon, color).
+ * Ensures the button immediately reflects the current autoplay state.
  */
 export function updateAutoplayButtonState() {
     if (!autoplayButton) return;
 
     // Set active state if button supports it directly
     if (typeof autoplayButton.setActiveState === 'function') {
+        // Force immediate visual update to active/inactive state
         autoplayButton.setActiveState(state.isAutoplaying);
     }
 
-    // Update the icon 
+    // Update the icon (switch between play/stop icons based on state)
     if (typeof autoplayButton.updateIcon === 'function') {
-        // Use play icon when not autoplaying, stop icon when autoplaying
+        // Use stop icon when autoplaying, autoplay icon when not autoplaying
         const newIconType = state.isAutoplaying ? 'stop' : 'autoplay';
         autoplayButton.updateIcon(newIconType);
     }
+    
+    // Ensure the button remains interactive
+    autoplayButton.eventMode = 'static';
+    autoplayButton.alpha = 1.0;
+    autoplayButton.cursor = 'pointer';
 }
 
 /**
- * Updates the visual state of the Turbo button (color).
+ * Updates the visual state of the Turbo button (color and tint).
  */
 export function updateTurboButtonState() {
     if (!turboButton) return;
@@ -264,6 +364,13 @@ export function updateTurboButtonState() {
     // Set active state if button supports it directly
     if (typeof turboButton.setActiveState === 'function') {
         turboButton.setActiveState(state.isTurboMode);
+    }
+    
+    // Make the icon yellow when turbo mode is active
+    if (turboButton.buttonIcon && state.isTurboMode) {
+        turboButton.buttonIcon.tint = 0xFFD700; // Gold/yellow color when active
+    } else if (turboButton.buttonIcon) {
+        turboButton.buttonIcon.tint = 0xFFFFFF; // Reset to white when inactive
     }
 }
 

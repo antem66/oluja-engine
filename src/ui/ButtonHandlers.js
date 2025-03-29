@@ -59,26 +59,38 @@ export function increaseBet() {
 // --- Autoplay ---
 
 export function toggleAutoplay() {
-  if (state.isSpinning || state.isTransitioning || state.isInFreeSpins) return;
-
+  // Allow stopping autoplay at any time, even during spins
+  // Only prevent starting autoplay during certain states
+  
   if (state.isAutoplaying) {
+    // Always allow stopping autoplay, regardless of game state
     updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+    // Immediately update button appearance to reflect stopped state
+    updateAutoplayButtonState();
     console.log("Autoplay stopped.");
-    setButtonsEnabled(true); // Enable buttons
+    
+    // Only re-enable buttons if not spinning and not in transitions
+    if (!state.isSpinning && !state.isTransitioning) {
+      setButtonsEnabled(true);
+    }
   } else {
+    // Only allow starting autoplay if in appropriate state
+    if (state.isSpinning || state.isTransitioning || state.isInFreeSpins) return;
+    
     updateState({ isAutoplaying: true, autoplaySpinsRemaining: state.autoplaySpinsDefault }); // Use default from state
     console.log(`Autoplay started: ${state.autoplaySpinsRemaining} spins.`);
     updateAutoplayButtonState(); // Update button appearance
     startSpin(); // Start the first spin
   }
-  // updateInfoOverlay(); // This will be handled by UIManager based on state changes
 }
 
 
 // --- Turbo Mode ---
 
 export function toggleTurbo() {
-  if (state.isTransitioning) return; // Prevent toggle during transitions
+  // Allow toggling turbo mode during autoplay and most states
+  // Only prevent during critical transitions (not during autoplay)
+  if (state.isTransitioning && !state.isAutoplaying) return;
 
   const newTurboState = !state.isTurboMode;
   updateState({ isTurboMode: newTurboState }); // Update global state

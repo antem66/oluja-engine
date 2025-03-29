@@ -51,6 +51,7 @@ export async function loadButtonAssets() {
     { alias: 'btn_spin', src: 'assets/control/spin.svg' },
     { alias: 'btn_turbo', src: 'assets/control/turbo.svg' },
     { alias: 'btn_autoplay', src: 'assets/control/autoplay.svg' },
+    { alias: 'btn_stop', src: 'assets/control/stop.svg' }, // Add stop icon for autoplay toggling
     { alias: 'btn_plus', src: 'assets/control/plus.svg' },
     { alias: 'btn_minus', src: 'assets/control/minus.svg' }
   ];
@@ -74,28 +75,34 @@ class Button extends PIXI.Container {
     /** @type {PIXI.Graphics | PIXI.Sprite | undefined} */
     buttonIcon;
     /** @type {PIXI.Graphics | undefined} */
-    bgIdle;
-    /** @type {PIXI.Graphics | undefined} */
-    bgHover;
-    /** @type {PIXI.Graphics | undefined} */
-    bgDown;
-    /** @type {PIXI.Graphics | undefined} */
-    bgActive;
+    bgGraphics; // Combined graphics for background and border
     /** @type {gsap.core.Tween | null} */
     currentTween = null;
     /** @type {Function | null} */
     _callback = null;
-    _isCircular = false; // Store circular flag
+    _isCircular = false;
     _width = 0;
     _height = 0;
-    _iconType = ""; // Store icon type
-    _isActive = false; // Track active state for toggles
-    _usingSVG = false; // Whether using SVG icon
+    _iconType = "";
+    _isActive = false;
+    _usingSVG = false;
+
+    // Store graphic states for efficient updates
+    _state = 'idle'; // 'idle', 'hover', 'down', 'active'
+    _colors = {
+        idle: { bg: 0x000000, border: 0x555555, alpha: 0.7 },
+        hover: { bg: 0x000000, border: 0xAAAAAA, alpha: 0.8 },
+        down: { bg: 0x000000, border: 0xFFFFFF, alpha: 0.9 },
+        active: { bg: 0x111133, border: 0x8888FF, alpha: 0.75 } // Example active state
+    };
+    _radius = 0;
+    _borderThickness = 1;
+    _borderOffset = 2; // Pixels between border and edge
 
     constructor(
         text, x, y,
         callback,
-        textStyleObject,
+        textStyleObject, // Keep for potential future text buttons
         parentContainer,
         width = 100,
         height = 40,
@@ -104,95 +111,83 @@ class Button extends PIXI.Container {
     ) {
         super();
         this._callback = callback;
-        this._isCircular = circular; // Store flag
-        this._iconType = iconType || ""; // Store icon type
-
-        // Ensure width and height are numbers
+        this._isCircular = circular;
+        this._iconType = iconType || "";
         this._width = Number(width) || 100;
         this._height = Number(height) || 40;
-        const effectiveWidth = this._isCircular ? Math.min(this._width, this._height) : this._width;
-        const effectiveHeight = this._isCircular ? Math.min(this._width, this._height) : this._height;
-        const radius = effectiveWidth / 2;
+        
+        // Use the smaller dimension for circle radius
+        this._radius = Math.min(this._width, this._height) / 2;
+        const actualSize = this._radius * 2;
 
-        this.pivot.set(effectiveWidth / 2, effectiveHeight / 2);
+        // Set position based on top-left, not center pivot
         this.x = x;
         this.y = y;
+        
         /** @type {PIXI.EventMode} */
-        this.eventMode = 'static'; // Explicitly set valid EventMode
+        this.eventMode = 'static';
         this.cursor = "pointer";
 
-        // --- Button Shapes - Enhanced colors ---
-        const idleColor = iconType === 'spin' ? 0xEA3323 : 0x555555; // Red for spin, dark gray for others
-        const hoverColor = iconType === 'spin' ? 0xFF5544 : 0x777777;
-        const downColor = iconType === 'spin' ? 0xCC2211 : 0x3A3A3A;
-        const activeColor = 0x224488; // Blue highlight for active state
+        // --- Button Graphics ---
+        this.bgGraphics = new PIXI.Graphics();
+        this.addChild(this.bgGraphics);
+        this._updateGraphics(); // Initial draw
 
-        // Create backgrounds for different states
-        this.bgIdle = this._drawShape(this._width, this._height, this._isCircular, radius, idleColor, 0xaaaaaa);
-        this.bgHover = this._drawShape(this._width, this._height, this._isCircular, radius, hoverColor, 0xffffff);
-        this.bgDown = this._drawShape(this._width, this._height, this._isCircular, radius, downColor, 0x777777);
-        this.bgActive = this._drawShape(this._width, this._height, this._isCircular, radius, activeColor, 0xffffff);
-
-        this.bgHover.visible = false;
-        this.bgDown.visible = false;
-        this.bgActive.visible = false;
-
-        this.addChild(this.bgIdle);
-        this.addChild(this.bgHover);
-        this.addChild(this.bgDown);
-        this.addChild(this.bgActive);
-
-        // --- Button Content (Icon or Text) ---
+        // --- Button Content (Icon) ---
         if (iconType) {
-            // Try to use SVG icon first, if available
             const svgTexture = PIXI.Assets.get(`btn_${iconType}`);
             if (svgTexture) {
-                // Using SVG icon
                 this._usingSVG = true;
                 const icon = new PIXI.Sprite(svgTexture);
                 icon.anchor.set(0.5);
-                icon.x = effectiveWidth / 2;
-                icon.y = effectiveHeight / 2;
-                icon.width = effectiveWidth * 0.6;
-                icon.height = effectiveHeight * 0.6;
-                icon.tint = 0xFFFFFF; // Set the tint to white to match drawn icons
+                // Position icon in the center of the button
+                icon.x = this._radius; 
+                icon.y = this._radius;
+                
+                // Apply different scale factors based on icon type
+                let iconScale = 0.5; // Default smaller scale (was 0.6)
+                
+                // Custom scaling for specific icons
+                if (iconType === 'autoplay' || iconType === 'turbo') {
+                    iconScale = 0.45; // Even smaller for these buttons
+                } else if (iconType === 'plus' || iconType === 'minus') {
+                    iconScale = 0.4; // Smallest for plus/minus
+                } else if (iconType === 'spin') {
+                    iconScale = 0.55; // Slightly larger for spin
+                }
+                
+                // Scale icon appropriately within the button
+                icon.width = actualSize * iconScale;
+                icon.height = actualSize * iconScale;
+                icon.tint = 0xFFFFFF; // White icon
                 this.buttonIcon = icon;
+                this.addChild(icon);
             } else {
-                // Fallback to drawn icon
+                console.warn(`ButtonFactory: SVG asset btn_${iconType} not found. Button will lack icon.`);
                 this._usingSVG = false;
-                this.buttonIcon = this._drawIcon(iconType, effectiveWidth, effectiveHeight, radius);
-            }
-            
-            if (this.buttonIcon) {
-                this.addChild(this.buttonIcon);
+                // Optionally draw a fallback placeholder
             }
         } else if (text) {
-            const style = new PIXI.TextStyle(textStyleObject || {});
-            const buttonText = new PIXI.Text({ text: text, style: style });
-            buttonText.anchor.set(0.5);
-            buttonText.x = effectiveWidth / 2;
-            buttonText.y = effectiveHeight / 2;
-            this.buttonLabel = buttonText;
-            this.addChild(buttonText);
+             // Fallback for text buttons (though not used in current UI)
+             const style = new PIXI.TextStyle(textStyleObject || {});
+             const buttonText = new PIXI.Text({ text: text, style: style });
+             buttonText.anchor.set(0.5);
+             buttonText.x = this._radius;
+             buttonText.y = this._radius;
+             this.buttonLabel = buttonText;
+             this.addChild(buttonText);
         }
 
-        // Add glow effect for spin button
-        if (iconType === 'spin') {
-            const glow = new PIXI.Graphics()
-                .circle(effectiveWidth / 2, effectiveHeight / 2, radius + 3)
-                .fill({ color: 0xFFFFFF, alpha: 0 });
-            this.addChildAt(glow, 0); // Add behind everything
-            
-            gsap.to(glow, {
-                alpha: 0.3,
-                duration: 1.2,
-                repeat: -1,
-                yoyo: true,
-                ease: "sine.inOut"
-            });
+        // --- Define Hit Area --- 
+        if (this._isCircular) {
+            this.hitArea = new PIXI.Circle(this._radius, this._radius, this._radius);
+        } else {
+            // Keep rectangular hitArea if needed in future
+            this.hitArea = new PIXI.Rectangle(0, 0, this._width, this._height);
         }
 
         // --- Interaction Logic ---
+        // Binding remains the same
         this._onPointerDown = this._onPointerDown.bind(this);
         this._onPointerUp = this._onPointerUp.bind(this);
         this._onPointerUpOutside = this._onPointerUpOutside.bind(this);
@@ -206,362 +201,140 @@ class Button extends PIXI.Container {
         this.on("pointerout", this._onPointerOut);
     }
 
-    // --- Helper methods for drawing ---
+    // --- Update Graphics based on state ---
+    _updateGraphics() {
+        if (!this.bgGraphics) return;
 
-    /**
-     * Draws the basic button shape
-     * @param {number} width
-     * @param {number} height
-     * @param {boolean} circular
-     * @param {number} radius
-     * @param {number} fillColor
-     * @param {number} strokeColor
-     * @returns {PIXI.Graphics}
-     */
-    _drawShape(width, height, circular, radius, fillColor, strokeColor) {
-        const shape = new PIXI.Graphics();
-        if (circular) {
-            shape
-                .circle(radius, radius, radius)
-                .fill({ color: fillColor })
-                .stroke({ width: 2, color: strokeColor, alignment: 0.5 });
-        } else {
-            shape
-                .roundRect(0, 0, width, height, 10)
-                .fill({ color: fillColor })
-                .stroke({ width: 2, color: strokeColor, alignment: 0.5 });
+        const stateColors = this._isActive ? this._colors.active : this._colors[this._state];
+        const bgColor = stateColors.bg;
+        const borderColor = stateColors.border;
+        const bgAlpha = stateColors.alpha;
+
+        this.bgGraphics.clear();
+
+        // Draw outer background circle
+        this.bgGraphics
+            .circle(this._radius, this._radius, this._radius)
+            .fill({ color: bgColor, alpha: bgAlpha });
+
+        // Draw inset border circle
+        if (this._borderThickness > 0 && this._borderOffset > 0) {
+            this.bgGraphics
+                .circle(this._radius, this._radius, this._radius - this._borderOffset)
+                .stroke({ 
+                    width: this._borderThickness, 
+                    color: borderColor, 
+                    alignment: 0.5 // Center align stroke
+                }); 
         }
-        return shape;
     }
 
-    /**
-     * Draws the icon based on type (fallback if SVG not available)
-     * @param {string} iconType
-     * @param {number} width
-     * @param {number} height
-     * @param {number} radius - Radius of the button (or half its size)
-     * @returns {PIXI.Graphics | undefined} // Return undefined on failure
-     */
-    _drawIcon(iconType, width, height, radius) {
-        const icon = new PIXI.Graphics();
-        const iconColor = 0xffffff;
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const size = Math.min(width, height) * 0.5; // Base size for icons
-        const strokeWidth = Math.max(2, radius * 0.1);
+    // --- Helper methods for drawing (Keep _drawArrowHead if used by fallback icons) ---
+    // Remove _drawShape and _drawIcon as graphics are now consolidated
 
-        switch (iconType) {
-            case 'spin':
-                const iconRadius = size * 0.8;
-                const arrowThickness = Math.max(2, radius * 0.15);
-                icon.stroke({ width: arrowThickness, color: iconColor, cap: 'round' });
-                icon.arc(centerX, centerY, iconRadius, -Math.PI * 0.1, Math.PI * 0.9);
-                this._drawArrowHead(icon, centerX, centerY, iconRadius, Math.PI * 0.9, arrowThickness);
-                icon.moveTo(centerX + iconRadius * Math.cos(Math.PI * 0.9), centerY + iconRadius * Math.sin(Math.PI * 0.9));
-                icon.stroke({ width: arrowThickness, color: iconColor, cap: 'round' });
-                icon.arc(centerX, centerY, iconRadius, Math.PI * 0.9, Math.PI * 1.9);
-                this._drawArrowHead(icon, centerX, centerY, iconRadius, Math.PI * 1.9, arrowThickness);
-                break;
-            case 'plus':
-                icon.stroke({ width: strokeWidth, color: iconColor, cap: 'round' });
-                icon.moveTo(centerX - size / 2, centerY);
-                icon.lineTo(centerX + size / 2, centerY);
-                icon.moveTo(centerX, centerY - size / 2);
-                icon.lineTo(centerX, centerY + size / 2);
-                break;
-            case 'minus':
-                icon.stroke({ width: strokeWidth, color: iconColor, cap: 'round' });
-                icon.moveTo(centerX - size / 2, centerY);
-                icon.lineTo(centerX + size / 2, centerY);
-                break;
-            case 'autoplay':
-                icon.moveTo(centerX - size / 3, centerY - size / 2);
-                icon.lineTo(centerX + size / 2, centerY);
-                icon.lineTo(centerX - size / 3, centerY + size / 2);
-                icon.closePath();
-                icon.fill({ color: iconColor });
-                break;
-            case 'turbo':
-                icon.moveTo(centerX + size / 3, centerY - size / 2);
-                icon.lineTo(centerX - size / 3, centerY + size / 10);
-                icon.lineTo(centerX, centerY + size / 10);
-                icon.lineTo(centerX - size / 3, centerY + size / 2);
-                icon.lineTo(centerX + size / 3, centerY - size / 10);
-                icon.lineTo(centerX, centerY - size / 10);
-                icon.closePath();
-                icon.fill({ color: iconColor });
-                break;
-            default:
-                console.warn("ButtonFactory: Unknown iconType:", iconType);
-                return undefined;
-        }
-        return icon;
-    }
-
-    /**
-     * Helper to draw arrowhead for spin icon
-     * @param {PIXI.Graphics} graphics
-     * @param {number} cx
-     * @param {number} cy
-     * @param {number} radius
-     * @param {number} angle
-     * @param {number} thickness
-     */
-    _drawArrowHead(graphics, cx, cy, radius, angle, thickness) {
-        const headLength = thickness * 1.5;
-        graphics.moveTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
-        graphics.lineTo(cx + radius * Math.cos(angle) - headLength * Math.cos(angle + Math.PI / 6), cy + radius * Math.sin(angle) - headLength * Math.sin(angle + Math.PI / 6));
-        graphics.moveTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
-        graphics.lineTo(cx + radius * Math.cos(angle) - headLength * Math.cos(angle - Math.PI / 6), cy + radius * Math.sin(angle) - headLength * Math.sin(angle - Math.PI / 6));
-    }
-
-    // --- Interaction Logic with GSAP ---
-    /** @param {object} targetProps */
+    // --- Animation Logic (Keep if needed) ---
     _animate(targetProps) {
-        // Check if tween exists and is active before killing
-        if (this.currentTween && this.currentTween.isActive()) {
+        if (this.currentTween) {
             this.currentTween.kill();
         }
-        this.currentTween = gsap.to(this.scale, { ...targetProps, duration: 0.1, ease: 'power1.out' });
+        this.currentTween = gsap.to(this, { ...targetProps, duration: 0.15, ease: "sine.out" });
     }
 
-    /** @param {PIXI.FederatedPointerEvent} event */
+    // --- Interaction Handlers --- 
     _onPointerDown(event) {
-        if (this.alpha < 0.6) return; // Basic enabled check
-        
-        // If it's a toggle button and already active, don't show 'down' state
-        if (this._isActive && (this._iconType === 'turbo' || this._iconType === 'autoplay')) {
-            return;
-        }
-        
-        if (this.bgDown) this.bgDown.visible = true;
-        if (this.bgIdle) this.bgIdle.visible = false;
-        if (this.bgHover) this.bgHover.visible = false;
-        if (this.bgActive) this.bgActive.visible = false;
-        this._animate({ x: 0.95, y: 0.95 });
+        if (!this.interactive) return;
+        this._state = 'down';
+        this._updateGraphics();
+        // Optional: Animate scale down
+        // this._animate({ scaleX: 0.95, scaleY: 0.95 }); 
     }
 
-    /** @param {PIXI.FederatedPointerEvent} event */
     _onPointerUp(event) {
-        if (this.alpha < 0.6) return;
-        
-        // Call the callback first before changing visual state
-        if (typeof this._callback === 'function') {
-            this._callback();
+        if (!this.interactive) return;
+        const previousState = this._state;
+        this._state = this._isActive ? 'active' : 'hover'; // Go to hover or active after click up
+        this._updateGraphics();
+        // Optional: Animate scale back
+        // this._animate({ scaleX: 1.0, scaleY: 1.0 });
+
+        // Execute callback only if pointer was released *inside* after being pressed down *inside*
+        if (previousState === 'down') {
+            // Add a small delay to allow visual feedback before action
+            setTimeout(() => {
+                 if (this._callback) {
+                    try {
+                        this._callback();
+                    } catch (e) {
+                        console.error("Error executing button callback:", e);
+                    }
+                 }
+            }, 50); // 50ms delay
         }
-        
-        // Add spin animation specifically for the spin button
-        if (this._iconType === 'spin') {
-            // Kill any previous rotation animation
-            gsap.killTweensOf(this);
-            gsap.killTweensOf(this.scale);
-            
-            // Also kill any tweens on the button icon
-            if (this.buttonIcon) {
-                gsap.killTweensOf(this.buttonIcon);
-            }
-            
-            // Create a sequence of animations for a more elaborate effect
-            const tl = gsap.timeline();
-            
-            // Initial quick compression
-            tl.to(this.scale, {
-                x: 0.9, 
-                y: 0.9, 
-                duration: 0.15,
-                ease: "power1.in"
-            });
-            
-            // Spin with slight expansion
-            tl.to(this, {
-                rotation: Math.PI * 2, // Full 360-degree rotation
-                duration: 0.8,
-                ease: "power2.inOut"
-            }, 0.1);
-            
-            // Add a flash effect to the icon
-            if (this.buttonIcon) {
-                // Flash icon bright white (or orange for SVGs)
-                const flashColor = this._usingSVG ? 0xFF7700 : 0xFFFFFF;
-                const originalTint = this._usingSVG ? 0xFFFFFF : 0xFFFFFF;
-                
-                tl.to(this.buttonIcon, {
-                    tint: flashColor,
-                    alpha: 1.5, // Slight overbright
-                    duration: 0.2,
-                    ease: "sine.in"
-                }, 0.2);
-                
-                // Return to normal
-                tl.to(this.buttonIcon, {
-                    tint: originalTint,
-                    alpha: 1.0,
-                    duration: 0.3,
-                    ease: "power1.out"
-                }, 0.4);
-            }
-            
-            // Expansion with bounce
-            tl.to(this.scale, {
-                x: 1.1, 
-                y: 1.1, 
-                duration: 0.3,
-                ease: "power2.out"
-            }, 0.5);
-            
-            // Return to normal
-            tl.to(this.scale, {
-                x: 1.0, 
-                y: 1.0, 
-                duration: 0.3,
-                ease: "elastic.out(1.2, 0.5)"
-            }, 0.8);
-            
-            // Reset rotation when complete
-            tl.call(() => {
-                this.rotation = 0;
-            });
-        }
-        
-        // Reset states - active state will be set by UIManager when state changes
-        if (this.bgDown) this.bgDown.visible = false;
-        
-        // Calculate if pointer is still over the button
-        const globalPoint = event.global;
-        let isOver = false;
-        if (globalPoint) {
-            const bounds = this.getBounds();
-            isOver = globalPoint.x >= bounds.x && globalPoint.x <= bounds.x + bounds.width &&
-                     globalPoint.y >= bounds.y && globalPoint.y <= bounds.y + bounds.height;
-        }
-        
-        // Default to hover or idle state, let UIManager handle active state
-        if (this.bgHover) this.bgHover.visible = isOver && !this._isActive;
-        if (this.bgIdle) this.bgIdle.visible = !isOver && !this._isActive;
-        if (this.bgActive) this.bgActive.visible = this._isActive;
-        
-        this._animate({ x: isOver ? 1.05 : 1.0, y: isOver ? 1.05 : 1.0 });
     }
 
-    /** @param {PIXI.FederatedPointerEvent} event */
-     _onPointerUpOutside(event) {
-        if (this.alpha < 0.6) return;
-        if (this.bgDown) this.bgDown.visible = false;
-        if (this.bgHover) this.bgHover.visible = false;
-        
-        // If active, show active state, otherwise show idle
-        if (this._isActive) {
-            if (this.bgActive) this.bgActive.visible = true;
-            if (this.bgIdle) this.bgIdle.visible = false;
-        } else {
-            if (this.bgActive) this.bgActive.visible = false;
-            if (this.bgIdle) this.bgIdle.visible = true;
-        }
-        
-        this._animate({ x: 1.0, y: 1.0 });
+    _onPointerUpOutside(event) {
+        if (!this.interactive) return;
+        this._state = this._isActive ? 'active' : 'idle'; // Return to idle or active state
+        this._updateGraphics();
+        // Optional: Animate scale back if scale down was used
+        // this._animate({ scaleX: 1.0, scaleY: 1.0 });
     }
 
-    /** @param {PIXI.FederatedPointerEvent} event */
     _onPointerOver(event) {
-        if (this.alpha < 0.6) return;
-        
-        // If active, keep showing active state
-        if (this._isActive) {
-            return;
+        if (!this.interactive) return;
+        // Only change to hover if not already pressed down
+        if (this._state !== 'down') { 
+            this._state = this._isActive ? 'active' : 'hover'; // Go to hover or active
+            this._updateGraphics();
+             // Optional: Subtle scale up on hover
+            // this._animate({ scaleX: 1.02, scaleY: 1.02 });
         }
-        
-        // Otherwise show hover state
-        if (this.bgHover) this.bgHover.visible = true;
-        if (this.bgIdle) this.bgIdle.visible = false;
-        if (this.bgDown) this.bgDown.visible = false;
-        
-        this._animate({ x: 1.05, y: 1.05 });
     }
 
-    /** @param {PIXI.FederatedPointerEvent} event */
     _onPointerOut(event) {
-        if (this.alpha < 0.6) return;
-        
-        // If active, continue showing active state
-        if (this._isActive) {
-            return;
+        if (!this.interactive) return;
+        // Return to idle or active state unless pressed down
+        if (this._state !== 'down') { 
+            this._state = this._isActive ? 'active' : 'idle';
+            this._updateGraphics();
+            // Optional: Animate scale back
+            // this._animate({ scaleX: 1.0, scaleY: 1.0 });
         }
-        
-        // If currently showing down state, keep that until pointer up/outside
-        if (this.bgDown && this.bgDown.visible) {
-            return;
-        }
-        
-        // Reset to idle state
-        if (this.bgHover) this.bgHover.visible = false;
-        if (this.bgIdle) this.bgIdle.visible = true;
-        
-        this._animate({ x: 1.0, y: 1.0 });
     }
 
-    /**
-     * Set active state for buttons like turbo/autoplay
-     * @param {boolean} isActive Whether the button should show active state
-     */
+    // Method to toggle active state (e.g., for Turbo/Autoplay)
     setActiveState(isActive) {
+        if (!this.bgGraphics) return; // Safety check
+        
+        // If the active state isn't changing, no need to update
+        if (this._isActive === isActive) return;
+        
         this._isActive = isActive;
         
-        // Update visuals
-        if (this._isActive) {
-            if (this.bgActive) this.bgActive.visible = true;
-            if (this.bgIdle) this.bgIdle.visible = false;
-            if (this.bgHover) this.bgHover.visible = false;
-            if (this.bgDown) this.bgDown.visible = false;
+        // Determine the correct visual state based on whether it's currently hovered/down or just idle
+        if (this._state === 'hover' || this._state === 'down') {
+            this._state = this._isActive ? 'active' : 'hover'; // Stay hover if deactivated while hovering
         } else {
-            if (this.bgActive) this.bgActive.visible = false;
-            if (this.bgIdle) this.bgIdle.visible = true;
-            if (this.bgHover) this.bgHover.visible = false;
-            if (this.bgDown) this.bgDown.visible = false;
+            this._state = this._isActive ? 'active' : 'idle';
         }
+        
+        // Force immediate visual update
+        this._updateGraphics();
     }
 
-    /**
-     * Method to update icon type (needed for autoplay toggle between play/stop)
-     * @param {string} newIconType
-     */
+    // Optional: Method to update icon dynamically if needed later
     updateIcon(newIconType) {
-        if (this._iconType === newIconType) return; // No change needed
-        
-        this._iconType = newIconType;
-        
-        // Remove existing icon
-        if (this.buttonIcon) {
-            this.removeChild(this.buttonIcon);
-            this.buttonIcon.destroy();
-            this.buttonIcon = undefined;
+        if (this.buttonIcon && this._usingSVG && this.buttonIcon instanceof PIXI.Sprite) {
+             const svgTexture = PIXI.Assets.get(`btn_${newIconType}`);
+             if (svgTexture) {
+                 this.buttonIcon.texture = svgTexture;
+                 this._iconType = newIconType;
+                 // Ensure tint is still white
+                 this.buttonIcon.tint = 0xFFFFFF;
+             } else {
+                 console.warn(`updateIcon: SVG asset btn_${newIconType} not found.`);
+             }
         }
-
-        // Get dimensions for new icon
-        const effectiveWidth = this._isCircular ? Math.min(this._width, this._height) : this._width;
-        const effectiveHeight = this._isCircular ? Math.min(this._width, this._height) : this._height;
-        const radius = effectiveWidth / 2;
-
-        // Try SVG first if we were using it before
-        if (this._usingSVG) {
-            const svgTexture = PIXI.Assets.get(`btn_${newIconType}`);
-            if (svgTexture) {
-                const icon = new PIXI.Sprite(svgTexture);
-                icon.anchor.set(0.5);
-                icon.x = effectiveWidth / 2;
-                icon.y = effectiveHeight / 2;
-                icon.width = effectiveWidth * 0.6;
-                icon.height = effectiveHeight * 0.6;
-                icon.tint = 0xFFFFFF; // Set the tint to white
-                this.buttonIcon = icon;
-                this.addChild(icon);
-                return;
-            }
-        }
-        
-        // Fallback to drawn icon
-        this.buttonIcon = this._drawIcon(newIconType, effectiveWidth, effectiveHeight, radius);
-        if (this.buttonIcon) {
-            this.addChild(this.buttonIcon);
-        }
+        // Add fallback logic here if needed for drawn icons
     }
 }

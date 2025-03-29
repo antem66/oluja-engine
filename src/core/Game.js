@@ -301,10 +301,47 @@ export class Game {
         initWinEvaluation(currentReels);
 
         // --- Initialize UIManager ---
-        const uiTextStyle = { fontFamily: "Arial, sans-serif", fontSize: 18, fill: 0xdddddd };
-        const uiValueStyle = { fontFamily: '"Arial Black", Gadget, sans-serif', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 2 } };
+        // Define distinct text styles
+        const uiStyles = {
+            label: {
+                fontFamily: "Arial, sans-serif", 
+                fontSize: 16, // Standard size for labels
+                fill: 0xCCCCCC, // Lighter gray for labels
+                fontWeight: 'normal'
+            },
+            balanceValue: {
+                fontFamily: '"Arial Black", Gadget, sans-serif',
+                fontSize: 18, // Slightly smaller than original value, but bold
+                fill: 0xFFFFFF, // White
+                fontWeight: 'bold',
+                stroke: { color: 0x000000, width: 1 } // Thinner stroke
+            },
+            betValue: {
+                fontFamily: '"Arial Black", Gadget, sans-serif',
+                fontSize: 20, // Size for bet amount in the middle
+                fill: 0xFFFFFF, // White
+                fontWeight: 'bold',
+                stroke: { color: 0x000000, width: 1 }
+            },
+            winValue: { // Style for the main win display
+                fontFamily: '"Arial Black", Gadget, sans-serif',
+                fontSize: 24,
+                fill: 0xf1c40f, // Gold color
+                fontWeight: 'bold',
+                stroke: { color: 0x000000, width: 2 }
+            },
+            winRollup: { // Style for the win rollup animation
+                fontFamily: '"Arial Black", Gadget, sans-serif',
+                fontSize: 40, // Large size for rollup
+                fill: 0xffd700, // Brighter gold
+                fontWeight: 'bold',
+                stroke: { color: 0x000000, width: 3 }
+            }
+        };
+
         if (this.spinManager) { // Ensure spinManager exists
-             initUIManager(this.layerUI, uiTextStyle, uiValueStyle, this.spinManager);
+             // Pass the styles object instead of individual styles
+             initUIManager(this.layerUI, uiStyles, this.spinManager);
         } else {
              console.error("Game Init Error: SpinManager not available when initializing UIManager.");
              // Handle error: maybe initialize UIManager without spin capabilities or halt?
