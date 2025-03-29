@@ -4,12 +4,18 @@ import { state } from '../core/GameState.js'; // Import state for checking isInF
 import * as SETTINGS from '../config/gameSettings.js';
 
 export class FreeSpinsUIManager {
+    /** @type {PIXI.Container | null} */
     freeSpinsIndicator = null;
+    /** @type {PIXI.Text | null} */
     freeSpinsCountText = null;
+    /** @type {PIXI.Text | null} */
     freeSpinsTotalWinText = null;
+    /** @type {PIXI.Graphics | null} */
     freeSpinsGlow = null;
+    /** @type {PIXI.Container | null} */
     parentLayer = null;
 
+    /** @param {PIXI.Container | null} parentLayer */
     constructor(parentLayer) {
         if (!parentLayer) {
             console.error("FreeSpinsUIManager: Parent layer is required!");
@@ -77,60 +83,69 @@ export class FreeSpinsUIManager {
         this.freeSpinsTotalWinText.y = 45;
         this.freeSpinsTotalWinText.x = 180; // Position to the right of spins count
 
-        // Add all elements to container
-        this.freeSpinsIndicator.addChild(this.freeSpinsGlow);
-        this.freeSpinsIndicator.addChild(panel);
-        this.freeSpinsIndicator.addChild(title);
-        this.freeSpinsIndicator.addChild(this.freeSpinsCountText);
-        this.freeSpinsIndicator.addChild(this.freeSpinsTotalWinText);
+        // Add elements to container - Restored
+        if (this.freeSpinsIndicator) {
+             this.freeSpinsIndicator.addChild(this.freeSpinsGlow);
+             this.freeSpinsIndicator.addChild(panel);
+             this.freeSpinsIndicator.addChild(title);
+             this.freeSpinsIndicator.addChild(this.freeSpinsCountText);
+             this.freeSpinsIndicator.addChild(this.freeSpinsTotalWinText);
+        }
 
         // Add to the specified parent layer
-        this.parentLayer.addChild(this.freeSpinsIndicator);
+        if (this.parentLayer && this.freeSpinsIndicator) { // Added null check for indicator too
+            this.parentLayer.addChild(this.freeSpinsIndicator);
+            console.log("[Trace] FreeSpinsUIManager: Added freeSpinsIndicator container to parentLayer.", this.parentLayer.name); // Removed optional chaining
+        }
     }
 
     // Renamed from updateFreeSpinsIndicator
     update() {
+        // Ensure indicator itself exists
+        if (!this.freeSpinsIndicator) {
+            return;
+        }
+
         // Only log if something interesting might happen (entering/exiting FS or indicator visible)
         if (state.isInFreeSpins || this.freeSpinsIndicator?.visible) {
             // console.log(`[Trace] FreeSpinsUIManager.update called. isInFreeSpins: ${state.isInFreeSpins}, indicator visible: ${this.freeSpinsIndicator?.visible}`);
         }
 
-        if (!this.freeSpinsIndicator || !this.freeSpinsCountText || !this.freeSpinsTotalWinText) {
-            return;
-        }
-
         // Show/hide based on free spins state
         const inFreeSpin = state.isInFreeSpins;
         if (inFreeSpin) {
-            // Update text content
-            this.freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
-            this.freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+            // Update text content only if text elements exist
+            if (this.freeSpinsCountText) {
+                this.freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
+            }
+            if (this.freeSpinsTotalWinText) {
+                this.freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+            }
 
             // Show indicator if not already visible
             if (!this.freeSpinsIndicator.visible) {
                 console.log("[Trace] FS Indicator not visible - Animating in.");
                 this.freeSpinsIndicator.visible = true;
-                this.freeSpinsIndicator.alpha = 0;
-                this.freeSpinsIndicator.y = -50; // Start above screen
-                this.freeSpinsIndicator.rotation = 0; // Ensure rotation starts at 0
+                this.freeSpinsIndicator.alpha = 0;     // Start transparent
+                this.freeSpinsIndicator.y = 60;      // Start at final Y position
+                this.freeSpinsIndicator.rotation = 0; // Ensure rotation is 0
 
-                // Animate it in (Task 3.2 Enhancement)
+                // Animate it in - SIMPLIFIED
                 gsap.to(this.freeSpinsIndicator, {
-                    y: 60, // Target Y position (below title)
-                    alpha: 1,
-                    rotation: 0.05, // Add slight rotation on entry
-                    duration: 0.7, // Slightly longer duration
-                    ease: "elastic.out(1, 0.8)" // More dynamic ease
+                    // y: 60, // Removed Y animation
+                    alpha: 1, // Fade in only
+                    // rotation: 0.05, // Removed rotation
+                    duration: 0.5, // Slightly faster fade
+                    ease: "power1.inOut" // Simple ease
                 });
 
-                // Start pulsing glow animation
+                // Start pulsing glow animation (has internal null check)
                 this._startGlowAnimation();
             }
 
-            // Flash when spins count changes (using a temporary property to track last count)
-            // Only flash if the count has actually changed and is defined
-            // @ts-ignore - Using dynamic property
-            if (this.freeSpinsIndicator._lastCount !== undefined && this.freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
+            // Flash count text only if it exists and count changed
+            // @ts-ignore - _lastCount is dynamic
+            if (this.freeSpinsCountText && this.freeSpinsIndicator._lastCount !== undefined && this.freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
                 gsap.to(this.freeSpinsCountText.scale, {
                     x: 1.2, y: 1.2,
                     duration: 0.2,
@@ -141,12 +156,12 @@ export class FreeSpinsUIManager {
             }
 
             // Store current count for comparison on next update
-            // @ts-ignore - Using dynamic property
+            // @ts-ignore - _lastCount is dynamic
             this.freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
 
-        } else if (this.freeSpinsIndicator.visible) {
+        } else if (this.freeSpinsIndicator.visible && !state.isTransitioning) {
             console.log("[Trace] Not in Free Spins & FS indicator visible - Animating out.");
-            // Animate it out (Task 3.2 Enhancement - return rotation to 0)
+            // Animate it out
             gsap.to(this.freeSpinsIndicator, {
                 y: -50,
                 alpha: 0,
@@ -156,8 +171,9 @@ export class FreeSpinsUIManager {
                 onComplete: () => {
                     if (this.freeSpinsIndicator) { // Check if it still exists
                         this.freeSpinsIndicator.visible = false;
+                        // Stop glow animation (has internal null check)
                         this._stopGlowAnimation();
-                        // @ts-ignore - Using dynamic property
+                        // @ts-ignore - _lastCount is dynamic
                         delete this.freeSpinsIndicator._lastCount; // Clean up temporary property
                     }
                 }
@@ -167,6 +183,7 @@ export class FreeSpinsUIManager {
 
     // Renamed from startGlowAnimation and made private
     _startGlowAnimation() {
+        // Added null check for glow element
         if (!this.freeSpinsGlow) return;
 
         // Kill any existing animations

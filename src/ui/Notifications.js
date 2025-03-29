@@ -4,9 +4,14 @@ import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
 // Reference to the overlay container (needs initialization)
+/** @type {PIXI.Container | null} */
 let overlayContainer = null;
+/** @type {gsap.core.Timeline | null} */
 let currentOverlayTween = null; // To manage GSAP tween
+/** @type {any} */
 let flashElementInterval = null; // Store interval ID for flashing
+/** @type {PIXI.Text | null} */
+let currentMessageText = null; // Keep track of the current message display object
 
 /**
  * Initializes the reference to the overlay container.
@@ -34,7 +39,7 @@ export function flashElement(
   baseDuration = 150,
   flashes = 2
 ) {
-  if (flashElementInterval) clearInterval(flashElementInterval); // Clear previous interval
+  if (flashElementInterval !== null) clearInterval(flashElementInterval);
   if (!element?.parent) return; // Don't flash if element isn't on stage
 
   const originalTint = element.tint ?? 0xffffff;
@@ -45,15 +50,13 @@ export function flashElement(
 
   function doFlash() {
     if (!element?.parent) { // Stop if element is removed
-      clearInterval(flashElementInterval);
-      return;
+        if (flashElementInterval !== null) clearInterval(flashElementInterval);
+        return;
     }
     if (count >= flashes * 2) { // Completed all flashes
-      clearInterval(flashElementInterval);
-      element.tint = originalTint; // Restore original tint
-      // Optionally hide if it's the win text and there's no win? Needs context.
-      // if (element === winText && lastTotalWin <= 0) element.visible = false;
-      return;
+        if (flashElementInterval !== null) clearInterval(flashElementInterval);
+        element.tint = originalTint; // Restore original tint
+        return;
     }
     // Alternate between flash color and original tint
     element.tint = count % 2 === 0 ? flashColor : originalTint;
@@ -61,6 +64,7 @@ export function flashElement(
   }
 
   doFlash(); // Start immediately
+  // Assign return value directly
   flashElementInterval = setInterval(doFlash, duration);
 }
 
@@ -75,11 +79,23 @@ export function showOverlayMessage(message, baseDuration, callback) {
       console.error("Notifications: Overlay container not initialized.");
       return;
   }
+
+  // --- Clean up previous message --- START
   // Kill previous tween if running
   if (currentOverlayTween) {
       currentOverlayTween.kill();
+      currentOverlayTween = null;
   }
-  overlayContainer.removeChildren(); // Clear previous messages
+  // Remove previous message text if it exists
+  if (currentMessageText) {
+      if (currentMessageText.parent && overlayContainer) {
+          overlayContainer.removeChild(currentMessageText);
+      }
+      currentMessageText.destroy();
+      currentMessageText = null;
+  }
+  // REMOVED: overlayContainer.removeChildren(); // DO NOT clear the entire layer
+  // --- Clean up previous message --- END
 
   // Create style for overlay message text
   const style = new PIXI.TextStyle({
@@ -93,37 +109,47 @@ export function showOverlayMessage(message, baseDuration, callback) {
     wordWrapWidth: GAME_WIDTH * 0.8
   });
 
-  const messageText = new PIXI.Text({
+  // Create the new message text and store it
+  const newMessageText = new PIXI.Text({
     text: message,
-    style: style, // Pass the style object directly
+    style: style,
   });
-  messageText.anchor.set(0.5);
-  messageText.x = GAME_WIDTH / 2;
-  messageText.y = GAME_HEIGHT / 2;
+  newMessageText.anchor.set(0.5);
+  newMessageText.x = GAME_WIDTH / 2;
+  newMessageText.y = GAME_HEIGHT / 2;
+  newMessageText.alpha = 0; // Start invisible
 
-  overlayContainer.addChild(messageText);
+  currentMessageText = newMessageText; // Store reference to the new message
+  if (overlayContainer) {
+    overlayContainer.addChild(currentMessageText); // Add the new message
+  }
 
   // Use GSAP for fade in, hold, and fade out
   const displayDurationSeconds = (baseDuration / 1000) * winAnimDelayMultiplier;
   const fadeDurationSeconds = 0.3 * winAnimDelayMultiplier; // Quick fade
 
-  messageText.alpha = 0; // Start invisible
-
-  currentOverlayTween = gsap.timeline({
+  // Create the new timeline
+  const timeline = gsap.timeline({
       onComplete: () => {
-          if (messageText.parent) {
-              overlayContainer.removeChild(messageText);
-              messageText.destroy();
+          // Ensure we are removing the *correct* message text
+          if (currentMessageText && currentMessageText === newMessageText) {
+              if (currentMessageText.parent && overlayContainer) {
+                  overlayContainer.removeChild(currentMessageText);
+              }
+              currentMessageText.destroy();
+              currentMessageText = null;
           }
           if (callback) {
               callback();
           }
-          currentOverlayTween = null; // Clear reference
+          currentOverlayTween = null; // Clear timeline reference
       }
   });
 
+  currentOverlayTween = timeline; // Store reference to the new timeline
+
   // Correctly place commas in GSAP .to() calls
-  currentOverlayTween.to(messageText, { alpha: 1, duration: fadeDurationSeconds, ease: "power1.inOut" }) // Fade in
-                     .to(messageText, { duration: displayDurationSeconds }) // Hold (vars object is optional if only duration is needed)
-                     .to(messageText, { alpha: 0, duration: fadeDurationSeconds, ease: "power1.inOut" }); // Fade out
+  timeline.to(newMessageText, { alpha: 1, duration: fadeDurationSeconds, ease: "power1.inOut" }) // Fade in
+            .to({}, { duration: displayDurationSeconds }) // Use an empty target for a pure delay
+            .to(newMessageText, { alpha: 0, duration: fadeDurationSeconds, ease: "power1.inOut" }); // Fade out
 }

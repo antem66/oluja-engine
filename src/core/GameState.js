@@ -69,12 +69,37 @@ export function initGameState() {
 /**
  * Updates the central game state object with new values.
  * Merges the provided updates with the existing state.
- * @param {Partial<state>} updates - An object containing state properties to update.
+ * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
+    // --- DEBUG LOGGING START ---
+    // const oldIsInFreeSpins = state.isInFreeSpins;
+    // const oldIsSpinning = state.isSpinning;
+    // const oldIsTransitioning = state.isTransitioning;
+    // --- DEBUG LOGGING END ---
+
     // Basic merge, could add validation or logging later
     state = { ...state, ...updates };
-    // console.log("GameState Updated:", updates, "New State:", state); // Optional: Log updates
+
+    // --- DEBUG LOGGING START ---
+    /* // Commented out the detailed logging block
+    if (updates.hasOwnProperty('isInFreeSpins') && updates.isInFreeSpins !== oldIsInFreeSpins) {
+        console.warn(`[STATE_CHANGE] isInFreeSpins changed from ${oldIsInFreeSpins} to ${updates.isInFreeSpins}! Update:`, updates);
+        // Add a stack trace to see who called it
+        console.trace('Stack trace for isInFreeSpins change');
+    }
+    // Optional: Log other potentially conflicting state changes
+
+    if (updates.hasOwnProperty('isSpinning') && updates.isSpinning !== oldIsSpinning) {
+        console.log(`[STATE_CHANGE] isSpinning changed from ${oldIsSpinning} to ${updates.isSpinning}. Update:`, updates);
+    }
+    if (updates.hasOwnProperty('isTransitioning') && updates.isTransitioning !== oldIsTransitioning) {
+        console.log(`[STATE_CHANGE] isTransitioning changed from ${oldIsTransitioning} to ${updates.isTransitioning}. Update:`, updates);
+    }
+
+    // console.log("GameState Updated with:", updates, "New Full State:", state); // More verbose log
+    */
+    // --- DEBUG LOGGING END ---
 }
 
 // Optional: Add getter functions if direct state access is discouraged later

@@ -5,11 +5,19 @@ import { showOverlayMessage } from '../ui/Notifications.js'; // Assuming notific
 import { setButtonsEnabled, updateAutoplayButtonState, updateDisplays } from '../ui/UIManager.js'; // Import updateDisplays
 import { startSpin } from '../ui/ButtonHandlers.js'; // Assuming spin initiation
 import { gsap } from 'gsap'; // Import GSAP for animations
+import { PixiPlugin } from 'gsap/PixiPlugin'; // Import PixiPlugin
 import * as PIXI from 'pixi.js'; // Import Pixi.js
 
+// Register the PixiPlugin
+gsap.registerPlugin(PixiPlugin);
+PixiPlugin.registerPIXI(PIXI); // Link PixiPlugin to the PIXI instance
+
 // Reference to the Pixi app (needed for background color change)
+/** @type {PIXI.Application | null} */
 let app = null;
+/** @type {PIXI.Container | null} */
 let reelsContainer = null;
+/** @type {Array<import('../core/Reel.js').Reel>} */
 let reels = [];
 
 // Free Spins state tracking
@@ -18,13 +26,14 @@ let freeSpinsTotalWin = 0;
 const FREE_SPINS_MULTIPLIER = 2; // Multiplier for free spins wins
 
 // Container for special animations during free spins
+/** @type {PIXI.Container | null} */
 let specialAnimationsContainer = null;
 
 /**
  * Initialize the free spins module
  * @param {PIXI.Application} pixiApp - Reference to the PIXI Application
  * @param {PIXI.Container} reelsContainerRef - Reference to the reels container
- * @param {Array} reelsRef - Array of reels
+ * @param {Array<import('../core/Reel.js').Reel>} reelsRef - Array of reels
  */
 export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
     app = pixiApp;
@@ -32,8 +41,10 @@ export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
     reels = reelsRef;
 
     // Create container for special animations
-    specialAnimationsContainer = new PIXI.Container();
-    app.stage.addChild(specialAnimationsContainer);
+    if (app) { // Null check for app
+        specialAnimationsContainer = new PIXI.Container();
+        app.stage.addChild(specialAnimationsContainer);
+    }
 }
 
 /**
@@ -79,10 +90,10 @@ export function enterFreeSpins(spinsAwarded = FREE_SPINS_AWARDED) {
         if (app && app.renderer) {
             gsap.to(app.renderer, {
                 duration: 1.5,
-                backgroundColor: freeSpinsBgColor,
+                pixi: { backgroundColor: freeSpinsBgColor }, // Use PixiPlugin syntax
                 ease: "power2.inOut"
             });
-        } // Corrected closing brace
+        }
 
         // Play entry animation and show message only on initial entry
         playFreeSpinsEntryAnimation(() => {
@@ -109,7 +120,7 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
     updateState({ isTransitioning: true }); // Prevent actions during transition
     setButtonsEnabled(false); // Disable controls during animation
 
-    // Create animation elements if container exists
+    // Create animation elements if container exists - Added null check for container
     if (specialAnimationsContainer && app) {
         // Clear previous animations
         specialAnimationsContainer.removeChildren();
@@ -151,8 +162,10 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
         // Animation sequence
         const tl = gsap.timeline({
             onComplete: () => {
-                // Clean up animation elements
-                specialAnimationsContainer.removeChildren();
+                // Clean up animation elements - Added null check
+                if (specialAnimationsContainer) {
+                    specialAnimationsContainer.removeChildren();
+                }
                 // Reset transitioning state BEFORE calling the next step
                 updateState({ isTransitioning: false });
                 onComplete(); // Call the original callback (which shows the message)
@@ -185,9 +198,12 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
         });
     } else {
         // Fall back to simpler transition if container not available
+        console.warn("FreeSpins: specialAnimationsContainer not initialized, skipping entry animation."); // Added warning
         setTimeout(() => {
-            if (onComplete) onComplete();
-        }, 1000);
+            // Ensure state is reset even if animation is skipped
+            updateState({ isTransitioning: false });
+            onComplete(); // Call original callback
+        }, 500); // Shorter delay if no animation
     }
 }
 
@@ -244,18 +260,13 @@ export function exitFreeSpins() {
     console.log(`Exit Free Spins. Total Win: €${state.totalFreeSpinsWin.toFixed(2)}`);
     updateState({ isTransitioning: true }); // Prevent actions during transition
 
-    // Animate background color back to normal
-    if (app.renderer && app.renderer.background) {
-        const originalColor = app.renderer.background.color || freeSpinsBgColor;
-
-        // Animate background color change
-        const colorObj = { value: originalColor };
-        gsap.to(colorObj, {
-            value: normalBgColor,
+    // Animate background color back to normal using PixiPlugin
+    if (app.renderer) { // No need to check app.renderer.background
+        gsap.to(app.renderer, {
             duration: 1,
-            onUpdate: () => {
-                app.renderer.background.color = Math.round(colorObj.value);
-            }
+            pixi: { backgroundColor: normalBgColor }, // Use PixiPlugin syntax
+            ease: "power1.inOut", // Smoother ease out
+            // onUpdate removed as PixiPlugin handles it
         });
     }
 

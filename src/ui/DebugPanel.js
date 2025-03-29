@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { state, updateState } from '../core/GameState.js';
+import { enterFreeSpins } from '../features/FreeSpins.js';
 
 let debugContainer = null;
 let debugPanel = null;
@@ -101,6 +102,12 @@ function createDebugOptions() {
         fill: 0xffffff
     });
     
+    const btnTextStyle = new PIXI.TextStyle({
+        fontFamily: 'Arial',
+        fontSize: 12,
+        fill: 0xffffff
+    });
+    
     let yPos = 50;
     
     // Force Win option with checkbox
@@ -128,16 +135,10 @@ function createDebugOptions() {
     addBalanceBtn.drawRect(0, 0, 60, 22);
     addBalanceBtn.endFill();
     
-    const btnTextStyle = new PIXI.TextStyle({
-        fontFamily: 'Arial', 
-        fontSize: 12, 
-        fill: 0xffffff 
-    });
-    
-    const btnText = new PIXI.Text("+100", btnTextStyle);
-    btnText.x = 15;
-    btnText.y = 5;
-    addBalanceBtn.addChild(btnText);
+    const addBalanceBtnText = new PIXI.Text("+100", btnTextStyle);
+    addBalanceBtnText.x = 15;
+    addBalanceBtnText.y = 5;
+    addBalanceBtn.addChild(addBalanceBtnText);
     
     addBalanceBtn.x = 120;
     addBalanceBtn.y = yPos;
@@ -149,9 +150,51 @@ function createDebugOptions() {
     });
     debugContainer.addChild(addBalanceBtn);
     
-    // Update the currentY for the panel
+    yPos += 30; // Increment yPos for the next control
+
+    // --- Force Free Spins Button --- START
+    const forceFSLabel = new PIXI.Text("Force Free Spins:", labelStyle);
+    forceFSLabel.x = 10;
+    forceFSLabel.y = yPos;
+    debugContainer.addChild(forceFSLabel);
+
+    const forceFSBtn = new PIXI.Graphics();
+    forceFSBtn.beginFill(0x8A2BE2); // Purple color
+    forceFSBtn.drawRect(0, 0, 80, 22); // Slightly wider button
+    forceFSBtn.endFill();
+
+    const forceFSBtnText = new PIXI.Text("Force FS", btnTextStyle); // Use defined style
+    forceFSBtnText.x = 15;
+    forceFSBtnText.y = 5;
+    forceFSBtn.addChild(forceFSBtnText);
+
+    forceFSBtn.x = 120;
+    forceFSBtn.y = yPos;
+    forceFSBtn.eventMode = 'static';
+    forceFSBtn.cursor = 'pointer';
+
+    // Add the event handler logic
+    forceFSBtn.on('pointerdown', () => {
+        if (!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning) {
+            console.log("Debug: Forcing Free Spins...");
+            enterFreeSpins(); // Call the imported function
+        } else {
+            console.warn("Debug: Cannot force Free Spins now (Game Busy). State:", {
+                spinning: state.isSpinning,
+                inFS: state.isInFreeSpins,
+                transitioning: state.isTransitioning
+            });
+        }
+    });
+    // Add the button to the container
+    debugContainer.addChild(forceFSBtn);
+    // --- Force Free Spins Button --- END
+
+    yPos += 30; // Increment yPos after adding the button
+
+    // Update the currentY for the panel (adjust if more controls added)
     // @ts-ignore - Using custom property for position tracking
-    debugPanel.currentY = yPos + 40; // Set for next section
+    debugPanel.currentY = yPos + 10; // Set Y for the next section (Background Adjustments)
 }
 
 /**

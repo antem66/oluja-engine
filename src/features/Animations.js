@@ -8,6 +8,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 let overlayContainer = null;
 let particleContainer = null;
 let winOverlayAnimInterval = null; // Interval ID for big win text animation
+let currentBigWinText = null; // Track the current big win text PIXI object
 const particles = []; // Array to hold active particle objects
 
 // Symbol Animation Registry - Maps symbol IDs to custom animation functions
@@ -339,8 +340,17 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         return;
     }
     // Clear previous animation interval if any
-    if (winOverlayAnimInterval) clearInterval(winOverlayAnimInterval);
-    overlayContainer.removeChildren(); // Clear previous win text
+    if (winOverlayAnimInterval) {
+        clearInterval(winOverlayAnimInterval);
+        winOverlayAnimInterval = null; // Clear interval ID
+    }
+    // Clean up the PREVIOUS Big Win text if it exists
+    if (currentBigWinText && currentBigWinText.parent) {
+        console.log("[Trace] Animations: Removing previous big win text.");
+        overlayContainer.removeChild(currentBigWinText);
+        currentBigWinText.destroy({ children: true }); // Ensure complete cleanup
+        currentBigWinText = null;
+    }
 
     // Define win thresholds
     const bigWinThreshold = currentTotalBet * 10;
@@ -369,6 +379,7 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         winOverlayText.y = GAME_HEIGHT / 2 - 50; // Position slightly above center
         winOverlayText.scale.set(0.1); // Start small
         overlayContainer.addChild(winOverlayText);
+        currentBigWinText = winOverlayText; // Assign the new text to our tracking variable
 
         let scale = 0.1;
         let alpha = 1.0;
@@ -378,8 +389,11 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         const animSpeed = 20; // Interval speed (ms)
 
         winOverlayAnimInterval = setInterval(() => {
-            if (!winOverlayText?.parent) { // Stop if text is removed
+            // Use currentBigWinText for checks inside the interval
+            if (!currentBigWinText || !currentBigWinText.parent) { // Stop if text is removed or null
                 clearInterval(winOverlayAnimInterval);
+                winOverlayAnimInterval = null;
+                currentBigWinText = null; // Ensure tracker is cleared
                 return;
             }
 
@@ -402,8 +416,10 @@ export function playWinAnimations(winAmount, currentTotalBet) {
                 winOverlayText.alpha = Math.max(0, alpha);
                 if (alpha <= 0) {
                     clearInterval(winOverlayAnimInterval); // Stop animation
-                    if (winOverlayText.parent) overlayContainer.removeChild(winOverlayText);
-                    winOverlayText.destroy(); // Clean up
+                    winOverlayAnimInterval = null;
+                    if (currentBigWinText.parent) overlayContainer.removeChild(currentBigWinText);
+                    currentBigWinText.destroy({ children: true }); // Clean up
+                    currentBigWinText = null; // Clear tracker
                 }
             }
         }, animSpeed); // Base interval remains 20ms, logic adjusts based on multiplier
