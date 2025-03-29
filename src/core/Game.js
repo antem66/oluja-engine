@@ -124,6 +124,22 @@ export class Game {
         }
     }
 
+    // --- Helper function to create a layer ---
+    /**
+     * Creates a named PIXI Container with a specific zIndex.
+     * @param {string} name - The name for the layer (for debugging).
+     * @param {number} zIndex - The z-index for sorting.
+     * @returns {PIXI.Container} The created layer container.
+     * @private
+     */
+    _createLayer(name, zIndex) {
+        const layer = new PIXI.Container();
+        layer.name = name;
+        layer.zIndex = zIndex;
+        return layer;
+    }
+    // --- End helper function ---
+
     _exposeGlobals() {
         // Make this instance and managers accessible globally for debugging
         if (typeof window !== 'undefined') {
@@ -166,45 +182,17 @@ export class Game {
     }
 
     _createLayers() {
-        // Assign directly, types allow Container now
-        this.layerBackground = new PIXI.Container();
-        this.layerBackground.name = "Layer: Background";
-        this.layerBackground.zIndex = 0;
-
-        this.layerReels = new PIXI.Container();
-        this.layerReels.name = "Layer: Reels";
-        this.layerReels.zIndex = 10;
-
-        this.layerWinLines = new PIXI.Container();
-        this.layerWinLines.name = "Layer: Win Lines";
-        this.layerWinLines.zIndex = 20;
-
-        this.layerUI = new PIXI.Container();
-        this.layerUI.name = "Layer: UI";
-        this.layerUI.zIndex = 30;
-
-        this.layerLogo = new PIXI.Container();
-        this.layerLogo.name = "Layer: Logo";
-        this.layerLogo.zIndex = 40;
-
-        // Layer for full screen effects (e.g., FS intro anim)
-        this.layerFullScreenEffects = new PIXI.Container();
-        this.layerFullScreenEffects.name = "Layer: Full Screen Effects";
-        this.layerFullScreenEffects.zIndex = 45; // Above Logo, below Overlays
-
-        this.layerOverlays = new PIXI.Container();
-        this.layerOverlays.name = "Layer: Overlays";
-        this.layerOverlays.zIndex = 50;
-        // this.layerOverlays.sortableChildren = true; // Maybe not needed if using sub-containers?
-
-        this.layerParticles = new PIXI.Container();
-        this.layerParticles.name = "Layer: Particles";
-        this.layerParticles.zIndex = 60;
-
-        this.layerDebug = new PIXI.Container();
-        this.layerDebug.name = "Layer: Debug";
-        this.layerDebug.zIndex = 100;
-        this.layerDebug.visible = false;
+        // Use the helper function to create main layers
+        this.layerBackground = this._createLayer("Layer: Background", 0);
+        this.layerReels = this._createLayer("Layer: Reels", 10);
+        this.layerWinLines = this._createLayer("Layer: Win Lines", 20);
+        this.layerUI = this._createLayer("Layer: UI", 30);
+        this.layerLogo = this._createLayer("Layer: Logo", 40);
+        this.layerFullScreenEffects = this._createLayer("Layer: Full Screen Effects", 45); // Above Logo, below Overlays
+        this.layerOverlays = this._createLayer("Layer: Overlays", 50);
+        this.layerParticles = this._createLayer("Layer: Particles", 60);
+        this.layerDebug = this._createLayer("Layer: Debug", 100);
+        this.layerDebug.visible = false; // Specific property for Debug layer
 
         // Create dedicated overlay sub-containers
         this.fsIndicatorContainer = new PIXI.Container();
