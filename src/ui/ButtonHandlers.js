@@ -9,7 +9,8 @@ import { state, updateState } from '../core/GameState.js'; // Assuming GameState
 import { updateDisplays, updateAutoplayButtonState, updateTurboButtonState, setButtonsEnabled } from './UIManager.js'; // Assuming UIManager handles UI updates
 import { flashElement } from './Notifications.js'; // Assuming Notifications handles flashing
 import { applyTurboSettings as applyTurbo } from '../features/TurboMode.js'; // Assuming TurboMode handles applying settings
-import { startSpinLoop } from '../core/Game.js'; // Assuming Game handles starting the spin process
+// Removed import for global startSpinLoop
+// import { startSpinLoop } from '../core/Game.js';
 
 // --- Bet Adjustment ---
 
@@ -130,10 +131,17 @@ export function startSpin(isFreeSpin = false) {
   }
 
   // Reset target stopping index for chained stops
-  updateState({ targetStoppingReelIndex: 0 });
+  updateState({ targetStoppingReelIndex: 0 }); // This might be redundant if SpinManager handles it
 
-  // Initiate the actual reel spinning logic (call function in Game.js or ReelController.js)
-  startSpinLoop(state.isTurboMode); // Pass turbo state if needed by the spin loop logic
+  // Initiate the spin via SpinManager on the global gameApp instance
+  if (window.gameApp && window.gameApp.spinManager) {
+      window.gameApp.spinManager.startSpin(); // Call the manager's method
+  } else {
+      console.error("Cannot start spin: SpinManager not found on window.gameApp");
+      // Re-enable buttons if spin couldn't start
+      setButtonsEnabled(true);
+      updateState({ isSpinning: false });
+  }
 
   // The rest of the spin logic (scheduling stops, handling stop completion)
   // will be managed within the Game/Reel modules and the game loop itself.

@@ -1,40 +1,48 @@
 import * as PIXI from 'pixi.js';
+// Removed duplicate PIXI import
 import { state } from '../core/GameState.js'; // Assuming state access
-import { GAME_WIDTH, bottomUIY } from '../config/gameSettings.js';
+import { GAME_WIDTH, GAME_HEIGHT, bottomUIY } from '../config/gameSettings.js'; // Added GAME_HEIGHT
 import { gsap } from 'gsap'; // Import GSAP for animations
+import { createButton } from './ButtonFactory.js'; // Import ButtonFactory
+import * as handlers from './ButtonHandlers.js'; // Import ButtonHandlers
 
-// References to UI elements (Text objects, Buttons)
-let uiContainerRef = null;
+// References to UI elements managed by this module
+let internalContainer = null; // This manager's own container
 let balanceText = null;
-let winText = null; // Existing static win display
+let winText = null;
 let betText = null;
-let winRollupText = null; // New text for animated rollup
+let winRollupText = null;
 let autoplayButton = null;
 let turboButton = null;
 let spinButton = null;
 let betDecreaseButton = null;
 let betIncreaseButton = null;
-// Add other buttons if they need state management
 
-// Add new variables for free spins UI elements
-let freeSpinsIndicator = null;
-let freeSpinsCountText = null;
-let freeSpinsTotalWinText = null;
-let freeSpinsGlow = null;
+// Removed FS UI variables
 
 /**
  * Initializes the UI Manager.
- * Creates text elements and stores references to them and the main UI container.
- * @param {PIXI.Container} uiContainer - The main container for UI elements.
+ * Creates the UI panel, text elements, and buttons, adding them to the provided parent layer.
+ * @param {PIXI.Container} parentLayer - The layer to add the UI elements to (e.g., layerUI).
  * @param {object} uiTextStyle - Style object for labels.
  * @param {object} uiValueStyle - Style object for value displays.
  */
-export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
-    if (!uiContainer) {
-        console.error("UIManager: Provided uiContainer is invalid.");
+export function initUIManager(parentLayer, uiTextStyle, uiValueStyle) {
+    if (!parentLayer) {
+        console.error("UIManager: Parent layer is required!");
         return;
     }
-    uiContainerRef = uiContainer;
+
+    // Create and add this manager's container to the parent layer
+    internalContainer = new PIXI.Container();
+    parentLayer.addChild(internalContainer);
+
+    // --- Create UI Panel ---
+    const panelHeight = 100;
+    const panel = new PIXI.Graphics()
+        .rect(0, GAME_HEIGHT - panelHeight, GAME_WIDTH, panelHeight)
+        .fill({ color: 0x1a1a1a, alpha: 0.85 });
+    internalContainer.addChild(panel);
 
     // --- Create Text Labels and Value Displays ---
 
@@ -47,7 +55,7 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     balanceText.anchor.set(0, 0); // Left anchor
     balanceText.x = 50; // Position from left
     balanceText.y = bottomUIY + 40;
-    uiContainer.addChild(balanceLabel, balanceText);
+    internalContainer.addChild(balanceLabel, balanceText); // Add to internal container
 
     // Win (Center)
     const winLabel = new PIXI.Text({ text: "WIN", style: uiTextStyle });
@@ -59,7 +67,7 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     winText.x = GAME_WIDTH / 2;
     winText.y = bottomUIY + 40;
     winText.visible = state.lastTotalWin > 0; // Initially hide if no win
-    uiContainer.addChild(winLabel, winText);
+    internalContainer.addChild(winLabel, winText); // Add to internal container
 
     // Win Rollup Text (Initially hidden, positioned similarly to Win)
     // Style can be adjusted for more prominence
@@ -69,7 +77,7 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     winRollupText.x = GAME_WIDTH / 2;
     winRollupText.y = bottomUIY + 30; // Adjust Y position as needed
     winRollupText.visible = false; // Hidden until a win animation starts
-    uiContainer.addChild(winRollupText);
+    internalContainer.addChild(winRollupText); // Add to internal container
 
 
     // Bet
@@ -81,192 +89,40 @@ export function initUIManager(uiContainer, uiTextStyle, uiValueStyle) {
     betText.anchor.set(1, 0);
     betText.x = GAME_WIDTH - 50;
     betText.y = bottomUIY + 40;
-    uiContainer.addChild(betLabel, betText);
+    internalContainer.addChild(betLabel, betText); // Add to internal container
 
-    // --- Store Button References (assuming they are named in Game.js) ---
-    // Buttons are added by ButtonFactory, find them by name
-    spinButton = uiContainer.getChildByName("spinButton");
-    autoplayButton = uiContainer.getChildByName("autoplayButton");
-    turboButton = uiContainer.getChildByName("turboButton");
-    betDecreaseButton = uiContainer.getChildByName("betDecreaseButton");
-    betIncreaseButton = uiContainer.getChildByName("betIncreaseButton");
+    // --- Create Buttons ---
+    const btnW = 45, btnH = 45;
+    const spinBtnSize = 85;
 
-    if (!spinButton || !autoplayButton || !turboButton || !betDecreaseButton || !betIncreaseButton) {
-         console.warn("UIManager: Could not find all expected buttons by name in uiContainer.");
-    }
+    // Bet Buttons
+    betDecreaseButton = createButton("", GAME_WIDTH - 180, bottomUIY + 52, handlers.decreaseBet, {}, internalContainer, btnW, btnH, false, 'minus');
+    betDecreaseButton.name = "betDecreaseButton";
+    betIncreaseButton = createButton("", GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, internalContainer, btnW, btnH, false, 'plus');
+    betIncreaseButton.name = "betIncreaseButton";
+
+    // Spin Button
+    spinButton = createButton("", GAME_WIDTH - 80, GAME_HEIGHT / 2 + 80, handlers.startSpin, {}, internalContainer, spinBtnSize, spinBtnSize, true, 'spin');
+    spinButton.name = "spinButton";
+
+    // Turbo Button
+    turboButton = createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, internalContainer, btnW, btnH, false, 'turbo');
+    turboButton.name = "turboButton";
+
+    // Autoplay Button
+    autoplayButton = createButton("", 180, bottomUIY + 52, handlers.toggleAutoplay, {}, internalContainer, btnW, btnH, false, 'autoplay');
+    autoplayButton.name = "autoplayButton";
 
     // Set initial button states
     updateAutoplayButtonState();
     updateTurboButtonState();
 
-    // Create free spins indicator (hidden by default)
-    createFreeSpinsIndicator(uiContainer);
+    // Removed FS indicator creation - now in FreeSpinsUIManager
 
     console.log("UIManager initialized.");
 }
 
-/**
- * Creates the free spins indicator overlay
- * @param {PIXI.Container} container - The UI container
- */
-function createFreeSpinsIndicator(container) {
-    // Create container for free spins UI elements
-    freeSpinsIndicator = new PIXI.Container();
-    freeSpinsIndicator.visible = false; // Hide initially
-    
-    // Position at the top center of the screen
-    freeSpinsIndicator.x = GAME_WIDTH / 2;
-    freeSpinsIndicator.y = 10;
-    
-    // Create background panel
-    const panel = new PIXI.Graphics();
-    panel.beginFill(0x9932CC, 0.85); // Deep purple with transparency
-    panel.lineStyle(3, 0xFFD700, 1); // Gold border
-    panel.drawRoundedRect(-150, 0, 300, 80, 10); // Centered rectangle
-    panel.endFill();
-    
-    // Add glow filter
-    freeSpinsGlow = new PIXI.Graphics();
-    freeSpinsGlow.beginFill(0xFFD700, 0.3);
-    freeSpinsGlow.drawRoundedRect(-155, -5, 310, 90, 12);
-    freeSpinsGlow.endFill();
-    freeSpinsGlow.alpha = 0;
-    
-    // Create title text
-    const titleStyle = new PIXI.TextStyle({
-        fontFamily: 'Impact, Charcoal, sans-serif',
-        fontSize: 24,
-        fontWeight: 'bold',
-        fill: 0xFFD700, // Single gold color as hex number
-        stroke: { color: 0x000000, width: 3 },
-        dropShadow: { color: 0x000000, alpha: 0.5, blur: 2, distance: 2 },
-        align: 'center'
-    });
-    
-    const title = new PIXI.Text("FREE SPINS", titleStyle);
-    title.anchor.set(0.5, 0);
-    title.y = 10;
-    
-    // Create free spins count text
-    const countStyle = new PIXI.TextStyle({
-        fontFamily: '"Arial Black", Gadget, sans-serif',
-        fontSize: 18,
-        fill: 0xFFFFFF, // Use hex number instead of string
-        fontWeight: 'bold',
-        align: 'center'
-    });
-    
-    freeSpinsCountText = new PIXI.Text("Remaining: 10", countStyle);
-    freeSpinsCountText.anchor.set(0.5, 0);
-    freeSpinsCountText.y = 45;
-    
-    // Create total win text
-    freeSpinsTotalWinText = new PIXI.Text("Total Win: €0.00", countStyle);
-    freeSpinsTotalWinText.anchor.set(0.5, 0);
-    freeSpinsTotalWinText.y = 45;
-    freeSpinsTotalWinText.x = 180; // Position to the right of spins count
-    
-    // Add all elements to container
-    freeSpinsIndicator.addChild(freeSpinsGlow);
-    freeSpinsIndicator.addChild(panel);
-    freeSpinsIndicator.addChild(title);
-    freeSpinsIndicator.addChild(freeSpinsCountText);
-    freeSpinsIndicator.addChild(freeSpinsTotalWinText);
-    
-    // Add to main container
-    container.addChild(freeSpinsIndicator);
-}
-
-/**
- * Updates the free spins indicator with current state
- */
-function updateFreeSpinsIndicator() {
-    if (!freeSpinsIndicator || !freeSpinsCountText || !freeSpinsTotalWinText) return;
-    
-    // Show/hide based on free spins state
-    const inFreeSpin = state.isInFreeSpins;
-    
-    if (inFreeSpin) {
-        // Update text content
-        freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
-        freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
-        
-        // Show indicator if not already visible
-        if (!freeSpinsIndicator.visible) {
-            freeSpinsIndicator.visible = true;
-            freeSpinsIndicator.alpha = 0;
-            freeSpinsIndicator.y = -50;
-            
-            // Animate it in
-            gsap.to(freeSpinsIndicator, {
-                y: 10,
-                alpha: 1,
-                duration: 0.5,
-                ease: "back.out(1.7)"
-            });
-            
-            // Start pulsing glow animation
-            startGlowAnimation();
-        }
-        
-        // Flash when spins count changes
-        if (freeSpinsIndicator._lastCount && freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
-            gsap.to(freeSpinsCountText.scale, {
-                x: 1.2, y: 1.2,
-                duration: 0.2,
-                repeat: 1,
-                yoyo: true,
-                ease: "power1.inOut"
-            });
-        }
-        
-        // Store current count for comparison on next update
-        freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
-        
-    } else if (freeSpinsIndicator.visible) {
-        // Animate it out
-        gsap.to(freeSpinsIndicator, {
-            y: -50,
-            alpha: 0,
-            duration: 0.5,
-            ease: "back.in(1.7)",
-            onComplete: () => {
-                freeSpinsIndicator.visible = false;
-                stopGlowAnimation();
-            }
-        });
-    }
-}
-
-/**
- * Starts pulsing glow animation
- */
-function startGlowAnimation() {
-    if (!freeSpinsGlow) return;
-    
-    // Kill any existing animations
-    gsap.killTweensOf(freeSpinsGlow);
-    
-    // Create pulsing animation
-    gsap.to(freeSpinsGlow, {
-        alpha: 0.7,
-        duration: 1,
-        repeat: -1,
-        yoyo: true,
-        ease: "sine.inOut"
-    });
-}
-
-/**
- * Stops glow animation
- */
-function stopGlowAnimation() {
-    if (!freeSpinsGlow) return;
-    
-    // Kill animation and reset
-    gsap.killTweensOf(freeSpinsGlow);
-    freeSpinsGlow.alpha = 0;
-}
+// Removed FS indicator functions (createFreeSpinsIndicator, updateFreeSpinsIndicator, startGlowAnimation, stopGlowAnimation)
 
 /**
  * Updates the text displays (Balance, Bet, Win) based on the current game state.
@@ -308,8 +164,7 @@ export function updateDisplays() {
     // Update Info Overlay (DOM) - called separately by Game or state change listener
     // updateInfoOverlay();
 
-    // Update the free spins indicator
-    updateFreeSpinsIndicator();
+    // Removed FS indicator update call
 }
 
 /**

@@ -1,4 +1,9 @@
 import { Game } from './core/Game.js';
+import { gsap } from 'gsap';
+import { PixiPlugin } from 'gsap/PixiPlugin'; // Import PixiPlugin
+
+// Register GSAP PixiPlugin
+gsap.registerPlugin(PixiPlugin);
 
 // --- Entry Point ---
 
