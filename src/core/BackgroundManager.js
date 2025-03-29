@@ -1,56 +1,57 @@
 import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
+// Import logger type for JSDoc
+import { Logger } from '../utils/Logger.js';
 
 export class BackgroundManager {
+    /** @type {PIXI.Sprite | null} */
     backgroundSprite = null;
+    /** @type {PIXI.Container | null} */
     parentLayer = null;
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
 
-    constructor(parentLayer) {
+    /**
+     * @param {PIXI.Container} parentLayer 
+     * @param {import('../utils/Logger.js').Logger} loggerInstance 
+     */
+    constructor(parentLayer, loggerInstance) {
+        this.logger = loggerInstance;
         if (!parentLayer) {
-            console.error("BackgroundManager: Parent layer is required!");
+            this.logger?.error('BackgroundManager', 'Parent layer is required!');
             return;
         }
         this.parentLayer = parentLayer;
         this._createSprite();
+        this.logger?.info('BackgroundManager', 'Initialized.');
     }
 
     _createSprite() {
-        // --- Create Background Sprite ---
-        const bgSprite = new PIXI.Sprite(PIXI.Assets.get('BG_IMAGE'));
+        try {
+            // Assume BG_IMAGE is loaded via PIXI.Assets in Game.js
+            const texture = PIXI.Assets.get('BG_IMAGE');
+            if (!texture) {
+                throw new Error('Background texture (BG_IMAGE) not found in assets.');
+            }
+            this.backgroundSprite = new PIXI.Sprite(texture);
+            this.backgroundSprite.anchor.set(0.5);
+            this.backgroundSprite.x = SETTINGS.GAME_WIDTH / 2;
+            this.backgroundSprite.y = SETTINGS.GAME_HEIGHT / 2;
+            
+            // Scale to fit
+            const scale = Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.width, SETTINGS.GAME_HEIGHT / this.backgroundSprite.height);
+            this.backgroundSprite.scale.set(scale);
 
-        // Position the background
-        bgSprite.x = SETTINGS.GAME_WIDTH / 2 + SETTINGS.BG_OFFSET_X;
-        bgSprite.y = SETTINGS.GAME_HEIGHT / 2 + SETTINGS.BG_OFFSET_Y;
-
-        // Scale based on the configured mode
-        let scale = 1;
-        if (SETTINGS.BG_SCALE_MODE === 'cover') {
-            // Cover mode: ensure image covers the entire game area
-            const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
-            const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
-            scale = Math.max(scaleX, scaleY) * SETTINGS.BG_SCALE_FACTOR;
-        } else if (SETTINGS.BG_SCALE_MODE === 'contain') {
-            // Contain mode: ensure entire image fits in the game area
-            const scaleX = SETTINGS.GAME_WIDTH / bgSprite.width;
-            const scaleY = SETTINGS.GAME_HEIGHT / bgSprite.height;
-            scale = Math.min(scaleX, scaleY) * SETTINGS.BG_SCALE_FACTOR;
-        } else {
-            // Exact mode: use the scale factor directly
-            scale = SETTINGS.BG_SCALE_FACTOR;
+            // Explicit null check for parentLayer to satisfy linter
+            if (this.parentLayer) {
+                this.parentLayer.addChild(this.backgroundSprite);
+                this.logger?.debug('BackgroundManager', 'Background sprite created and added.');
+            } else {
+                 this.logger?.error('BackgroundManager', '_createSprite called but parentLayer is unexpectedly null.');
+            }
+        } catch (error) {
+            this.logger?.error('BackgroundManager', 'Error creating background sprite:', error);
         }
-
-        // Center anchor and apply scale
-        bgSprite.anchor.set(0.5);
-        bgSprite.scale.set(scale);
-
-        // Ensure background doesn't interfere with game play
-        bgSprite.eventMode = 'none';
-
-        // Store reference
-        this.backgroundSprite = bgSprite;
-
-        // Add to parent layer
-        this.parentLayer.addChild(this.backgroundSprite);
     }
 
     /**

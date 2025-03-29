@@ -5,14 +5,14 @@
  * 
  * Public API:
  * - init(config): Initializes the service with config (endpoints, etc.).
- * - requestSpin(betInfo): Sends a spin request to the server or returns a mock result.
+ * - requestSpin(betInfo): Sends a spin request to the server or generates a mock result, emitting events.
  * - requestGameState(): Fetches the current game state from the server (TODO).
  * 
  * Events Emitted:
  * - server:spinResultReceived {data: SpinResult} - Contains outcome from mock or real server.
  * - server:error {type: string, message: string, details?: any} - Reports API or communication errors.
  * - server:gameStateReceived {state: GameStateData} (TODO)
- * - server:balanceUpdated {newBalance: number} (TODO - or included in spinResult)
+ * - server:balanceUpdated {newBalance: number} - Emitted after mock calculation (and should be by real API).
  *
  * Events Consumed: (None currently planned)
  */
@@ -166,6 +166,8 @@ export class ApiService {
         // 3. Simulate Balance Update (Should eventually come directly from server)
         // This is a simplification for the mock.
         const finalBalance = state.balance - state.currentTotalBet + calculatedTotalWin;
+        // Emit balance update event immediately after calculation for mock
+        this.eventBus.emit('server:balanceUpdated', { newBalance: finalBalance });
 
         // 4. Simulate Feature Triggers (e.g., Free Spins)
         let scatterCount = 0;

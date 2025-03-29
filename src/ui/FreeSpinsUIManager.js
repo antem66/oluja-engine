@@ -2,6 +2,9 @@ import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
 import { state } from '../core/GameState.js'; // Import state for checking isInFreeSpins etc.
 import * as SETTINGS from '../config/gameSettings.js';
+// Import types for JSDoc
+import { Logger } from '../utils/Logger.js';
+import { EventBus } from '../utils/EventBus.js';
 
 export class FreeSpinsUIManager {
     /** @type {PIXI.Container | null} */
@@ -14,15 +17,36 @@ export class FreeSpinsUIManager {
     freeSpinsGlow = null;
     /** @type {PIXI.Container | null} */
     parentContainer = null;
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null;
 
-    /** @param {PIXI.Container | null} parentContainer */
-    constructor(parentContainer) {
+    /** 
+     * @param {PIXI.Container | null} parentContainer 
+     * @param {import('../utils/Logger.js').Logger} loggerInstance
+     * @param {import('../utils/EventBus.js').EventBus} eventBusInstance
+     */
+    constructor(parentContainer, loggerInstance, eventBusInstance) {
+        this.logger = loggerInstance;
+        this.eventBus = eventBusInstance; // Store eventBus
+
         if (!parentContainer) {
-            console.error("FreeSpinsUIManager: Parent container is required!");
+            this.logger?.error('FreeSpinsUIManager', 'Parent container is required!');
             return;
         }
+        if (!this.logger) { 
+            console.error("FreeSpinsUIManager: Logger instance is required!");
+        }
+        if (!this.eventBus) { // Check for eventBus
+            this.logger?.warn('FreeSpinsUIManager', 'EventBus instance was not provided.');
+        }
+
         this.parentContainer = parentContainer;
         this._createIndicator();
+        this.logger?.info('FreeSpinsUIManager', 'Initialized.');
+        // TODO (Phase 2+): Subscribe to relevant events (e.g., 'freeSpins:updated', 'game:stateChanged') using this.eventBus
+        // this.eventBus?.on('game:stateChanged', this._handleStateChange.bind(this));
     }
 
     // Renamed from createFreeSpinsIndicator and made private
@@ -96,6 +120,8 @@ export class FreeSpinsUIManager {
         if (this.parentContainer && this.freeSpinsIndicator) {
             this.parentContainer.addChild(this.freeSpinsIndicator);
             console.log("[Trace] FreeSpinsUIManager: Added freeSpinsIndicator container to parentContainer.", this.parentContainer.name);
+        } else {
+            this.logger?.error('FreeSpinsUIManager', '_createIndicator called but parentContainer is null.');
         }
     }
 

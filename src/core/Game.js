@@ -1,3 +1,16 @@
+/**
+ * @module Game
+ * @description Main game class, orchestrator, and update loop.
+ * Initializes PixiJS, loads assets, creates layers and managers,
+ * and manages the main game update cycle.
+ * 
+ * Dependencies (Injected via constructor):
+ * - eventBus: Instance of EventBus for decoupled communication.
+ * - featureManager: Instance of FeatureManager for feature flags.
+ * - logger: Instance of Logger for logging.
+ * - apiService: Instance of ApiService for server communication.
+ */
+
 import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
@@ -33,6 +46,10 @@ import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import s
 import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
 import { gsap } from 'gsap'; // Import GSAP for animations
 import { loadButtonAssets } from '../ui/ButtonFactory.js'; // Keep loadButtonAssets
+import { globalEventBus } from '../utils/EventBus.js'; // Keep for type hinting
+import { featureManager } from '../utils/FeatureManager.js'; // Keep for type hinting
+import { logger } from '../utils/Logger.js'; // Keep for type hinting
+import { apiService } from './ApiService.js'; // Keep for type hinting
 
 
 // --- Module-level variables ---
@@ -83,23 +100,49 @@ export class Game {
     /** @type {SpinManager | null} */
     spinManager = null;
 
+    /** @type {object} */
+    deps = {}; // To store injected dependencies
+
     /** @type {HTMLElement | null} */
     canvasContainer = null;
 
     /**
-     * @param {string} canvasContainerId
+     * @param {string} canvasContainerId - ID of the DOM element to contain the canvas.
+     * @param {object} dependencies - Object containing core services/dependencies.
+     * @param {import('../utils/EventBus.js').EventBus} dependencies.eventBus
+     * @param {import('../utils/FeatureManager.js').FeatureManager} dependencies.featureManager
+     * @param {import('../utils/Logger.js').Logger} dependencies.logger
+     * @param {import('./ApiService.js').ApiService} dependencies.apiService
      */
-    constructor(canvasContainerId) {
+    constructor(canvasContainerId, dependencies) {
         this.canvasContainer = document.getElementById(canvasContainerId);
         if (!this.canvasContainer) {
-            console.error(`Game Error: Canvas container #${canvasContainerId} not found.`);
-            return;
+            // Use logger if available, otherwise console.error
+            const log = dependencies?.logger?.error || console.error;
+            log('Game: Constructor', `Canvas container #${canvasContainerId} not found.`);
+            // TODO: Should probably throw or prevent initialization
+            return; 
         }
+        if (!dependencies || !dependencies.eventBus || !dependencies.featureManager || !dependencies.logger || !dependencies.apiService) {
+            // Use logger if available, otherwise console.error
+            const log = dependencies?.logger?.error || console.error;
+            log('Game: Constructor', 'Core dependencies (eventBus, featureManager, logger, apiService) are required!');
+            // TODO: Should probably throw or prevent initialization
+            return; 
+        }
+
+        this.deps = dependencies; // Store injected dependencies
+        
+        // Log initialization with injected logger
+        this.deps.logger.info('Game', 'Game instance created.');
+
         // Initialize game state with default values
         initGameState();
     }
 
     async init() {
+        // Access logger via this.deps.logger
+        this.deps.logger.info('Game', 'Initialization started...');
         try {
             this._exposeGlobals();
             await this._setupPixiApp();
@@ -223,21 +266,30 @@ export class Game {
     }
 
     _createManagers() {
+        // Ensure core dependencies are available
+        const { logger, eventBus, apiService } = this.deps;
+        if (!logger || !eventBus || !apiService) {
+            console.error("Game Init Error: Core dependencies (logger, eventBus, apiService) missing in Game instance.");
+            // Use console.error as logger itself might be missing
+            return;
+        }
+
         // Add null checks for layers passed to managers
-        // Check for the NEWLY REQUIRED sub-containers as well
-        if (!this.layerBackground || !this.layerOverlays || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer) { // Added fsIndicatorContainer check
-             console.error("Game Init Error: Required layers or ticker not available for manager creation.");
+        if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer) {
+             logger.error('Game', "Required layers or ticker not available for manager creation.");
              return;
         }
         // Instantiate managers, passing required layers and dependencies
-        this.backgroundManager = new BackgroundManager(this.layerBackground);
-        // Pass the dedicated container to FreeSpinsUIManager
-        this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer);
-        this.reelManager = new ReelManager(this.layerReels, app.ticker);
-        // TODO: Fix SpinManager constructor call if necessary - assuming it takes ReelManager for now
-        // If SpinManager needs the Game instance, pass 'this'. Adjust constructor signature if needed.
-        this.spinManager = new SpinManager(this.reelManager); // Adjusted call - Verify SpinManager constructor
-        new LogoManager(this, this.layerLogo); // Assuming LogoManager needs Game and layerLogo
+        this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
+        // Pass the dedicated container and dependencies to FreeSpinsUIManager
+        this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
+        this.reelManager = new ReelManager(this.layerReels, app.ticker, logger);
+        
+        // Pass dependencies to SpinManager
+        this.spinManager = new SpinManager(this.reelManager, logger, eventBus, apiService);
+        
+        // Pass dependencies to LogoManager (Game instance, layer, logger, eventBus)
+        new LogoManager(this, this.layerLogo, logger, eventBus); 
 
         // Assign managed sprite if needed, with null check for manager
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
@@ -252,7 +304,9 @@ export class Game {
             window.gameApp.reelManager = this.reelManager;
             // @ts-ignore
             window.gameApp.spinManager = this.spinManager;
+            // Note: LogoManager instance isn't stored on Game, so not exposed here directly
         }
+        logger.info('Game', 'Core managers created and dependencies injected.');
     }
 
     /**

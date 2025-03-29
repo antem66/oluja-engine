@@ -1,32 +1,73 @@
 import { gsap } from 'gsap';
 import { Container, Sprite, Assets } from 'pixi.js';
 import { GAME_WIDTH } from '../config/gameSettings.js';
+import { Game } from '../core/Game.js';
+import { Logger } from '../utils/Logger.js';
+import { EventBus } from '../utils/EventBus.js';
 
 export class LogoManager {
-    // Modified constructor to accept parentLayer
-    constructor(game, parentLayer) {
-        this.game = game;
-        this.parentLayer = parentLayer; // Store the parent layer
+    /** @type {Sprite | null} */
+    logo = null;
+    /** @type {Container | null} */
+    container = null;
+    /** @type {import('../core/Game.js').Game | null} */
+    game = null; // Reference to the main Game instance
+    /** @type {Container | null} */
+    parentLayer = null;
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null;
+
+    /**
+     * @param {import('../core/Game.js').Game} gameInstance 
+     * @param {Container} parentLayer
+     * @param {import('../utils/Logger.js').Logger} loggerInstance 
+     * @param {import('../utils/EventBus.js').EventBus} eventBusInstance 
+     */
+    constructor(gameInstance, parentLayer, loggerInstance, eventBusInstance) {
+        this.game = gameInstance; // Keep game instance if needed for direct access (though eventBus is preferred)
+        this.parentLayer = parentLayer;
+        this.logger = loggerInstance;
+        this.eventBus = eventBusInstance;
+
+        if (!this.parentLayer) {
+            this.logger?.error('LogoManager', 'Parent layer is required!');
+            return; // Stop initialization if critical dependency is missing
+        }
+        if (!this.game) {
+            this.logger?.error('LogoManager', 'Game instance is required!');
+            return; 
+        }
+        if (!this.logger) {
+             console.error("LogoManager: Logger instance is required!");
+        }
+        if (!this.eventBus) {
+             this.logger?.warn("LogoManager", "EventBus instance was not provided.");
+        }
+
         this.container = new Container();
-        // Removed: this.container.zIndex = 5;
-        this.logo = null;
+        this.container.name = "LogoContainer"; // Name for debugging
         this.setup();
+        this.logger?.info('LogoManager', 'Initialized.');
     }
 
     async setup() {
         try {
             const texture = await Assets.get('logo');
             if (!texture) {
-                console.error('Logo texture not found, trying to load it directly');
+                this.logger?.warn('LogoManager', 'Logo texture not found via alias logo, trying direct path...');
                 const directTexture = await Assets.load('assets/images/ui/logo.png');
+                if (!directTexture) {
+                     throw new Error('Failed to load logo texture directly.');
+                }
                 this.logo = new Sprite(directTexture);
             } else {
                 this.logo = new Sprite(texture);
             }
             
             if (!this.logo) {
-                console.error('Failed to create logo sprite');
-                return;
+                throw new Error('Failed to create logo sprite instance.');
             }
             
             this.logo.anchor.set(0.5);
@@ -36,79 +77,48 @@ export class LogoManager {
             
             this.logo.scale.set(0.2);
             
+            if (!this.container) {
+                 throw new Error('Logo container is null during setup.');
+            }
             this.container.addChild(this.logo);
 
-            // Add container to the provided parent layer instead of the stage
-            if (this.parentLayer) {
-                this.parentLayer.addChild(this.container);
-                // Removed: this.game.app.stage.sortChildren();
-            } else {
-                console.error('LogoManager: Parent layer not provided');
-                // Fallback or error handling if needed, e.g., add to stage directly?
-                // For now, just log the error.
+            if (!this.parentLayer) {
+                throw new Error('Parent layer is null during setup.');
             }
+            this.parentLayer.addChild(this.container);
+            
+            // Log only if logo is successfully created
+            this.logger?.debug('LogoManager', 'Logo sprite created and added.', {
+                position: { x: this.logo.x, y: this.logo.y }, // Use this.logo
+                scale: this.logo.scale.x,
+                visible: this.logo.visible,
+                zIndex: this.container?.zIndex ?? 'N/A' 
+            });
 
             this.initAnimations();
             this.setupFreeSpinsHandler();
             
-            console.log('Logo loaded and added to stage', {
-                position: { x: this.logo.x, y: this.logo.y },
-                scale: this.logo.scale,
-                visible: this.logo.visible,
-                zIndex: this.container.zIndex
-            });
         } catch (error) {
-            console.error('Error loading logo:', error);
+            this.logger?.error('LogoManager', 'Error during logo setup:', error);
         }
     }
 
     initAnimations() {
-        if (!this.logo) return;
-
-        // Kill existing tweens just in case
-        gsap.killTweensOf(this.logo);
-        gsap.killTweensOf(this.logo.scale);
-
-        // Initial entrance animation
-        gsap.from(this.logo, {
-            pixi: {
-                scale: 0,
-                alpha: 0,
-                rotation: -0.5
-            },
-            duration: 1.2,
-            ease: "elastic.out(1, 0.75)",
-            delay: 0.2 // Small delay after setup
-        });
-
-        // Task 3.4: Combined Idle Animation Timeline
-        const idleTimeline = gsap.timeline({ repeat: -1, yoyo: true });
-
-        idleTimeline
-            .to(this.logo, { // Bobbing up/down
-                pixi: { y: "+=4" }, // Slightly less bob
-                duration: 2.5, // Slower bob
-                ease: "sine.inOut"
-            }, 0) // Start at time 0
-            .to(this.logo.scale, { // Subtle scale pulse
-                x: "*=1.03", // Less intense pulse
-                y: "*=1.03",
-                duration: 2.5, // Match bob duration
-                ease: "sine.inOut"
-            }, 0) // Start at time 0, runs concurrently with bob
-            .to(this.logo, { // Gentle rotation wobble
-                pixi: { rotation: 0.02 }, // Less rotation
-                duration: 3.5, // Slower wobble
-                ease: "sine.inOut"
-            }, 0.5); // Start slightly after bob/scale starts
+        if (!this.logo) {
+            this.logger?.warn('LogoManager', 'initAnimations called but logo is null.');
+            return;
+        }
+        gsap.from(this.logo.scale, { x: 0.1, y: 0.1, duration: 1, ease: "elastic.out(1, 0.3)" });
+        this.logger?.debug('LogoManager', 'Initial logo animation started.');
     }
 
     setupFreeSpinsHandler() {
         if (!this.logo || !this.game) return;
 
-        this.game.on('freeSpinsStarted', () => {
+        this.eventBus?.on('feature:freeSpins:started', () => {
             if (!this.logo) return;
             
+            this.logger?.debug('LogoManager', 'Handling freeSpins:started event');
             gsap.to(this.logo, {
                 pixi: {
                     y: 60,
@@ -119,9 +129,10 @@ export class LogoManager {
             });
         });
 
-        this.game.on('freeSpinsEnded', () => {
+        this.eventBus?.on('feature:freeSpins:ended', () => {
             if (!this.logo) return;
             
+            this.logger?.debug('LogoManager', 'Handling freeSpins:ended event');
             gsap.to(this.logo, {
                 pixi: {
                     y: 60,

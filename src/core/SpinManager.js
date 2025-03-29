@@ -46,20 +46,57 @@ import {
 } from '../config/animationSettings.js';
 import { winAnimDelayMultiplier } from '../config/animationSettings.js'; // Import separately if needed
 import { REEL_STRIPS } from '../config/reelStrips.js'; // Needed for debug helpers
+// Import types
+import { Logger } from '../utils/Logger.js';
+import { EventBus } from '../utils/EventBus.js';
+import { ApiService } from './ApiService.js';
+import { ReelManager } from './ReelManager.js'; // Keep for type hint
 
 // TODO (Phase 2): Remove direct imports of features/UI, interact via events/DI.
 
 export class SpinManager {
-    reelManager = null; // Reference to ReelManager
+    /** @type {import('./ReelManager.js').ReelManager | null} */
+    reelManager = null; 
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null;
+    /** @type {import('./ApiService.js').ApiService | null} */
+    apiService = null;
 
-    constructor(reelManager) { 
-        // TODO (Phase 2): Inject dependencies (EventBus, ReelManager, ApiService, Logger)
-        this.reelManager = reelManager;
+    /**
+     * @param {import('./ReelManager.js').ReelManager} reelManagerInstance 
+     * @param {import('../utils/Logger.js').Logger} loggerInstance 
+     * @param {import('../utils/EventBus.js').EventBus} eventBusInstance 
+     * @param {import('./ApiService.js').ApiService} apiServiceInstance 
+     */
+    constructor(reelManagerInstance, loggerInstance, eventBusInstance, apiServiceInstance) { 
+        this.reelManager = reelManagerInstance;
+        this.logger = loggerInstance;
+        this.eventBus = eventBusInstance;
+        this.apiService = apiServiceInstance;
+
         if (!this.reelManager) {
-            // TODO: Use Logger
-            console.error("SpinManager: ReelManager instance is required!");
+            this.logger?.error("SpinManager", "ReelManager instance is required!");
+            // TODO: Handle error - throw?
         }
-        // TODO (Phase 2): Subscribe to events like ui:button:click(spin), server:spinResultReceived
+        if (!this.logger) {
+             console.error("SpinManager: Logger instance is required!");
+        }
+        if (!this.eventBus) {
+             this.logger?.warn("SpinManager", "EventBus instance was not provided.");
+        }
+        if (!this.apiService) {
+             this.logger?.error("SpinManager", "ApiService instance is required!");
+             // TODO: Handle error - throw?
+        }
+
+        this.logger?.info('SpinManager', 'Initialized.');
+        // TODO (Phase 2.2+): Subscribe to events like ui:button:click(spin), server:spinResultReceived
+        // this.eventBus?.on('ui:button:click', (event) => {
+        //    if (event.buttonName === 'spin') this.handleSpinRequest(); 
+        // });
+        // this.eventBus?.on('server:spinResultReceived', this.handleSpinResult.bind(this));
     }
 
     /**
@@ -74,7 +111,7 @@ export class SpinManager {
         // 2. Prepare betInfo.
         // 3. Call `apiService.requestSpin(betInfo)`.
         // 4. Emit `spin:started` event.
-        // The current logic below will move to ApiService._generateMockSpinResult()
+        // The current logic below will move to ApiService._generateMockSpinResult
 
         if (!this.reelManager || state.isSpinning) {
             return; // Don't start if already spinning or no reel manager

@@ -25,6 +25,7 @@ import * as PIXI from 'pixi.js';
 import { Reel } from './Reel.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
+import { Logger } from '../utils/Logger.js';
 
 export class ReelManager {
     /** @type {Reel[]} */
@@ -35,28 +36,36 @@ export class ReelManager {
     parentLayer = null;
     /** @type {PIXI.Ticker | null} */
     appTicker = null;
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
 
     /**
      * @param {PIXI.Container} parentLayer - The PIXI Container to add the reels container to.
      * @param {PIXI.Ticker} appTicker - The PIXI Ticker for updating reels.
+     * @param {import('../utils/Logger.js').Logger} loggerInstance
      */
-    constructor(parentLayer, appTicker) {
-        // TODO (Phase 2): Inject dependencies (Logger?)
+    constructor(parentLayer, appTicker, loggerInstance) {
+        this.logger = loggerInstance;
+        
         if (!parentLayer) {
-            // TODO: Use Logger
-            console.error("ReelManager: Parent layer is required!");
+            this.logger?.error('ReelManager', 'Parent layer is required!');
             return;
         }
         if (!appTicker) {
-            // TODO: Use Logger
-            console.error("ReelManager: App ticker is required!");
+            this.logger?.error('ReelManager', 'App ticker is required!');
             return;
         }
+        if (!this.logger) {
+            console.error("ReelManager: Logger instance is required!");
+            // Allow continuation for now, but ideally throw or prevent
+        }
+
         this.parentLayer = parentLayer;
         this.appTicker = appTicker;
         this._setupContainer();
         this._createReels();
         this._applyMask();
+        this.logger?.info('ReelManager', 'Initialized.');
     }
 
     _setupContainer() {
@@ -70,13 +79,12 @@ export class ReelManager {
 
         // Add the container to the parent layer
         this.parentLayer.addChild(this.reelContainer);
+        this.logger?.debug('ReelManager', 'Reel container setup complete.');
     }
 
     _createReels() {
-        // Explicitly check for null container and ticker before proceeding
         if (!this.reelContainer || !this.appTicker) {
-             // TODO: Use Logger
-             console.error("ReelManager._createReels: Cannot create reels, container or ticker missing.");
+             this.logger?.error('ReelManager', '_createReels: Cannot create reels, container or ticker missing.');
              return;
         }
 
@@ -85,59 +93,67 @@ export class ReelManager {
 
         for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
             if (!REEL_STRIPS[i]) {
-                // TODO: Use Logger
-                console.error(`ReelManager: Reel strip configuration missing for reel ${i}.`);
+                this.logger?.error('ReelManager', `Reel strip configuration missing for reel ${i}.`);
                 continue; // Skip creating this reel
             }
-            // Pass the already-validated ticker
+            // TODO: Pass logger to Reel constructor when it's updated
             const reel = new Reel(i, REEL_STRIPS[i], ticker); 
             this.reels.push(reel);
             container.addChild(reel.container);
         }
+        this.logger?.debug('ReelManager', `Created ${this.reels.length} reels.`);
     }
 
     _applyMask() {
-        if (!this.reelContainer) return;
-
+        if (!this.reelContainer) {
+            this.logger?.warn('ReelManager', '_applyMask called but reelContainer is null.');
+            return;
+        }
+        const parentLayer = this.parentLayer;
+        if (!parentLayer) {
+            this.logger?.error('ReelManager', 'Cannot apply mask as parentLayer is missing.');
+            return;
+        }
+        
         // Create a mask graphic positioned correctly in world space
         const mask = new PIXI.Graphics()
             .rect(0, 0, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
             .fill(0xffffff);
+        
+        if (!mask) {
+            this.logger?.error('ReelManager', 'Failed to create mask graphics.');
+            return;
+        }
+
         // Position the mask graphic itself at the reel area's top-left corner
         mask.x = SETTINGS.reelAreaX;
         mask.y = SETTINGS.reelAreaY;
         
-        // Assign the graphic as the mask for the reel container
+        // Add the mask to the parent layer FIRST
+        parentLayer.addChild(mask);
+
+        // THEN assign it as the mask for the reel container
         this.reelContainer.mask = mask;
 
-        // The mask graphic must be added to the stage/parent for the mask to work.
-        // Add it to the same parent as the reel container itself.
-        if (this.parentLayer) {
-             this.parentLayer.addChild(mask);
-        } else {
-            // TODO: Use Logger
-            console.warn("ReelManager: Could not add mask graphic as parentLayer is missing.");
-        }
+        this.logger?.debug('ReelManager', 'Reel mask applied.');
     }
 
-    // Method to update all reels - called by Game's update loop
     /**
      * Updates all managed Reel instances.
-     * @param {number} delta - Time delta from the ticker.
-     * @param {number} now - Current time from the ticker.
-     * @returns {boolean} - True if any reel is still visually moving/tweening.
+     * @param {number} delta - Time elapsed since the last frame.
+     * @param {number} now - Current time.
+     * @returns {boolean} True if any reel is still moving, false otherwise.
      */
     update(delta, now) {
-        let anyReelMoving = false;
-        if (!this.appTicker) return false;
-
-        this.reels.forEach((reel) => {
+        let anyMoving = false;
+        for (const reel of this.reels) {
+            // Use the return value of update() to check if reel is active/moving
             const isActive = reel.update(delta, now);
             if (isActive) {
-                anyReelMoving = true;
+                anyMoving = true;
             }
-        });
-        return anyReelMoving;
+        }
+        return anyMoving;
     }
 
     /**
