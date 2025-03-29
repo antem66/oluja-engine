@@ -2,7 +2,7 @@ import { state, updateState } from './GameState.js';
 import { evaluateWin } from '../features/WinEvaluation.js';
 import { handleFreeSpinEnd } from '../features/FreeSpins.js';
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
-import { setButtonsEnabled, animateSpinButtonRotation, stopSpinButtonRotation } from '../ui/UIManager.js';
+import { setButtonsEnabled, animateSpinButtonRotation, stopSpinButtonRotation, animateWin } from '../ui/UIManager.js';
 import { clearWinLines } from '../features/PaylineGraphics.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import {
@@ -32,22 +32,17 @@ export class SpinManager {
      * Starts the spinning process for all reels.
      */
     startSpin() {
-        // Removed log
-        // console.log('[SpinManager.startSpin] --- Entered function --- ');
-
         if (!this.reelManager || state.isSpinning) {
-            // Removed log
-            // console.warn(`[SpinManager.startSpin] Aborting: reelManager valid? ${!!this.reelManager}, isSpinning? ${state.isSpinning}`);
             return; // Don't start if already spinning or no reel manager
         }
-
-        // Removed log
-        // console.log('[SpinManager.startSpin] Passed initial checks. ReelManager:', this.reelManager);
 
         // *** MOVED STATE UPDATE HERE ***
         updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
         setButtonsEnabled(false);
         clearWinLines();
+        
+        // Clear win text display when starting a new spin
+        animateWin(0);
         
         // Animate the spin button rotation
         animateSpinButtonRotation();
@@ -58,14 +53,14 @@ export class SpinManager {
 
         // Add null check before accessing reels
         if (!this.reelManager) {
-             console.error("SpinManager.startSpin: ReelManager is null!");
-             // Attempt to recover state if possible
-             updateState({ isSpinning: false, isTransitioning: false });
-             setButtonsEnabled(true);
-              return;
-         }
-         // @ts-ignore - Null check above ensures reelManager is valid here
-         const currentReels = this.reelManager.reels;
+            console.error("SpinManager.startSpin: ReelManager is null!");
+            // Attempt to recover state if possible
+            updateState({ isSpinning: false, isTransitioning: false });
+            setButtonsEnabled(true);
+            return;
+        }
+        // @ts-ignore - Null check above ensures reelManager is valid here
+        const currentReels = this.reelManager.reels;
 
         // Generate forced win pattern if in debug mode
         if (state.isDebugMode && state.forceWin) {

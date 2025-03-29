@@ -103,9 +103,9 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     autoplayButton = createButton("", secondButtonX, standardButtonY, handlers.toggleAutoplay, {}, internalContainer, btnSize, btnSize, true, 'autoplay');
     autoplayButton.name = "autoplayButton";
 
-    // Right Buttons (Spin) - Move up slightly
+    // Right Buttons (Spin) - Move up higher
     const spinButtonTopLeftX = GAME_WIDTH - sideMargin - spinBtnSize;
-    const spinButtonTopLeftY = panelCenterY - spinBtnSize / 2 - 5; // Move up by 5px
+    const spinButtonTopLeftY = panelCenterY - spinBtnSize / 2 - 15; // Move up by 15px (was 5px)
     if (spinManagerRef) {
         spinButton = createButton(
             "", spinButtonTopLeftX, spinButtonTopLeftY, 
@@ -145,8 +145,8 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
         // Use standard button Y position for vertical alignment
         const betBtnY = standardButtonY;
         
-        // Improved spacing between bet text and buttons
-        const betButtonSpacing = 25; // Increase spacing for better visual balance
+        // Increased spacing between bet text and buttons
+        const betButtonSpacing = 35; // Increase from 25 to 35 for more spacing
         
         // Fix plus/minus button positioning to be more symmetrical around the bet text
         // Position the minus button to the left of the bet text with proper spacing
@@ -226,21 +226,17 @@ export function updateDisplays() {
     // Update bet display
     betText.text = formatMoney(state.currentTotalBet);
     
-    // Handle and update win display
-    winText.text = formatMoney(state.lastTotalWin);
+    // Handle win display - don't update win text directly here
+    // Win text will be updated by animateWin function when needed
     const winDisplayThreshold = 0.01; // Don't display wins below this value
+    
+    // Only handle visibility here - keep text content as is
     winText.visible = state.lastTotalWin >= winDisplayThreshold;
     winLabel.visible = state.lastTotalWin >= winDisplayThreshold;
     
-    // Update roll-up text if we need it
+    // Rollup text is only visible during animations
     if (winRollupText) {
-        winRollupText.text = formatMoney(0);
-    }
-    
-    // Update free spins counter if relevant
-    if (state.freeSpinsAwarded > 0) {
-        // If we have a free spins display element, update it here
-        // This might be managed by FreeSpins.js instead
+        winRollupText.visible = false;
     }
 }
 
@@ -382,4 +378,50 @@ export function updateTurboButtonState() {
  */
 export function getWinRollupText() {
     return winRollupText;
+}
+
+/**
+ * Animates the win value from 0 to the final win amount
+ * @param {number} winAmount - The final win amount to animate to
+ */
+export function animateWin(winAmount) {
+    if (!winText || !winRollupText) return;
+    
+    // Don't animate if win is 0 or negative
+    if (winAmount <= 0) {
+        winText.text = formatMoney(0);
+        winText.visible = false;
+        winLabel.visible = false;
+        return;
+    }
+    
+    // Make sure win text is visible
+    winText.visible = true;
+    winLabel.visible = true;
+    
+    // Setup animation values
+    const animationDuration = 1.5; // seconds
+    const animationValues = {
+        currentValue: 0
+    };
+    
+    // Kill any existing animation
+    gsap.killTweensOf(animationValues);
+    
+    // Set initial win text to 0
+    winText.text = formatMoney(0);
+    
+    // Animate the win value
+    gsap.to(animationValues, {
+        currentValue: winAmount,
+        duration: animationDuration,
+        ease: "power2.out",
+        onUpdate: function() {
+            winText.text = formatMoney(animationValues.currentValue);
+        },
+        onComplete: function() {
+            // Ensure final value is precise
+            winText.text = formatMoney(winAmount);
+        }
+    });
 }

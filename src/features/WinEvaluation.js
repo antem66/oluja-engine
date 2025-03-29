@@ -8,7 +8,7 @@ import { state, updateState } from '../core/GameState.js'; // Assuming state man
 import { drawWinLines } from './PaylineGraphics.js'; // Assuming graphics handling
 import { playWinAnimations, animateWinningSymbols } from './Animations.js'; // Assuming animation handling
 import { enterFreeSpins } from './FreeSpins.js'; // Assuming FreeSpins handling
-import { updateDisplays } from '../ui/UIManager.js'; // Assuming UI update handling
+import { updateDisplays, animateWin } from '../ui/UIManager.js'; // Add import for animateWin function
 // import { flashElement } from '../ui/Notifications.js'; // Assuming notification handling
 
 // Placeholder for reels data - this should be passed in or accessed via GameState/Game module
@@ -126,7 +126,7 @@ export function evaluateWin() {
 
         drawWinLines(calculatedWinningLines);
         playWinAnimations(calculatedTotalWin, state.currentTotalBet);
-        updateDisplays();
+        animateWin(calculatedTotalWin);
 
         // Restore animating winning symbols
         if (calculatedWinningLines.length > 0) {
