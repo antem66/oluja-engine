@@ -32,10 +32,19 @@ export class SpinManager {
      * Starts the spinning process for all reels.
      */
     startSpin() {
+        // Removed log
+        // console.log('[SpinManager.startSpin] --- Entered function --- ');
+
         if (!this.reelManager || state.isSpinning) {
+            // Removed log
+            // console.warn(`[SpinManager.startSpin] Aborting: reelManager valid? ${!!this.reelManager}, isSpinning? ${state.isSpinning}`);
             return; // Don't start if already spinning or no reel manager
         }
 
+        // Removed log
+        // console.log('[SpinManager.startSpin] Passed initial checks. ReelManager:', this.reelManager);
+
+        // *** MOVED STATE UPDATE HERE ***
         updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
         setButtonsEnabled(false);
         clearWinLines();

@@ -93,7 +93,10 @@ export function toggleTurbo() {
 // --- Spin ---
 
 export function startSpin(isFreeSpin = false) {
-  if (state.isSpinning || state.isTransitioning) return;
+  if (state.isSpinning || state.isTransitioning) {
+    console.warn(`[ButtonHandlers.startSpin] Aborting spin start during Autoplay? isSpinning: ${state.isSpinning}, isTransitioning: ${state.isTransitioning}`);
+    return;
+  }
 
   // Ensure total bet is current
   const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES;
@@ -114,7 +117,7 @@ export function startSpin(isFreeSpin = false) {
   }
 
   // --- Start the Spin Process ---
-  updateState({ isSpinning: true }); // Set master spinning flag
+  // Removed: updateState({ isSpinning: true }); // Set master spinning flag
   setButtonsEnabled(false); // Disable controls
 
   // Reset win display and line graphics (UIManager or specific modules should handle this)
@@ -143,7 +146,7 @@ export function startSpin(isFreeSpin = false) {
       console.error("Cannot start spin: Spin function not available from UIManager.");
       // Re-enable buttons if spin couldn't start
       setButtonsEnabled(true);
-      updateState({ isSpinning: false });
+      // updateState({ isSpinning: false });
   }
 
   // The rest of the spin logic (scheduling stops, handling stop completion)

@@ -42,10 +42,10 @@ export function handleAutoplayNextSpin() {
         // updateInfoOverlay(); // Handled by UIManager
 
         const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
-        updateState({ isTransitioning: true }); // Prevent actions during the short delay
+        // Removed: updateState({ isTransitioning: true }); // Prevent actions during the short delay
 
         setTimeout(() => {
-            updateState({ isTransitioning: false });
+            // Removed: updateState({ isTransitioning: false });
             startSpin(); // Start the next spin
         }, delay);
 

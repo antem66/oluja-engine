@@ -125,6 +125,7 @@ export class Game {
 
     async _setupPixiApp() {
         app = new PIXI.Application();
+        globalThis.__PIXI_APP__ = app;
         await app.init({
             width: SETTINGS.GAME_WIDTH,
             height: SETTINGS.GAME_HEIGHT,

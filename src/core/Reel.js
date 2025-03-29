@@ -142,7 +142,6 @@ export class Reel {
 
             const symbolOffset = currentPosition - Math.floor(currentPosition);
             symbolSprite.y = (relativeIndex - symbolOffset) * SYMBOL_SIZE + (SYMBOL_SIZE / 2);
-            console.log(`Reel ${this.reelIndex}, Symbol ${i}, Y: ${symbolSprite.y.toFixed(2)}, Pos: ${currentPosition.toFixed(2)}`); // ADD THIS LOG
 
             // --- Uncommented Symbol Replacement Logic ---
             const expectedSymbolId = this.strip[targetStripIndex];
