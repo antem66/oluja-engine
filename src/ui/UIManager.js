@@ -1,3 +1,32 @@
+/**
+ * @module UIManager
+ * @description Manages the creation, state, and updates of all primary UI elements,
+ * including text displays (balance, bet, win) and interactive buttons.
+ * It uses ButtonFactory to create buttons and handles their visual state.
+ * It coordinates with GameState for data and potentially SpinManager for actions.
+ *
+ * Public API:
+ * - initUIManager(parentLayer, uiStyles, spinManagerInstance): Initializes the UI.
+ * - updateDisplays(): Updates text displays based on GameState.
+ * - setButtonsEnabled(enabled): Controls interactability of buttons.
+ * - animateWin(winAmount): Animates the win display counter.
+ * - updateAutoplayButtonState(): Updates autoplay button visual state.
+ * - updateTurboButtonState(): Updates turbo button visual state.
+ * - animateSpinButtonRotation(): Starts the spin button rotation animation.
+ * - stopSpinButtonRotation(): Stops the spin button rotation animation.
+ * - getSpinManagerStartFunction(): (Temporary) Provides access to SpinManager's startSpin.
+ * - getWinRollupText(): (Potentially deprecated/internal) Gets win rollup text element.
+ *
+ * Events Emitted (Future - Phase 2):
+ * - ui:button:click {buttonName: string} (e.g., when spin, bet+, bet-, autoplay, turbo are clicked)
+ * - ui:initialized
+ *
+ * Events Consumed (Future - Phase 2):
+ * - game:stateChanged { updatedProps: string[], newState: object } (or granular state events)
+ * - server:balanceUpdated { newBalance: number }
+ * - win:validatedForAnimation { totalWin: number } (To trigger win display update/animation)
+ */
+
 import * as PIXI from 'pixi.js';
 // Removed duplicate PIXI import
 import { state } from '../core/GameState.js'; // Assuming state access
@@ -11,7 +40,7 @@ let internalContainer = null; // This manager's own container
 let balanceText = null;
 let winText = null;
 let betText = null;
-let winRollupText = null;
+let winRollupText = null; // Keep reference for now, might be removed if only winText is used
 let balanceLabel = null;
 let betLabel = null;
 let winLabel = null;
@@ -21,7 +50,7 @@ let spinButton = null;
 let betDecreaseButton = null;
 let betIncreaseButton = null;
 
-// Reference to the SpinManager
+// Reference to the SpinManager (Temporary - Will be replaced by event/DI)
 let spinManagerRef = null;
 
 // Removed FS UI variables
@@ -29,6 +58,7 @@ let spinManagerRef = null;
 /**
  * Returns the bound startSpin function from the stored SpinManager instance.
  * @returns {Function | null} The bound startSpin function or null if manager isn't set.
+ * @deprecated Will be removed once button clicks emit events instead of calling handlers directly.
  */
 export function getSpinManagerStartFunction() {
     return spinManagerRef ? spinManagerRef.startSpin.bind(spinManagerRef) : null;
@@ -53,16 +83,19 @@ function formatMoney(value) {
  * Creates the UI panel, text elements, and buttons, adding them to the provided parent layer.
  * @param {PIXI.Container} parentLayer - The layer to add the UI elements to (e.g., layerUI).
  * @param {object} uiStyles - Object containing different PIXI.TextStyle definitions.
- * @param {object} spinManagerInstance - Instance of the SpinManager.
+ * @param {object} spinManagerInstance - Instance of the SpinManager (Temporary).
  */
 export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
+    // TODO (Phase 2): Accept dependencies (EventBus, Logger, FeatureManager) via DI
     if (!parentLayer) {
+        // TODO: Use Logger
         console.error("UIManager: Parent layer is required!");
         return;
     }
-    // Store the SpinManager instance
+    // Store the SpinManager instance (Temporary)
     if (!spinManagerInstance) {
-         console.error("UIManager: SpinManager instance is required!");
+        // TODO: Use Logger
+         console.error("UIManager: SpinManager instance is required! (Temporary)");
     } else {
         spinManagerRef = spinManagerInstance;
     }
@@ -91,7 +124,9 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     internalContainer.addChild(panel);
 
     // --- Create Buttons ---
-    // Position all main buttons at the same Y level
+    // TODO (Phase 2): Button creation should assign callbacks that emit events,
+    // e.g., () => eventBus.emit('ui:button:click', { buttonName: 'turbo' })
+    // instead of calling handlers directly.
     const standardButtonY = panelCenterY - btnSize / 2; // All standard buttons aligned at this Y
 
     // Left Buttons (Turbo, Autoplay)
@@ -107,13 +142,15 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     const spinButtonTopLeftX = GAME_WIDTH - sideMargin - spinBtnSize;
     const spinButtonTopLeftY = panelCenterY - spinBtnSize / 2 - 15; // Move up by 15px (was 5px)
     if (spinManagerRef) {
+        // Temporary direct call
         spinButton = createButton(
-            "", spinButtonTopLeftX, spinButtonTopLeftY, 
+            "", spinButtonTopLeftX, spinButtonTopLeftY,
             spinManagerRef.startSpin.bind(spinManagerRef), {}, 
             internalContainer, spinBtnSize, spinBtnSize, true, 'spin'
         );
         spinButton.name = "spinButton";
     } else {
+        // TODO: Use Logger
         console.error("UIManager: Spin button could not be created.");
     }
     
@@ -191,7 +228,7 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     winText.visible = state.lastTotalWin > 0;
     internalContainer.addChild(winLabel, winText);
 
-    // Win Rollup Text
+    // Win Rollup Text (May become deprecated if animateWin only targets winText)
     winRollupText = new PIXI.Text({ text: formatMoney(0), style: uiStyles.winRollup }); 
     winRollupText.anchor.set(0.5, 0.5);
     winRollupText.x = GAME_WIDTH / 2;
@@ -205,43 +242,48 @@ export function initUIManager(parentLayer, uiStyles, spinManagerInstance) {
     updateAutoplayButtonState();
     updateTurboButtonState();
 
+    // TODO: Replace with Logger
     console.log("UIManager initialized.");
+    // TODO (Phase 2): Emit ui:initialized event
+    // eventBus.emit('ui:initialized');
 }
 
 // Removed FS indicator functions
 
 /**
  * Updates the text display elements with current game state values.
- * This is called whenever the state changes and displays need to be updated.
+ * This function might be triggered by event listeners in Phase 2.
  */
 export function updateDisplays() {
     if (!balanceText || !betText || !winText) {
+        // TODO: Use Logger
         console.warn("UIManager: Cannot update displays - text elements not initialized.");
         return;
     }
     
+    // TODO (Phase 2): Update based on received state data from events, not direct state import
     // Update balance display
     balanceText.text = formatMoney(state.balance);
     
     // Update bet display
     betText.text = formatMoney(state.currentTotalBet);
     
-    // Handle win display - don't update win text directly here
-    // Win text will be updated by animateWin function when needed
+    // Handle win display - visibility is controlled here, value by animateWin
     const winDisplayThreshold = 0.01; // Don't display wins below this value
     
-    // Only handle visibility here - keep text content as is
+    // Only handle visibility here - keep text content as is (animateWin handles value)
     winText.visible = state.lastTotalWin >= winDisplayThreshold;
     winLabel.visible = state.lastTotalWin >= winDisplayThreshold;
     
-    // Rollup text is only visible during animations
+    // Rollup text is only visible during animations (managed by animateWin?)
     if (winRollupText) {
-        winRollupText.visible = false;
+        winRollupText.visible = false; // Ensure hidden unless animating
     }
 }
 
 /**
  * Enables or disables interaction and adjusts alpha for primary game buttons.
+ * Might be triggered by state change events in Phase 2.
  * @param {boolean} enabled - True to enable, false to disable.
  */
 export function setButtonsEnabled(enabled) {
@@ -258,6 +300,7 @@ export function setButtonsEnabled(enabled) {
     // Handle autoplay button separately to keep it interactive at ALL TIMES
     if (autoplayButton) {
         // Always keep autoplay button interactive regardless of state
+        // TODO: Feature flag check?
         autoplayButton.eventMode = 'static';
         autoplayButton.alpha = 1.0;
         autoplayButton.cursor = 'pointer';
@@ -266,6 +309,7 @@ export function setButtonsEnabled(enabled) {
     // Handle turbo button separately to keep it interactive at ALL TIMES
     if (turboButton) {
         // Always keep turbo button interactive regardless of state
+        // TODO: Feature flag check?
         turboButton.eventMode = 'static';
         turboButton.alpha = 1.0;
         turboButton.cursor = 'pointer';
@@ -274,6 +318,7 @@ export function setButtonsEnabled(enabled) {
     buttonsToToggle.forEach(button => {
         if (!button) return; // Skip if button reference wasn't found
 
+        // TODO (Phase 2): Base this on state received from events
         // Special handling for bet buttons during free spins
         const isBetButton = button === betDecreaseButton || button === betIncreaseButton;
         const finalEnabled = enabled && !(isBetButton && state.isInFreeSpins);
@@ -289,6 +334,7 @@ export function setButtonsEnabled(enabled) {
     
     // If buttons are being disabled, it means we're likely starting a spin
     // Start the spin button rotation animation
+    // TODO (Phase 2): Triggered by spin:started event?
     if (!enabled && spinButton) {
         animateSpinButtonRotation();
     }
@@ -319,6 +365,7 @@ export function animateSpinButtonRotation() {
 
 /**
  * Stops the spin button rotation animation.
+ * TODO (Phase 2): Triggered by spin:stopped event?
  */
 export function stopSpinButtonRotation() {
     if (!spinButton) return;
@@ -338,12 +385,14 @@ export function stopSpinButtonRotation() {
 
 /**
  * Updates the visual state of the autoplay button to match the game state.
- * Called whenever autoplay mode changes or during general UI updates.
+ * Might be triggered by state change events in Phase 2.
  */
 export function updateAutoplayButtonState() {
     // If button doesn't exist, we can't update it
     if (!autoplayButton) return;
+    // TODO: Check feature flag featureManager.isEnabled('autoplay')
 
+    // TODO (Phase 2): Update based on received state data from events
     // Update the button's icon and active state
     if (state.isAutoplaying) {
         autoplayButton.updateIcon('autoplay-active');
@@ -356,12 +405,14 @@ export function updateAutoplayButtonState() {
 
 /**
  * Updates the visual state of the turbo button to match the game state.
- * Called whenever turbo mode changes or during general UI updates.
+ * Might be triggered by state change events in Phase 2.
  */
 export function updateTurboButtonState() {
     // If button doesn't exist, we can't update it
     if (!turboButton) return;
+    // TODO: Check feature flag featureManager.isEnabled('turboMode')
 
+    // TODO (Phase 2): Update based on received state data from events
     // Update the button's icon and active state
     if (state.isTurboMode) {
         turboButton.updateIcon('turbo-active');
@@ -375,42 +426,58 @@ export function updateTurboButtonState() {
 /**
  * Returns a reference to the win rollup text element.
  * @returns {PIXI.Text | null}
+ * @deprecated May be removed if win animation only uses primary winText.
  */
 export function getWinRollupText() {
     return winRollupText;
 }
 
 /**
- * Animates the win value from 0 to the final win amount
- * @param {number} winAmount - The final win amount to animate to
+ * Animates the win value from 0 to the final win amount.
+ * TODO (Phase 3): This function should register itself with the AnimationController
+ * instead of being called directly.
+ * @param {number} winAmount - The final win amount to animate to.
  */
 export function animateWin(winAmount) {
-    if (!winText || !winRollupText) return;
-    
+    // TODO: Use Logger
+    if (!winText) {
+        console.error("UIManager: winText element not found for animation.");
+        return;
+    }
+    // Decide if winRollupText is still needed. If not, remove it.
+    // if (!winText || !winRollupText) return; 
+
     // Don't animate if win is 0 or negative
     if (winAmount <= 0) {
         winText.text = formatMoney(0);
         winText.visible = false;
         winLabel.visible = false;
+        // Ensure rollup is also hidden if used
+        if (winRollupText) winRollupText.visible = false;
         return;
     }
-    
-    // Make sure win text is visible
+
+    // Make sure win text and label are visible
     winText.visible = true;
     winLabel.visible = true;
-    
+    // Hide rollup text if it exists, as winText will animate
+    if (winRollupText) winRollupText.visible = false;
+
     // Setup animation values
     const animationDuration = 1.5; // seconds
     const animationValues = {
         currentValue: 0
     };
-    
-    // Kill any existing animation
+
+    // Kill any existing animation on the value tracker
     gsap.killTweensOf(animationValues);
-    
+    // Also kill tweens targeting the text element itself directly (e.g., alpha fades)
+    gsap.killTweensOf(winText);
+    winText.alpha = 1; // Ensure alpha is reset
+
     // Set initial win text to 0
     winText.text = formatMoney(0);
-    
+
     // Animate the win value
     gsap.to(animationValues, {
         currentValue: winAmount,
@@ -422,6 +489,7 @@ export function animateWin(winAmount) {
         onComplete: function() {
             // Ensure final value is precise
             winText.text = formatMoney(winAmount);
+            // TODO: Maybe emit ui:winAnimationComplete?
         }
     });
 }

@@ -1,6 +1,33 @@
+/**
+ * @module Animations
+ * @description Manages various game animations, including symbol win animations,
+ * big win text overlays, and particle effects. Provides functions to trigger
+ * these animations and allows registration of custom symbol animations.
+ *
+ * Public API:
+ * - initAnimations(overlayCont, particleCont): Initializes with necessary PIXI containers.
+ * - registerSymbolAnimation(symbolId, animationFn): Registers a custom animation function for a symbol.
+ * - animateWinningSymbols(symbolsToAnimate): Triggers the animation sequence for winning symbols.
+ * - playWinAnimations(winAmount, currentTotalBet): Triggers big/mega win text and particle effects.
+ * - createParticles(count): (Potentially internal) Creates particle effects.
+ * - updateParticles(delta): Updates active particle animations (called by game loop).
+ *
+ * Dependencies:
+ * - PIXI.js
+ * - GSAP
+ * - UIManager (for getWinRollupText - to be removed/refactored)
+ * - Game Settings (Dimensions, animation multipliers)
+ *
+ * Events Emitted: (None currently planned)
+ *
+ * Events Consumed (Future - Phase 3):
+ * - win:validatedForAnimation { totalWin, winningLines, symbolsToAnimate, currentTotalBet }
+ *   (This module would listen for this to trigger its animations via AnimationController)
+ */
+
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
-import { getWinRollupText } from '../ui/UIManager.js'; // Import function to get text element
+import { getWinRollupText } from '../ui/UIManager.js'; // TODO: Remove this dependency
 import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
@@ -18,12 +45,13 @@ const symbolAnimations = new Map();
 
 /**
  * Registers a custom animation for a specific symbol type
- * 
+ *
  * @param {string} symbolId - The symbol identifier (e.g., "FACE1", "KNIFE")
  * @param {Function} animationFn - Function(symbol, baseTimeline, config) that adds custom animations to the timeline
  */
 export function registerSymbolAnimation(symbolId, animationFn) {
     symbolAnimations.set(symbolId, animationFn);
+    // TODO: Use Logger
     console.log(`Registered custom animation for symbol: ${symbolId}`);
 }
 
@@ -33,20 +61,29 @@ export function registerSymbolAnimation(symbolId, animationFn) {
  * @param {PIXI.Container} particleCont - Container for particle effects.
  */
 export function initAnimations(overlayCont, particleCont) {
+    // TODO (Phase 2): Accept dependencies (Logger, AnimationController) via DI?
+    // Or register animations with controller externally.
     if (!overlayCont || !particleCont) {
+        // TODO: Use Logger
         console.error("Animations: Provided containers are invalid.");
         return;
     }
     assignedOverlayContainer = overlayCont; // Use assignedOverlayContainer
     particleContainer = particleCont;
+    // TODO: Use Logger
     console.log("Animations initialized with containers.");
-    
+
     // Setup default symbol animations
     setupDefaultSymbolAnimations();
+
+    // TODO (Phase 3): Register animation functions with AnimationController
+    // e.g., animationController.registerAnimation('execute', animateWinningSymbolsWrapper);
+    // e.g., animationController.registerAnimation('execute', playBigWinTextWrapper);
 }
 
 /**
  * Sets up the default symbol animations for various symbol types
+ * (This logic might move or be structured differently with plugins)
  */
 function setupDefaultSymbolAnimations() {
     // SCATTER symbol - special purple glow and extra scaling
@@ -108,9 +145,12 @@ function setupDefaultSymbolAnimations() {
 
 /**
  * Animates the scale of winning symbols with a bounce effect.
+ * TODO (Phase 3): This should be triggered by AnimationController, likely receiving
+ * symbolsToAnimate from the consumed win event data.
  * @param {Array<import('../core/Symbol.js').SymbolSprite>} symbolsToAnimate - Array of SymbolSprite instances to animate.
  */
 export function animateWinningSymbols(symbolsToAnimate) {
+    // TODO: Use Logger
     if (!symbolsToAnimate || symbolsToAnimate.length === 0) return;
 
     const baseDuration = 0.35; // Increased base duration for longer animation
@@ -174,6 +214,7 @@ export function animateWinningSymbols(symbolsToAnimate) {
                 symbol.alpha = originalAlpha;
                 symbol.rotation = originalRotation;
                 symbol.isAnimating = false;
+                // TODO: Maybe emit animation:symbol:complete event?
             }
         });
 
@@ -258,15 +299,18 @@ export function animateWinningSymbols(symbolsToAnimate) {
 
 /**
  * Plays big/mega win text animations and triggers particle effects.
+ * TODO (Phase 3): This should be triggered by AnimationController based on win event data.
+ * The win rollup logic is removed as it's handled by UIManager.animateWin.
  * @param {number} winAmount - The total amount won in the spin.
  * @param {number} currentTotalBet - The total bet amount for the spin (for threshold calculation).
  */
 export function playWinAnimations(winAmount, currentTotalBet) {
-    // --- We're no longer using winRollupElement for regular wins ---
-    // That's handled by UIManager.animateWin now
-    
+    // --- Win Rollup Animation Removed ---
+    // Handled by UIManager.animateWin, triggered via AnimationController
+
     // --- Big/Mega Win Text Animation ---
     if (!assignedOverlayContainer) {
+        // TODO: Use Logger
         console.error("Animations: Overlay container not initialized for win animations.");
         return;
     }
@@ -291,9 +335,11 @@ export function playWinAnimations(winAmount, currentTotalBet) {
 
     // --- Big/Mega Win Text Animation ---
     if (winTextStr) {
+        // TODO: Use Logger
+        // console.log(`Playing Big/Mega Win Animation: ${winTextStr}`);
         // Create the win text object directly
         const winOverlayText = new PIXI.Text({
-            text: winTextStr + `\n€${winAmount.toFixed(2)}`,
+            text: winTextStr + `\n€${winAmount.toFixed(2)}`, // TODO: Use formatMoney?
             style: {
                 fontFamily: "Impact, Charcoal, sans-serif",
                 fontSize: 70,
@@ -370,55 +416,62 @@ export function playWinAnimations(winAmount, currentTotalBet) {
  */
 function createParticles(count) {
     if (!particleContainer) {
+        // TODO: Use Logger
         console.error("Animations: Particle container not initialized.");
         return;
     }
     for (let i = 0; i < count; i++) {
         const p = {
-            gfx: new PIXI.Graphics()
-                .circle(0, 0, Math.random() * 5 + 3) // Random size
-                .fill({ color: Math.random() > 0.5 ? 0xffd700 : 0xf1c40f }), // Random gold/yellow
-            vx: (Math.random() - 0.5) * 8, // Horizontal velocity
-            vy: -Math.random() * 10 - 8, // Initial upward velocity
-            gravity: 0.35,
-            life: Math.random() * 80 + 40, // Lifetime in frames/updates
+            gfx: new PIXI.Graphics(),
+            x: Math.random() * GAME_WIDTH,
+            y: Math.random() * GAME_HEIGHT,
+            vx: (Math.random() - 0.5) * 4, // Random horizontal velocity
+            vy: (Math.random() - 0.5) * 4 - 2, // Random vertical velocity (tend upwards)
             alpha: 1.0,
+            decay: 0.01 + Math.random() * 0.01, // Random decay rate
+            color: [0xFFD700, 0xFFEC8B, 0xFFFFE0][Math.floor(Math.random() * 3)] // Gold/yellow variations
         };
-        p.fade = 1 / p.life; // Alpha fade per update
-        // Start position around center
-        p.gfx.x = GAME_WIDTH / 2 + (Math.random() - 0.5) * 100;
-        p.gfx.y = GAME_HEIGHT / 2 + 50;
-        particles.push(p);
+        // Draw particle graphic
+        p.gfx.circle(0, 0, 2 + Math.random() * 3).fill(p.color);
+        p.gfx.x = p.x;
+        p.gfx.y = p.y;
         particleContainer.addChild(p.gfx);
+        particles.push(p);
     }
 }
 
 /**
- * Updates the position and state of all active particles.
- * Should be called in the main game loop.
- * @param {number} delta - Time delta since the last frame (usually from ticker).
+ * Updates the position and alpha of active particles.
+ * Called every frame by the main game loop.
+ * @param {number} delta - Ticker delta time.
  */
 export function updateParticles(delta) {
-    if (!particleContainer) return; // Don't run if not initialized
+    if (!particleContainer) return;
 
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
 
-        // Apply physics
-        p.vy += p.gravity * delta;
-        p.gfx.x += p.vx * delta;
-        p.gfx.y += p.vy * delta;
+        // Update position
+        p.x += p.vx * delta;
+        p.y += p.vy * delta;
+        // Apply gravity/drag simulation
+        p.vy += 0.05 * delta; // Simple gravity effect
 
-        // Update lifetime and alpha
-        p.life -= delta;
-        p.alpha -= p.fade * delta;
-        p.gfx.alpha = Math.max(0, p.alpha);
+        // Update alpha (fade out)
+        p.alpha -= p.decay * delta;
 
-        // Remove particle if life ended, faded out, or went off-screen
-        if (p.life <= 0 || p.alpha <= 0 || p.gfx.y > GAME_HEIGHT + 20) {
+        // Update graphics
+        p.gfx.x = p.x;
+        p.gfx.y = p.y;
+        p.gfx.alpha = p.alpha;
+
+        // Remove particle if faded or out of bounds
+        if (p.alpha <= 0 || p.y > GAME_HEIGHT + 20) {
             particleContainer.removeChild(p.gfx);
             p.gfx.destroy();
-            particles.splice(i, 1); // Remove from active array
+            particles.splice(i, 1);
         }
     }
 }
+
+// TODO (Phase 2/3): Add destroy function to clean up intervals, containers?, particles?

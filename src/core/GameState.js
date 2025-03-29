@@ -1,3 +1,28 @@
+/**
+ * @module GameState
+ * @description Manages the central, mutable state of the slot game.
+ * Provides the current state object and functions to initialize and update it.
+ * Other modules should import `state` for read access and `updateState` for modifications.
+ *
+ * Key state properties:
+ * - balance: Player's current balance.
+ * - currentBetPerLine: Bet amount per payline.
+ * - currentTotalBet: Total bet for the next spin (betPerLine * numPaylines).
+ * - lastTotalWin: Win amount from the last completed spin.
+ * - isSpinning: Boolean flag indicating if reels are currently moving.
+ * - isAutoplaying: Boolean flag for autoplay mode.
+ * - isTurboMode: Boolean flag for turbo mode.
+ * - isInFreeSpins: Boolean flag for free spins mode.
+ * - winningLinesInfo: Array containing detailed info about winning lines from the last spin.
+ * - (See `state` object definition for all properties)
+ *
+ * Events Emitted (Future - Phase 2):
+ * - game:stateChanged (or more granular events like state:balanceChanged)
+ *
+ * Events Consumed (Future - Phase 2):
+ * - Potentially server:balanceUpdated, server:spinResultReceived (to update state based on authoritative data)
+ */
+
 import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS, DEFAULT_CURRENCY } from '../config/gameSettings.js'; // Import NUM_REELS and DEFAULT_CURRENCY
 import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
 
@@ -30,7 +55,7 @@ export let state = {
 
     // Debug features
     isDebugMode: false,     // Master toggle for debug features
-    forceWin: false,        // When true, every spin will result in a win
+    forceWin: false,        // When true, every spin will result in a win (used by mock API)
 
     // References (can be set during initialization if needed, though maybe better managed in Game.js)
     // reels: [], // Maybe keep reel references in Game.js instead?
@@ -60,17 +85,20 @@ export function initGameState() {
         isInFreeSpins: false,
         freeSpinsRemaining: 0,
         totalFreeSpinsWin: 0,
-        
+
         // Debug features - reset to false on game init
         isDebugMode: false,
         forceWin: false,
     };
+    // TODO: Replace with Logger call in Phase 2
     console.log("GameState Initialized:", state);
 }
 
 /**
  * Updates the central game state object with new values.
  * Merges the provided updates with the existing state.
+ * This is the primary way mutable state should be changed.
+ * Emits events (Future - Phase 2) after state change.
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
@@ -102,6 +130,9 @@ export function updateState(updates) {
     // console.log("GameState Updated with:", updates, "New Full State:", state); // More verbose log
     */
     // --- DEBUG LOGGING END ---
+
+    // TODO (Phase 2): Emit state change event(s) via EventBus
+    // globalEventBus.emit('game:stateChanged', { updatedProps: Object.keys(updates), newState: state });
 }
 
 // Optional: Add getter functions if direct state access is discouraged later

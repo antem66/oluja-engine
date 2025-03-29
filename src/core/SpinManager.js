@@ -1,3 +1,38 @@
+/**
+ * @module SpinManager
+ * @description Orchestrates the spinning process. Currently handles starting spins,
+ * scheduling stops (based on client-side logic or debug patterns), and triggering
+ * win evaluation after stops. 
+ * 
+ * --- ROLE CHANGE in Phase 2 --- 
+ * This module's responsibility will shift significantly. It will:
+ * 1. Receive spin requests (likely via events from UI buttons).
+ * 2. Trigger `ApiService.requestSpin`.
+ * 3. Listen for `server:spinResultReceived` event from ApiService.
+ * 4. Instruct `ReelManager` / `Reels` on their final stop positions based *only* on the server response.
+ * 5. Trigger subsequent processes like win evaluation/animation based on the server response.
+ * It will **stop** generating outcomes (random stops, debug patterns) itself.
+ *
+ * Public API (Current):
+ * - constructor(reelManager): Initializes with a ReelManager instance.
+ * - startSpin(): Initiates the spin sequence (determines stops, tells reels to spin).
+ * - handleSpinEnd(): Called when all reels stop, triggers win evaluation and next action.
+ *
+ * Public API (Future - Phase 2):
+ * - init(dependencies): Initialize with EventBus, ReelManager, ApiService, Logger.
+ * - (May not have many public methods, primarily reacts to events)
+ *
+ * Events Emitted (Future - Phase 2):
+ * - spin:started
+ * - spin:stopped
+ * - win:evaluateRequest (or similar, to trigger evaluation/animation pipeline)
+ *
+ * Events Consumed (Future - Phase 2):
+ * - ui:button:click { buttonName: 'spin' }
+ * - server:spinResultReceived { data: SpinResult }
+ * - reel:stopped { reelIndex: number } (Potentially, to track when all reels are done)
+ */
+
 import { state, updateState } from './GameState.js';
 import { evaluateWin } from '../features/WinEvaluation.js';
 import { handleFreeSpinEnd } from '../features/FreeSpins.js';
@@ -12,125 +47,141 @@ import {
 import { winAnimDelayMultiplier } from '../config/animationSettings.js'; // Import separately if needed
 import { REEL_STRIPS } from '../config/reelStrips.js'; // Needed for debug helpers
 
-// TODO: Consider how to handle dependencies like FreeSpins, Autoplay
-// Maybe pass them in constructor or use an event emitter system?
-// For now, assume access via direct imports where possible.
+// TODO (Phase 2): Remove direct imports of features/UI, interact via events/DI.
 
 export class SpinManager {
     reelManager = null; // Reference to ReelManager
-    // Removed gameInstance reference
 
-    constructor(reelManager) { // Removed gameInstance from constructor
+    constructor(reelManager) { 
+        // TODO (Phase 2): Inject dependencies (EventBus, ReelManager, ApiService, Logger)
         this.reelManager = reelManager;
         if (!this.reelManager) {
+            // TODO: Use Logger
             console.error("SpinManager: ReelManager instance is required!");
         }
-         // TODO: Add listeners for events if using an event system
+        // TODO (Phase 2): Subscribe to events like ui:button:click(spin), server:spinResultReceived
     }
 
     /**
      * Starts the spinning process for all reels.
+     * --- DEPRECATED LOGIC in Phase 2 --- 
+     * This method will change to primarily trigger ApiService.requestSpin.
+     * Outcome generation (stops, win patterns) will move to ApiService mock.
      */
     startSpin() {
+        // TODO (Phase 2): This method should:
+        // 1. Check if spin is possible (balance, state).
+        // 2. Prepare betInfo.
+        // 3. Call `apiService.requestSpin(betInfo)`.
+        // 4. Emit `spin:started` event.
+        // The current logic below will move to ApiService._generateMockSpinResult()
+
         if (!this.reelManager || state.isSpinning) {
             return; // Don't start if already spinning or no reel manager
         }
 
-        // *** MOVED STATE UPDATE HERE ***
+        // Update state, disable UI, clear lines, reset win display
         updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
-        setButtonsEnabled(false);
-        clearWinLines();
-        
-        // Clear win text display when starting a new spin
-        animateWin(0);
-        
+        setButtonsEnabled(false); // TODO: Replace with event listener in UIManager
+        clearWinLines(); // TODO: Replace with event listener in PaylineGraphics
+        animateWin(0); // TODO: Replace with event listener in UIManager
+
         // Animate the spin button rotation
-        animateSpinButtonRotation();
+        animateSpinButtonRotation(); // TODO: Replace with event listener in UIManager
 
         const isTurbo = state.isTurboMode;
         const startTime = performance.now();
         let winPattern = null;
 
-        // Add null check before accessing reels
         if (!this.reelManager) {
+            // TODO: Use Logger
             console.error("SpinManager.startSpin: ReelManager is null!");
-            // Attempt to recover state if possible
             updateState({ isSpinning: false, isTransitioning: false });
             setButtonsEnabled(true);
             return;
         }
-        // @ts-ignore - Null check above ensures reelManager is valid here
         const currentReels = this.reelManager.reels;
 
+        // --- START OF LOGIC TO MOVE TO ApiService._generateMockSpinResult --- 
         // Generate forced win pattern if in debug mode
         if (state.isDebugMode && state.forceWin) {
+            // TODO: Use Logger
             console.log("Debug mode active: Forcing a win pattern");
-            winPattern = this._generateRandomWinPattern(); // Use internal helper method
+            winPattern = this._generateRandomWinPattern(); 
             console.log("Generated win pattern:", winPattern);
         }
 
         // Start all reels spinning and schedule their stops
         currentReels.forEach((reel, i) => {
-            reel.startSpinning(isTurbo);
+            reel.startSpinning(isTurbo); // Keep: Visual effect starts immediately
 
-            // Determine stop index
+            // Determine stop index (This logic moves to mock generation)
             let stopIndex;
             if (state.isDebugMode && state.forceWin && winPattern && winPattern.positions) {
-                 stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]); // Use internal helper
+                 stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]);
             } else {
                  stopIndex = Math.floor(Math.random() * reel.strip.length);
             }
-            reel.stopIndex = stopIndex; // Set the target stop index on the reel
-            reel.finalStopPosition = stopIndex; // Ensure final position matches
+            // TODO (Phase 2): Remove setting stopIndex/finalStopPosition here.
+            // These will be set based on server:spinResultReceived event.
+            reel.stopIndex = stopIndex;
+            reel.finalStopPosition = stopIndex;
 
-            // Calculate stop time
+            // Calculate stop time (Remains relevant for visual scheduling)
             const currentBaseDuration = isTurbo ? turboBaseSpinDuration : baseSpinDuration;
             const currentStagger = isTurbo ? turboReelStopStagger : REEL_STOP_STAGGER;
             const targetStopTime = startTime + currentBaseDuration + i * currentStagger;
 
-            // Schedule the stop
+            // Schedule the visual stop tween (Keep)
             reel.scheduleStop(targetStopTime);
-            // console.log(`SpinManager: Reel ${i} scheduled to stop at ${targetStopTime.toFixed(0)}ms targeting index ${stopIndex}`);
         });
+        // --- END OF LOGIC TO MOVE TO ApiService._generateMockSpinResult --- 
 
-        updateState({ targetStoppingReelIndex: -1 }); // Reset this if it was used previously
+        updateState({ targetStoppingReelIndex: -1 });
     }
 
     /**
-     * Handles the logic after all reels have stopped spinning.
+     * Handles the logic after all reels have stopped spinning visually.
+     * TODO (Phase 2): This might be triggered differently, e.g., after receiving
+     * server response AND all reels visually stopped. It might primarily
+     * trigger the win evaluation/animation pipeline based on received server data.
      */
     handleSpinEnd() {
-        if (!this.reelManager) return; // Null check already present
+        if (!this.reelManager) return;
 
-        // Note: isSpinning is set to false here, but transition starts
+        // TODO (Phase 2): Update state based on server response, not just visual stop.
         updateState({ isSpinning: false, isTransitioning: true });
+        // TODO: Use Logger
         console.log("SpinManager: All reels stopped moving.");
-        
-        // Stop the spin button rotation
-        stopSpinButtonRotation();
 
-        // Evaluate wins *directly* now, the delay will be handled in Game.update
+        // Stop the spin button rotation
+        stopSpinButtonRotation(); // TODO: Replace with event listener in UIManager
+
+        // Evaluate wins based on current state (will change)
+        // TODO (Phase 2): Trigger evaluation based on received server data 
+        // (e.g., emit `win:evaluateRequest` with server data, or have WinEvaluation listen directly)
+        // TODO: Use Logger
         console.log("SpinManager: Evaluating wins...");
-        evaluateWin(); // evaluateWin uses internal reelsRef
+        evaluateWin(); 
 
         updateState({ isTransitioning: false }); // End transition *after* evaluation
 
-        // Decide next action based on game state
+        // Decide next action based on game state (logic might move to separate handlers/plugins)
         if (state.isInFreeSpins) {
-            handleFreeSpinEnd(); // Needs access to FreeSpins module logic
+            handleFreeSpinEnd(); 
         } else if (state.isAutoplaying) {
-            handleAutoplayNextSpin(); // Needs access to Autoplay module logic
+            handleAutoplayNextSpin();
         } else {
-            setButtonsEnabled(true); // Enable UI
+            setButtonsEnabled(true); // TODO: Replace with event listener in UIManager
         }
-        // Removed setTimeout wrapper
     }
 
-    // --- Debug Helper Methods --- (Moved from Game.js)
+    // --- Debug Helper Methods --- (These will likely move to ApiService._generateMockSpinResult)
 
     /**
      * Generate a random winning pattern
      * @returns {Object | null} A winning pattern with symbol and positions, or null on error
+     * @deprecated Logic moving to ApiService._generateMockSpinResult
      */
     _generateRandomWinPattern() {
         const highValueSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
@@ -140,6 +191,7 @@ export class SpinManager {
         const positions = [];
 
         if (!REEL_STRIPS || REEL_STRIPS.length !== SETTINGS.NUM_REELS) {
+            // TODO: Use Logger
             console.error("Debug - REEL_STRIPS is invalid or doesn't match NUM_REELS.");
             return null;
         }
@@ -151,9 +203,6 @@ export class SpinManager {
                 positions.push(Math.floor(Math.random() * SETTINGS.SYMBOLS_PER_REEL_VISIBLE));
             }
         }
-        // Note: This simplified version doesn't guarantee the symbol exists on the strip
-        // or calculate exact stop indices. It just defines the target positions.
-        // The findStopIndexForSymbol method handles finding the actual index.
         return { symbol: winSymbol, positions: positions };
     }
 
@@ -163,6 +212,7 @@ export class SpinManager {
      * @param {string} targetSymbol - The symbol we want to show
      * @param {number} targetPosition - The position where we want the symbol (0=top, 1=middle, 2=bottom)
      * @returns {number} The stop index that will show the target symbol in position
+     * @deprecated Logic moving to ApiService._generateMockSpinResult
      */
     _findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
         const symbols = reel.strip;
@@ -174,9 +224,9 @@ export class SpinManager {
             return stopIndex;
           }
         }
+        // TODO: Use Logger
         console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
         return Math.floor(Math.random() * symbols.length);
     }
 
-    // Potential future methods: forceStop(), handleBonusTrigger(), etc.
 }
