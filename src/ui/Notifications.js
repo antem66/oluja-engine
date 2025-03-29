@@ -5,13 +5,11 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
 // Reference to the overlay container (needs initialization)
 /** @type {PIXI.Container | null} */
-let overlayContainer = null;
+let assignedContainer = null; // Renamed from overlayContainer
 /** @type {gsap.core.Timeline | null} */
 let currentOverlayTween = null; // To manage GSAP tween
 /** @type {any} */
 let flashElementInterval = null; // Store interval ID for flashing
-/** @type {PIXI.Text | null} */
-let currentMessageText = null; // Keep track of the current message display object
 
 /**
  * Initializes the reference to the overlay container.
@@ -22,8 +20,8 @@ export function initNotifications(container) {
         console.error("Notifications: Provided overlay container is invalid.");
         return;
     }
-    overlayContainer = container;
-    console.log("Notifications initialized with container:", overlayContainer);
+    assignedContainer = container; // Use assignedContainer
+    console.log("Notifications initialized with container:", assignedContainer); // Use assignedContainer
 }
 
 /**
@@ -75,7 +73,7 @@ export function flashElement(
  * @param {function} [callback] - Optional function to call after the message disappears.
  */
 export function showOverlayMessage(message, baseDuration, callback) {
-  if (!overlayContainer) {
+  if (!assignedContainer) { // Check assignedContainer
       console.error("Notifications: Overlay container not initialized.");
       return;
   }
@@ -86,15 +84,10 @@ export function showOverlayMessage(message, baseDuration, callback) {
       currentOverlayTween.kill();
       currentOverlayTween = null;
   }
-  // Remove previous message text if it exists
-  if (currentMessageText) {
-      if (currentMessageText.parent && overlayContainer) {
-          overlayContainer.removeChild(currentMessageText);
-      }
-      currentMessageText.destroy();
-      currentMessageText = null;
-  }
-  // REMOVED: overlayContainer.removeChildren(); // DO NOT clear the entire layer
+  // REMOVED: Logic for removing currentMessageText
+
+  // RE-INTRODUCED: Safely clear the dedicated notifications container
+  assignedContainer.removeChildren();
   // --- Clean up previous message --- END
 
   // Create style for overlay message text
@@ -109,7 +102,7 @@ export function showOverlayMessage(message, baseDuration, callback) {
     wordWrapWidth: GAME_WIDTH * 0.8
   });
 
-  // Create the new message text and store it
+  // Create the new message text
   const newMessageText = new PIXI.Text({
     text: message,
     style: style,
@@ -119,10 +112,10 @@ export function showOverlayMessage(message, baseDuration, callback) {
   newMessageText.y = GAME_HEIGHT / 2;
   newMessageText.alpha = 0; // Start invisible
 
-  currentMessageText = newMessageText; // Store reference to the new message
-  if (overlayContainer) {
-    overlayContainer.addChild(currentMessageText); // Add the new message
-  }
+  // REMOVED: currentMessageText = newMessageText;
+
+  // Add directly to the assigned container
+  assignedContainer.addChild(newMessageText);
 
   // Use GSAP for fade in, hold, and fade out
   const displayDurationSeconds = (baseDuration / 1000) * winAnimDelayMultiplier;
@@ -131,13 +124,12 @@ export function showOverlayMessage(message, baseDuration, callback) {
   // Create the new timeline
   const timeline = gsap.timeline({
       onComplete: () => {
-          // Ensure we are removing the *correct* message text
-          if (currentMessageText && currentMessageText === newMessageText) {
-              if (currentMessageText.parent && overlayContainer) {
-                  overlayContainer.removeChild(currentMessageText);
-              }
-              currentMessageText.destroy();
-              currentMessageText = null;
+          // Container is cleared at the start of the next call,
+          // or we can explicitly clear it here if preferred.
+          // Let's clear it here for immediate cleanup after fade.
+          if (assignedContainer && newMessageText.parent) {
+              assignedContainer.removeChild(newMessageText);
+              newMessageText.destroy();
           }
           if (callback) {
               callback();

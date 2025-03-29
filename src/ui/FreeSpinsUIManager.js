@@ -13,15 +13,15 @@ export class FreeSpinsUIManager {
     /** @type {PIXI.Graphics | null} */
     freeSpinsGlow = null;
     /** @type {PIXI.Container | null} */
-    parentLayer = null;
+    parentContainer = null;
 
-    /** @param {PIXI.Container | null} parentLayer */
-    constructor(parentLayer) {
-        if (!parentLayer) {
-            console.error("FreeSpinsUIManager: Parent layer is required!");
+    /** @param {PIXI.Container | null} parentContainer */
+    constructor(parentContainer) {
+        if (!parentContainer) {
+            console.error("FreeSpinsUIManager: Parent container is required!");
             return;
         }
-        this.parentLayer = parentLayer;
+        this.parentContainer = parentContainer;
         this._createIndicator();
     }
 
@@ -93,9 +93,9 @@ export class FreeSpinsUIManager {
         }
 
         // Add to the specified parent layer
-        if (this.parentLayer && this.freeSpinsIndicator) { // Added null check for indicator too
-            this.parentLayer.addChild(this.freeSpinsIndicator);
-            console.log("[Trace] FreeSpinsUIManager: Added freeSpinsIndicator container to parentLayer.", this.parentLayer.name); // Removed optional chaining
+        if (this.parentContainer && this.freeSpinsIndicator) {
+            this.parentContainer.addChild(this.freeSpinsIndicator);
+            console.log("[Trace] FreeSpinsUIManager: Added freeSpinsIndicator container to parentContainer.", this.parentContainer.name);
         }
     }
 

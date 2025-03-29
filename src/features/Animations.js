@@ -5,10 +5,12 @@ import { winAnimDelayMultiplier } from '../config/animationSettings.js';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 
 // References to containers (need initialization)
-let overlayContainer = null;
+/** @type {PIXI.Container | null} */
+let assignedOverlayContainer = null; // Renamed from overlayContainer
+/** @type {PIXI.Container | null} */
 let particleContainer = null;
+/** @type {NodeJS.Timeout | number | null} */ // Allow different interval types
 let winOverlayAnimInterval = null; // Interval ID for big win text animation
-let currentBigWinText = null; // Track the current big win text PIXI object
 const particles = []; // Array to hold active particle objects
 
 // Symbol Animation Registry - Maps symbol IDs to custom animation functions
@@ -35,7 +37,7 @@ export function initAnimations(overlayCont, particleCont) {
         console.error("Animations: Provided containers are invalid.");
         return;
     }
-    overlayContainer = overlayCont;
+    assignedOverlayContainer = overlayCont; // Use assignedOverlayContainer
     particleContainer = particleCont;
     console.log("Animations initialized with containers.");
     
@@ -334,8 +336,8 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         });
     }
 
-    // --- Big/Mega Win Text Animation (Keep existing logic) ---
-    if (!overlayContainer) {
+    // --- Big/Mega Win Text Animation ---
+    if (!assignedOverlayContainer) { // Check assignedOverlayContainer
         console.error("Animations: Overlay container not initialized for win animations.");
         return;
     }
@@ -344,13 +346,8 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         clearInterval(winOverlayAnimInterval);
         winOverlayAnimInterval = null; // Clear interval ID
     }
-    // Clean up the PREVIOUS Big Win text if it exists
-    if (currentBigWinText && currentBigWinText.parent) {
-        console.log("[Trace] Animations: Removing previous big win text.");
-        overlayContainer.removeChild(currentBigWinText);
-        currentBigWinText.destroy({ children: true }); // Ensure complete cleanup
-        currentBigWinText = null;
-    }
+    // RE-INTRODUCED: Safely clear the dedicated win announcements container
+    assignedOverlayContainer.removeChildren();
 
     // Define win thresholds
     const bigWinThreshold = currentTotalBet * 10;
@@ -363,6 +360,7 @@ export function playWinAnimations(winAmount, currentTotalBet) {
 
     // --- Big/Mega Win Text Animation ---
     if (winTextStr) {
+        // Create the win text object directly
         const winOverlayText = new PIXI.Text({
             text: winTextStr + `\n€${winAmount.toFixed(2)}`,
             style: {
@@ -376,10 +374,11 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         });
         winOverlayText.anchor.set(0.5);
         winOverlayText.x = GAME_WIDTH / 2;
-        winOverlayText.y = GAME_HEIGHT / 2 - 50; // Position slightly above center
-        winOverlayText.scale.set(0.1); // Start small
-        overlayContainer.addChild(winOverlayText);
-        currentBigWinText = winOverlayText; // Assign the new text to our tracking variable
+        winOverlayText.y = GAME_HEIGHT / 2 - 50;
+        winOverlayText.scale.set(0.1);
+
+        // Add directly to the assigned container
+        assignedOverlayContainer.addChild(winOverlayText);
 
         let scale = 0.1;
         let alpha = 1.0;
@@ -389,40 +388,43 @@ export function playWinAnimations(winAmount, currentTotalBet) {
         const animSpeed = 20; // Interval speed (ms)
 
         winOverlayAnimInterval = setInterval(() => {
-            // Use currentBigWinText for checks inside the interval
-            if (!currentBigWinText || !currentBigWinText.parent) { // Stop if text is removed or null
-                clearInterval(winOverlayAnimInterval);
+            // Check winOverlayText directly (it's local to this scope now)
+            if (!winOverlayText || !winOverlayText.parent) { // Stop if text is removed
+                if (winOverlayAnimInterval) clearInterval(winOverlayAnimInterval);
                 winOverlayAnimInterval = null;
-                currentBigWinText = null; // Ensure tracker is cleared
+                // No need to clear tracker variable
                 return;
             }
 
             const currentAnimSpeed = animSpeed * winAnimDelayMultiplier; // Adjust speed for turbo
 
             if (phase === 0) { // Scaling up
-                scale += 0.05 * (currentAnimSpeed / 20); // Adjust scale increment based on speed
+                scale += 0.05 * (currentAnimSpeed / 20);
                 winOverlayText.scale.set(Math.min(1.0, scale));
                 if (scale >= 1.0) {
-                    phase = 1; // Move to hold phase
+                    phase = 1;
                     holdCounter = 0;
                 }
             } else if (phase === 1) { // Holding
                 holdCounter++;
-                if (holdCounter * currentAnimSpeed >= holdDuration * 20) { // Adjust hold duration based on speed
-                    phase = 2; // Move to fade out phase
+                if (holdCounter * currentAnimSpeed >= holdDuration * 20) {
+                    phase = 2;
                 }
             } else if (phase === 2) { // Fading out
-                alpha -= 0.04 * (currentAnimSpeed / 20); // Adjust alpha decrement
+                alpha -= 0.04 * (currentAnimSpeed / 20);
                 winOverlayText.alpha = Math.max(0, alpha);
                 if (alpha <= 0) {
-                    clearInterval(winOverlayAnimInterval); // Stop animation
+                    if (winOverlayAnimInterval) clearInterval(winOverlayAnimInterval);
                     winOverlayAnimInterval = null;
-                    if (currentBigWinText.parent) overlayContainer.removeChild(currentBigWinText);
-                    currentBigWinText.destroy({ children: true }); // Clean up
-                    currentBigWinText = null; // Clear tracker
+                    // Clean up the text from the container
+                    if (assignedOverlayContainer && winOverlayText.parent) {
+                        assignedOverlayContainer.removeChild(winOverlayText);
+                    }
+                    winOverlayText.destroy({ children: true }); // Clean up PIXI object
+                    // No need to clear tracker variable
                 }
             }
-        }, animSpeed); // Base interval remains 20ms, logic adjusts based on multiplier
+        }, animSpeed);
     }
 
     // --- Particle Effect ---

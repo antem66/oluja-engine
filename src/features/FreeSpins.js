@@ -34,8 +34,9 @@ let specialAnimationsContainer = null;
  * @param {PIXI.Application} pixiApp - Reference to the PIXI Application
  * @param {PIXI.Container} reelsContainerRef - Reference to the reels container
  * @param {Array<import('../core/Reel.js').Reel>} reelsRef - Array of reels
+ * @param {PIXI.Container} effectsLayer - The dedicated layer for full-screen effects
  */
-export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
+export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef, effectsLayer) {
     app = pixiApp;
     reelsContainer = reelsContainerRef;
     reels = reelsRef;
@@ -43,7 +44,16 @@ export function initFreeSpins(pixiApp, reelsContainerRef, reelsRef) {
     // Create container for special animations
     if (app) { // Null check for app
         specialAnimationsContainer = new PIXI.Container();
-        app.stage.addChild(specialAnimationsContainer);
+        specialAnimationsContainer.name = "FS Special Animations"; // Add a name for debugging
+
+        // Add the container to the dedicated effects layer instead of the main stage
+        if (effectsLayer) { // Add null check for safety
+            effectsLayer.addChild(specialAnimationsContainer);
+        } else {
+            console.error("FreeSpins Init Error: Full Screen Effects layer was not provided. Animation may not display correctly.");
+            // As a fallback, could add to stage, but layering won't be guaranteed
+            // app.stage.addChild(specialAnimationsContainer);
+        }
     }
 }
 

@@ -56,11 +56,21 @@ export class Game {
     /** @type {PIXI.Container | null} */
     layerLogo = null;
     /** @type {PIXI.Container | null} */
-    layerOverlays = null;
+    layerOverlays = null; // Main container for sub-overlays
     /** @type {PIXI.Container | null} */
     layerParticles = null;
     /** @type {PIXI.Container | null} */
     layerDebug = null;
+    /** @type {PIXI.Container | null} */ // New Layer Property
+    layerFullScreenEffects = null;
+
+    // Dedicated Sub-containers for overlays
+    /** @type {PIXI.Container | null} */
+    fsIndicatorContainer = null;
+    /** @type {PIXI.Container | null} */
+    notificationsContainer = null;
+    /** @type {PIXI.Container | null} */
+    winAnnouncementsContainer = null;
 
     /** @type {PIXI.Sprite | null} */
     backgroundSprite = null;
@@ -177,10 +187,15 @@ export class Game {
         this.layerLogo.name = "Layer: Logo";
         this.layerLogo.zIndex = 40;
 
+        // Layer for full screen effects (e.g., FS intro anim)
+        this.layerFullScreenEffects = new PIXI.Container();
+        this.layerFullScreenEffects.name = "Layer: Full Screen Effects";
+        this.layerFullScreenEffects.zIndex = 45; // Above Logo, below Overlays
+
         this.layerOverlays = new PIXI.Container();
         this.layerOverlays.name = "Layer: Overlays";
         this.layerOverlays.zIndex = 50;
-        this.layerOverlays.sortableChildren = true; // Moved after creation
+        // this.layerOverlays.sortableChildren = true; // Maybe not needed if using sub-containers?
 
         this.layerParticles = new PIXI.Container();
         this.layerParticles.name = "Layer: Particles";
@@ -191,9 +206,29 @@ export class Game {
         this.layerDebug.zIndex = 100;
         this.layerDebug.visible = false;
 
-        // Add null checks before adding children
-        if (app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerOverlays && this.layerParticles && this.layerDebug) {
-             app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerOverlays, this.layerParticles, this.layerDebug);
+        // Create dedicated overlay sub-containers
+        this.fsIndicatorContainer = new PIXI.Container();
+        this.fsIndicatorContainer.name = "OverlaySub: FS Indicator";
+
+        this.notificationsContainer = new PIXI.Container();
+        this.notificationsContainer.name = "OverlaySub: Notifications";
+
+        this.winAnnouncementsContainer = new PIXI.Container();
+        this.winAnnouncementsContainer.name = "OverlaySub: Win Announcements";
+
+        // Add sub-containers to the main overlay layer (order matters for stacking)
+        if (this.layerOverlays && this.fsIndicatorContainer && this.notificationsContainer && this.winAnnouncementsContainer) {
+            this.layerOverlays.addChild(this.fsIndicatorContainer);
+            this.layerOverlays.addChild(this.notificationsContainer);
+            this.layerOverlays.addChild(this.winAnnouncementsContainer);
+        } else {
+             console.error("Game Init Error: Failed to create overlay sub-containers.");
+        }
+
+        // Add main layers to stage - include the new layer
+        // Update the null check condition to include layerFullScreenEffects
+        if (app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerFullScreenEffects && this.layerOverlays && this.layerParticles && this.layerDebug) {
+             app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerFullScreenEffects, this.layerOverlays, this.layerParticles, this.layerDebug);
         } else {
             console.error("Game Init Error: One or more layers failed to initialize before adding to stage.");
         }
@@ -201,13 +236,15 @@ export class Game {
 
     _createManagers() {
         // Add null checks for layers passed to managers
-        if (!this.layerBackground || !this.layerOverlays || !this.layerReels || !app?.ticker || !this.layerLogo) {
+        // Check for the NEWLY REQUIRED sub-containers as well
+        if (!this.layerBackground || !this.layerOverlays || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer) { // Added fsIndicatorContainer check
              console.error("Game Init Error: Required layers or ticker not available for manager creation.");
              return;
         }
         // Instantiate managers, passing required layers and dependencies
         this.backgroundManager = new BackgroundManager(this.layerBackground);
-        this.freeSpinsUIManager = new FreeSpinsUIManager(this.layerOverlays);
+        // Pass the dedicated container to FreeSpinsUIManager
+        this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer);
         this.reelManager = new ReelManager(this.layerReels, app.ticker);
         // TODO: Fix SpinManager constructor call if necessary - assuming it takes ReelManager for now
         // If SpinManager needs the Game instance, pass 'this'. Adjust constructor signature if needed.
@@ -250,7 +287,8 @@ export class Game {
     _initCoreModules(winLineGraphics) {
         // Initialize modules that depend on game elements or temporary containers
         // Add null checks for managers and layers before accessing/passing them
-        if (!this.reelManager || !this.layerOverlays || !this.layerParticles || !this.layerUI || !this.layerDebug || !app?.ticker) {
+        // Update null check to include the new layerFullScreenEffects
+        if (!this.reelManager || !this.layerOverlays || !this.layerParticles || !this.layerUI || !this.layerDebug || !app?.ticker || !this.notificationsContainer || !this.winAnnouncementsContainer || !this.layerParticles || !this.layerFullScreenEffects ) { // Added layerFullScreenEffects check
              console.error("Game Init Error: Required managers, layers, or ticker not available for core module initialization.");
              return;
         }
@@ -258,12 +296,19 @@ export class Game {
         const currentReels = this.reelManager.reels; // Access reels directly after null check
         const reelContainerRef = this.reelManager.reelContainer; // Access container directly after null check
 
-        // TODO: Review initFreeSpins dependencies - does it still need reelContainer?
-        // Pass app directly as it's checked above.
-        initFreeSpins(app, reelContainerRef, currentReels);
+        // Add null check for reelContainerRef before calling initFreeSpins
+        if (!reelContainerRef) {
+            console.error("Game Init Error: ReelManager's reelContainer is null during core module init.");
+            return; // Cannot proceed without the reel container
+        }
+
+        // Pass the new layerFullScreenEffects to initFreeSpins
+        // Assuming signature update: initFreeSpins(app, reelContainerRef, currentReels, effectsLayer)
+        initFreeSpins(app, reelContainerRef, currentReels, this.layerFullScreenEffects);
         initPaylineGraphics(winLineGraphics);
-        initNotifications(this.layerOverlays); // layerOverlays checked above
-        initAnimations(this.layerOverlays, this.layerParticles); // layers checked above
+        // Pass dedicated containers to modules
+        initNotifications(this.notificationsContainer); // Pass dedicated notifications container
+        initAnimations(this.winAnnouncementsContainer, this.layerParticles); // Pass dedicated win announcements container
         initTurboMode(currentReels);
         initWinEvaluation(currentReels);
 
