@@ -49,7 +49,7 @@ import { loadButtonAssets } from '../ui/ButtonFactory.js'; // Keep loadButtonAss
 import { globalEventBus } from '../utils/EventBus.js'; // Keep for type hinting
 import { featureManager } from '../utils/FeatureManager.js'; // Keep for type hinting
 import { logger } from '../utils/Logger.js'; // Keep for type hinting
-import { apiService } from './ApiService.js'; // Keep for type hinting
+import { ResultHandler } from './ResultHandler.js'; // Import ResultHandler
 
 
 // --- Module-level variables ---
@@ -99,6 +99,8 @@ export class Game {
     reelManager = null;
     /** @type {SpinManager | null} */
     spinManager = null;
+    /** @type {ResultHandler | null} */
+    resultHandler = null; // Add ResultHandler instance
 
     /** @type {object} */
     deps = {}; // To store injected dependencies
@@ -117,26 +119,18 @@ export class Game {
     constructor(canvasContainerId, dependencies) {
         this.canvasContainer = document.getElementById(canvasContainerId);
         if (!this.canvasContainer) {
-            // Use logger if available, otherwise console.error
             const log = dependencies?.logger?.error || console.error;
             log('Game: Constructor', `Canvas container #${canvasContainerId} not found.`);
-            // TODO: Should probably throw or prevent initialization
             return; 
         }
         if (!dependencies || !dependencies.eventBus || !dependencies.featureManager || !dependencies.logger || !dependencies.apiService) {
-            // Use logger if available, otherwise console.error
             const log = dependencies?.logger?.error || console.error;
             log('Game: Constructor', 'Core dependencies (eventBus, featureManager, logger, apiService) are required!');
-            // TODO: Should probably throw or prevent initialization
             return; 
         }
 
-        this.deps = dependencies; // Store injected dependencies
-        
-        // Log initialization with injected logger
+        this.deps = dependencies; 
         this.deps.logger.info('Game', 'Game instance created.');
-
-        // Initialize game state with default values
         initGameState();
     }
 
@@ -266,32 +260,36 @@ export class Game {
     }
 
     _createManagers() {
-        // Ensure core dependencies are available
         const { logger, eventBus, apiService } = this.deps;
         if (!logger || !eventBus || !apiService) {
             console.error("Game Init Error: Core dependencies (logger, eventBus, apiService) missing in Game instance.");
-            // Use console.error as logger itself might be missing
             return;
         }
 
-        // Add null checks for layers passed to managers
         if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer) {
-             logger.error('Game', "Required layers or ticker not available for manager creation.");
+             console.error("Game Init Error: Required layers or ticker not available for manager creation.");
              return;
         }
-        // Instantiate managers, passing required layers and dependencies
+        
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
-        // Pass the dedicated container and dependencies to FreeSpinsUIManager
         this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
         this.reelManager = new ReelManager(this.layerReels, app.ticker, logger);
         
-        // Pass dependencies to SpinManager
+        // Instantiate ResultHandler, passing dependencies including reelManager
+        this.resultHandler = new ResultHandler({
+            eventBus: eventBus,
+            logger: logger,
+            reelManager: this.reelManager
+        });
+        this.resultHandler.init(); // Initialize ResultHandler to subscribe to events
+
+        // Instantiate the OLD SpinManager (or remove if ResultHandler fully replaces its needed parts?)
+        // For now, keep it but ensure it doesn't conflict with ResultHandler setting stops
+        // TODO: Re-evaluate SpinManager's role and remaining responsibilities
         this.spinManager = new SpinManager(this.reelManager, logger, eventBus, apiService);
         
-        // Pass dependencies to LogoManager (Game instance, layer, logger, eventBus)
         new LogoManager(this, this.layerLogo, logger, eventBus); 
 
-        // Assign managed sprite if needed, with null check for manager
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
         // Expose managers for debug panel access
@@ -304,6 +302,8 @@ export class Game {
             window.gameApp.reelManager = this.reelManager;
             // @ts-ignore
             window.gameApp.spinManager = this.spinManager;
+            // @ts-ignore
+            window.gameApp.resultHandler = this.resultHandler; // Expose new handler
             // Note: LogoManager instance isn't stored on Game, so not exposed here directly
         }
         logger.info('Game', 'Core managers created and dependencies injected.');
@@ -544,6 +544,33 @@ export class Game {
     }
 
     // Removed adjustBackground method - now handled by BackgroundManager
+
+    destroy() {
+        // Make sure to destroy the result handler to unsubscribe listeners
+        this.resultHandler?.destroy();
+
+        // Destroy other managers and Pixi app
+        // TODO: Call destroy() on other managers (ReelManager, SpinManager, BackgroundManager, FreeSpinsUIManager) if they implement it
+
+        if (app?.stage) {
+            app.stage.destroy({ children: true }); // Destroy stage and children
+            this.deps.logger?.info('Game', 'Pixi stage destroyed.');
+        }
+        if (app) {
+            app.destroy(true, { children: true }); // Destroy app, canvas, textures
+            app = null;
+            globalThis.__PIXI_APP__ = undefined;
+            this.deps.logger?.info('Game', 'Pixi application destroyed.');
+        }
+        
+        // Remove global references if they exist
+        if (typeof window !== 'undefined') {
+            // @ts-ignore
+            delete window.gameApp;
+        }
+
+        this.deps.logger?.info('Game', 'Destroyed.'); // Use injected logger
+    }
 }
 
 // Removed old FS UI functions (createFreeSpinsIndicator, updateFreeSpinsIndicator, startGlowAnimation, stopGlowAnimation)

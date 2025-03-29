@@ -2,50 +2,84 @@
  * @module ApiService
  * @description Handles all communication with the backend game server.
  * For initial development and testing, it can provide mocked responses.
+ * Instantiated in main.js and injected into Game.
  * 
  * Public API:
- * - init(config): Initializes the service with config (endpoints, etc.).
+ * - constructor(dependencies): Initializes with core dependencies.
+ * - init(config): Initializes the service with game/server config.
  * - requestSpin(betInfo): Sends a spin request to the server or generates a mock result, emitting events.
  * - requestGameState(): Fetches the current game state from the server (TODO).
  * 
  * Events Emitted:
- * - server:spinResultReceived {data: SpinResult} - Contains outcome from mock or real server.
- * - server:error {type: string, message: string, details?: any} - Reports API or communication errors.
+ * - server:spinResultReceived {data: SpinResult}
+ * - server:error {type: string, message: string, details?: any}
  * - server:gameStateReceived {state: GameStateData} (TODO)
- * - server:balanceUpdated {newBalance: number} - Emitted after mock calculation (and should be by real API).
+ * - server:balanceUpdated {newBalance: number}
  *
  * Events Consumed: (None currently planned)
  */
 
-// Import necessary services/utils (will be injected in Phase 2)
-import { globalEventBus } from '../utils/EventBus.js';
-import { featureManager } from '../utils/FeatureManager.js';
-import { logger } from '../utils/Logger.js';
-import { state } from './GameState.js'; // Temporary direct import for mock generation
-import { PAYTABLE } from '../config/symbolDefinitions.js'; // Temp import for mock
-import { PAYLINES } from '../config/paylines.js'; // Temp import for mock
-import { NUM_REELS, SYMBOLS_PER_REEL_VISIBLE, SCATTER_SYMBOL_ID } from '../config/gameSettings.js'; // Temp import for mock
-import { REEL_STRIPS } from '../config/reelStrips.js'; // Temp import for mock
+// Remove direct global imports for injected services
+// import { globalEventBus } from '../utils/EventBus.js';
+// import { featureManager } from '../utils/FeatureManager.js';
+// import { logger } from '../utils/Logger.js';
 
+// Keep temporary imports needed ONLY for mock generation logic
+// TODO: Remove these when mock logic is fully self-contained or DI is deeper
+import { state } from './GameState.js'; 
+import { PAYTABLE } from '../config/symbolDefinitions.js';
+import { PAYLINES } from '../config/paylines.js';
+import { NUM_REELS, SYMBOLS_PER_REEL_VISIBLE, SCATTER_SYMBOL_ID } from '../config/gameSettings.js';
+import { REEL_STRIPS } from '../config/reelStrips.js';
+// Import types for JSDoc
+import { Logger } from '../utils/Logger.js';
+import { EventBus } from '../utils/EventBus.js';
+import { FeatureManager } from '../utils/FeatureManager.js';
 
 export class ApiService {
-    constructor() {
-        // Dependencies will be injected here later (Phase 2)
-        this.eventBus = globalEventBus; 
-        this.featureManager = featureManager;
-        this.logger = logger;
-        this.config = {};
-        this.initialized = false;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null; 
+    /** @type {import('../utils/FeatureManager.js').FeatureManager | null} */
+    featureManager = null;
+    /** @type {import('../utils/Logger.js').Logger | null} */
+    logger = null;
+    config = {};
+    initialized = false;
+
+    /**
+     * @param {object} dependencies - Core services dependencies.
+     * @param {import('../utils/Logger.js').Logger} dependencies.logger
+     * @param {import('../utils/EventBus.js').EventBus} dependencies.eventBus
+     * @param {import('../utils/FeatureManager.js').FeatureManager} dependencies.featureManager
+     */
+    constructor(dependencies) {
+        this.logger = dependencies.logger;
+        this.eventBus = dependencies.eventBus;
+        this.featureManager = dependencies.featureManager;
+
+        // Basic validation
+        if (!this.logger) console.error("ApiService: Logger dependency is missing!"); // Use console as logger might be null
+        if (!this.eventBus) this.logger?.error('ApiService', 'EventBus dependency is missing!');
+        if (!this.featureManager) this.logger?.error('ApiService', 'FeatureManager dependency is missing!');
+
+        this.logger?.info('ApiService', 'Instance created.');
     }
 
     init(config = {}) {
         this.config = config;
         // TODO: Configure API endpoints, authentication tokens, etc.
         this.initialized = true;
-        this.logger.info('ApiService', 'Initialized.', this.config);
+        this.logger?.info('ApiService', 'Initialized.', this.config);
     }
 
     async requestSpin(betInfo) {
+        // Use injected featureManager and logger
+        if (!this.featureManager || !this.logger) {
+            console.error('ApiService.requestSpin: Missing critical dependencies (featureManager or logger).');
+            this.eventBus?.emit('server:error', { type: 'InternalError', message: 'ApiService dependencies missing.'});
+            return;
+        }
+
         const useMock = this.featureManager.isEnabled('debugUseMockApi');
         this.logger.debug('ApiService', `Requesting spin... Mock API: ${useMock}`, betInfo);
 
@@ -55,10 +89,12 @@ export class ApiService {
                 await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100)); 
                 const mockResult = this._generateMockSpinResult();
                 this.logger.debug('ApiService', 'Generated Mock Spin Result:', mockResult);
-                this.eventBus.emit('server:spinResultReceived', { data: mockResult });
+                // Use injected eventBus
+                this.eventBus?.emit('server:spinResultReceived', { data: mockResult });
             } catch (error) {
                 this.logger.error('ApiService', 'Error generating mock spin result:', error);
-                this.eventBus.emit('server:error', { type: 'MockGenerationError', message: 'Failed to generate mock result', details: error });
+                // Use injected eventBus
+                this.eventBus?.emit('server:error', { type: 'MockGenerationError', message: 'Failed to generate mock result', details: error });
             }
         } else {
             // --- TODO (Future Task 5.8): Implement actual backend API call --- 
@@ -80,15 +116,15 @@ export class ApiService {
             //   this.eventBus.emit('server:error', { type: 'ApiError', message: 'Spin request failed', details: error });
             // }
             // For now, emit an error or a default non-winning result
-            this.eventBus.emit('server:error', { type: 'NotImplemented', message: 'Real API spin request not implemented.' });
+            this.eventBus?.emit('server:error', { type: 'NotImplemented', message: 'Real API spin request not implemented.' });
         }
     }
 
     async requestGameState() {
         // TODO: Implement fetching initial game state from server
-        this.logger.warn('ApiService', 'requestGameState not implemented yet.');
+        this.logger?.warn('ApiService', 'requestGameState not implemented yet.');
         // Simulate failure for now
-        this.eventBus.emit('server:error', { type: 'NotImplemented', message: 'requestGameState not implemented.' });
+        this.eventBus?.emit('server:error', { type: 'NotImplemented', message: 'requestGameState not implemented.' });
     }
 
     // --- Private --- 
@@ -102,7 +138,8 @@ export class ApiService {
      * @returns {object} - Mock spin result matching expected server payload structure.
      */
     _generateMockSpinResult() {
-        const forceWin = this.featureManager.isEnabled('debugForceWin');
+        // Use injected featureManager
+        const forceWin = this.featureManager?.isEnabled('debugForceWin') ?? false;
         const stopPositions = [];
         const finalSymbolGrid = [];
 
@@ -167,7 +204,7 @@ export class ApiService {
         // This is a simplification for the mock.
         const finalBalance = state.balance - state.currentTotalBet + calculatedTotalWin;
         // Emit balance update event immediately after calculation for mock
-        this.eventBus.emit('server:balanceUpdated', { newBalance: finalBalance });
+        this.eventBus?.emit('server:balanceUpdated', { newBalance: finalBalance });
 
         // 4. Simulate Feature Triggers (e.g., Free Spins)
         let scatterCount = 0;
@@ -191,5 +228,5 @@ export class ApiService {
     }
 }
 
-// Export a global instance for now (will be replaced by DI)
-export const apiService = new ApiService();
+// Remove singleton export
+// export const apiService = new ApiService();

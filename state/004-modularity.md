@@ -381,21 +381,21 @@ try {
 
 *   **[X]** **Task 2.1:** Implement Dependency Injection container or pattern (e.g., manual injection in `main.js` or `Game.js` constructor).
 *   **[X]** **Task 2.2:** Inject `EventBus`, `FeatureManager`, `Logger` into the main `Game` class/entry point and core modules as needed.
-*   [ ] **Task 2.3:** **Refactor `ApiService`:**
-    *   [ ] Inject dependencies (`Logger`, `EventBus`, `FeatureManager`, `ConfigService`?).
-    *   [ ] Implement `requestSpin` with the `debug.useMockApi` check.
-    *   [ ] **Create private `_generateMockSpinResult()`:** Move the *existing* client-side outcome generation logic (random stops, debug win forcing) into this method. Ensure it returns data matching the defined `server:spinResultReceived` payload structure.
-    *   [ ] Ensure `requestSpin` emits `server:spinResultReceived` with data from `_generateMockSpinResult()` when mocked, or from the (future) real API call otherwise.
-    *   [ ] Add domain-specific logging.
-    *   [ ] **Test:** Verify `requestSpin` emits the correct event with correctly structured mock data, preserving current win/stop logic.
-*   [ ] **Task 2.4:** **Refactor `SpinManager` (or create `ResultHandler`):**
-    *   [ ] Inject dependencies (`EventBus`, `Logger`, `ReelManager`).
-    *   [ ] **Remove all outcome generation logic** (random stops, etc.).
-    *   [ ] **Subscribe to `server:spinResultReceived`.**
-    *   [ ] Implement logic to take `stopPositions` from the event payload and call `reel.setFinalStopPosition()` (or similar) on the relevant reels managed by `ReelManager`.
-    *   [ ] Potentially trigger subsequent events like `win:evaluateRequest` if `WinEvaluation` is separate.
-    *   [ ] Add domain-specific logging.
-    *   [ ] **Test:** Verify reels are correctly instructed to stop based *only* on the (mocked) event data.
+*   **[X]** **Task 2.3:** **Refactor `ApiService`:**
+    *   **[X]** Inject dependencies (`Logger`, `EventBus`, `FeatureManager`, `ConfigService`?). (Core deps done, ConfigService TBD)
+    *   **[X]** Implement `requestSpin` with the `debug.useMockApi` check. (Already Done)
+    *   **[X]** **Create private `_generateMockSpinResult()`:** Move the *existing* client-side outcome generation logic (random stops, debug win forcing) into this method. Ensure it returns data matching the defined `server:spinResultReceived` payload structure. (Already Done)
+    *   **[X]** Ensure `requestSpin` emits `server:spinResultReceived` with data from `_generateMockSpinResult()` when mocked, or from the (future) real API call otherwise. (Already Done)
+    *   **[X]** Add domain-specific logging.
+    *   [ ] **Test:** Verify `requestSpin` emits the correct event with correctly structured mock data, preserving current win/stop logic. (Manual test needed)
+*   **[X]** **Task 2.4:** **Refactor `SpinManager` (or create `ResultHandler`):**
+    *   **[X]** Inject dependencies (`EventBus`, `Logger`, `ReelManager`). (Done for ResultHandler)
+    *   **[X]** **Remove all outcome generation logic** (random stops, etc.). (Done - New ResultHandler has none)
+    *   **[X]** **Subscribe to `server:spinResultReceived`.** (Done in ResultHandler.init)
+    *   **[X]** Implement logic to take `stopPositions` from the event payload and call `reel.setFinalStopPosition()` (or similar) on the relevant reels managed by `ReelManager`. (Done in ResultHandler._handleSpinResultReceived)
+    *   [ ] Potentially trigger subsequent events like `win:evaluateRequest` if `WinEvaluation` is separate. (TODO in ResultHandler)
+    *   **[X]** Add domain-specific logging. (Done in ResultHandler)
+    *   [ ] **Test:** Verify reels are correctly instructed to stop based *only* on the (mocked) event data. (Manual test needed)
 *   [ ] **Task 2.5:** **Refactor `UIManager` (Partial):**
     *   [ ] Inject dependencies (`EventBus`, `Logger`, `FeatureManager`).
     *   [ ] *Add domain-specific logging* calls.

@@ -2,11 +2,12 @@ import { Game } from './core/Game.js';
 import { gsap } from 'gsap';
 import { PixiPlugin } from 'gsap/PixiPlugin'; // Import PixiPlugin
 
-// Import core services (assuming they export singletons for now)
+// Import core service singletons (or base classes)
 import { globalEventBus } from './utils/EventBus.js';
 import { featureManager } from './utils/FeatureManager.js';
 import { logger } from './utils/Logger.js';
-import { apiService } from './core/ApiService.js';
+// Import the ApiService CLASS, not the (removed) singleton instance
+import { ApiService } from './core/ApiService.js'; 
 
 // Register GSAP PixiPlugin
 gsap.registerPlugin(PixiPlugin);
@@ -20,18 +21,25 @@ document.addEventListener('DOMContentLoaded', async () => { // Make async for ga
 
     try {
         // Instantiate dependencies (or reference singletons)
-        // In a more complex DI setup, a container would handle this
+        const eventBus = globalEventBus;
+        // const featureManager = featureManager; // Already imported
+        // const logger = logger; // Already imported
+        
+        // Instantiate ApiService, passing its dependencies
+        const apiServiceInstance = new ApiService({ 
+            logger: logger, 
+            eventBus: eventBus, 
+            featureManager: featureManager 
+        });
+        // TODO: Call apiServiceInstance.init() if/when needed
+
         const dependencies = {
-            eventBus: globalEventBus,
+            eventBus: eventBus,
             featureManager: featureManager,
             logger: logger,
-            apiService: apiService,
-            // Add other core services here as needed for injection
+            apiService: apiServiceInstance, // Pass the INSTANCE
         };
         
-        // Initialize core services that need it (if any)
-        // Example: await apiService.init({ /* config */ });
-        // Example: featureManager.loadFlags({ /* initial flags */ });
         logger.info('main', 'Core services instantiated/referenced.');
 
         // Create and initialize the game instance, passing dependencies
