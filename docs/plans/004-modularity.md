@@ -1,4 +1,4 @@
-# Improving Code Modularity and Extensibility
+# Improving Code Modularity and Extensibility for a Multi-Game Engine
 
 ## Current Architecture Assessment
 
@@ -9,15 +9,17 @@ The slot game engine currently follows a modular approach with clear separation 
 - Separation of concerns between UI, animations, and game logic
 - A flexible animation system using GSAP
 
-However, there are still opportunities to enhance extensibility and clarity for new developers.
+However, to support a **production-ready engine** designed for **multiple future games**, further enhancements are needed to improve extensibility, clarity, and robustness.
 
 ## Goals
 
-1. Improve code comprehension for new developers
-2. Reduce coupling between modules
-3. Standardize interfaces between components
-4. Make the system more extensible for new features
-5. Simplify the process of creating new slot game variants
+1. Improve code comprehension for new developers joining future game projects
+2. Reduce coupling between core engine modules and game-specific features
+3. Standardize interfaces and interactions between components
+4. Make the system highly extensible for new game mechanics and features via plugins
+5. Simplify the process of creating and configuring new slot game variants
+6. Enhance robustness and maintainability for production environments
+7. Prepare architecture for seamless integration with an authoritative backend server, while maintaining current functionality via mocking initially.
 
 ## Proposed Improvements
 
@@ -25,10 +27,10 @@ However, there are still opportunities to enhance extensibility and clarity for 
 
 **Current Issue:** Direct module imports create tight coupling (e.g., WinEvaluation directly calls UI and Animation functions).
 
-**Solution:** Implement a lightweight event system.
+**Solution:** Implement a lightweight global event system (`EventBus`) for decoupled communication.
 
 ```javascript
-// EventBus.js
+// utils/EventBus.js
 export class EventBus {
   constructor() {
     this.listeners = {};
@@ -56,63 +58,37 @@ export class EventBus {
 export const globalEventBus = new EventBus();
 ```
 
-**Example Usage:**
-```javascript
-// In WinEvaluation.js
-import { globalEventBus } from '../utils/EventBus.js';
+**Usage:**
+- Modules emit events for significant state changes or actions (e.g., `win:evaluated`, `spin:started`, `server:responseReceived`).
+- Modules subscribe to relevant events instead of holding direct references to other modules.
+- **`ApiService` Integration:** `ApiService` becomes the sole source of server interaction results. It emits events like `server:spinResultReceived`, `server:balanceUpdated`, `server:error` upon receiving responses or encountering issues. **Crucially, during initial refactoring, it will emit these events using locally generated mock data.**
+- **Outcome Consumption:** Modules like `SpinManager` (or a dedicated `ResultHandler`) will listen for `server:spinResultReceived` to get authoritative stop positions, win data, and feature triggers.
 
-export function evaluateWin() {
-  // Calculate win
-  // ...
-  
-  // Instead of directly calling functions in other modules
-  globalEventBus.emit('win:evaluated', { 
-    totalWin: calculatedTotalWin,
-    winningLines: calculatedWinningLines
-  });
-}
+### 2. Module Interface & API Documentation
 
-// In UIManager.js
-import { globalEventBus } from '../utils/EventBus.js';
+**Current Issue:** Lack of clear documentation about module responsibilities, public methods, and consumed/emitted events.
 
-function initialize() {
-  // ...
-  globalEventBus.on('win:evaluated', handleWinEvaluated);
-}
+**Solution:** Create standardized interface documentation (e.g., using JSDoc) at the top of each key module.
 
-function handleWinEvaluated({ totalWin, winningLines }) {
-  animateWin(totalWin);
-}
-```
-
-### 2. Module Interface Documentation
-
-**Current Issue:** Lack of clear documentation about what each module exports and expects.
-
-**Solution:** Create standardized interface documentation for each key module.
-
-For each major module (e.g., UIManager, Animations, WinEvaluation), add a module interface document:
+**Include Documentation For:** `UIManager`, `Animations`, `WinEvaluation`, `SpinManager`, `ReelManager`, `GameState`, **`ApiService`**, `EventBus`, `PluginSystem`, `FeatureManager`, `AnimationController`.
 
 ```javascript
 /**
- * @module UIManager
- * @description Manages all UI components and their state
+ * @module ApiService
+ * @description Handles all communication with the backend game server.
  * 
  * Public API:
- * - initUIManager(parentLayer, uiStyles, spinManagerInstance): Initializes the UI
- * - updateDisplays(): Updates all text displays with current state values
- * - setButtonsEnabled(enabled): Enables or disables interactive buttons
- * - animateWin(winAmount): Animates the win counter from 0 to final amount
- * - updateAutoplayButtonState(): Updates autoplay button visuals
- * - updateTurboButtonState(): Updates turbo button visuals
+ * - init(config): Initializes the service with server endpoints.
+ * - requestSpin(betInfo): Sends a spin request to the server.
+ * - requestGameState(): Fetches the current game state from the server.
  * 
  * Events Emitted:
- * - ui:initialized - When UI setup is complete
- * - ui:buttonClicked - When a button is clicked (with button name)
+ * - server:spinResultReceived {data: SpinResult}
+ * - server:balanceUpdated {newBalance: number}
+ * - server:gameStateReceived {state: GameStateData}
+ * - server:error {type: string, message: string}
  * 
- * Events Consumed:
- * - win:evaluated - When a win is calculated
- * - game:stateChanged - When game state changes
+ * Events Consumed: (Potentially none, depends on implementation)
  */
 ```
 
@@ -120,10 +96,10 @@ For each major module (e.g., UIManager, Animations, WinEvaluation), add a module
 
 **Current Issue:** Inconsistent initialization and cleanup patterns across modules.
 
-**Solution:** Standardize component lifecycle methods across all modules.
+**Solution:** Standardize component lifecycle methods (`init`, `destroy`, optionally `update`) across all major engine modules and plugins.
 
 ```javascript
-// Template for all major modules
+// Template for modules/plugins
 export class ModuleTemplate {
   constructor(dependencies) {
     this.initialized = false;
@@ -149,9 +125,9 @@ export class ModuleTemplate {
 
 ### 4. Animation Pipeline Restructuring
 
-**Current Issue:** Win animation responsibilities split between UIManager and Animations.
+**Current Issue:** Win animation responsibilities split between `UIManager` and `Animations`, complex flow.
 
-**Solution:** Create a cohesive animation pipeline with clear stages.
+**Solution:** Implement a dedicated `AnimationController` using the `EventBus` to manage distinct animation stages (e.g., `prepare`, `execute`, `complete`).
 
 ```javascript
 // AnimationController.js
@@ -201,65 +177,37 @@ export class AnimationController {
   }
 }
 ```
+- Modules like `PaylineGraphics`, `Animations` (for symbol/big win anims), `UIManager` (for win counter) register their specific animation functions with the `AnimationController` for the appropriate stage (`execute`).
 
 ### 5. Feature Flag System
 
-**Current Issue:** Features like autoplay and turbo are tightly integrated.
+**Current Issue:** Features like autoplay, turbo, specific bonus types are tightly integrated.
 
-**Solution:** Implement a feature flag system to easily enable/disable features.
+**Solution:** Implement a `FeatureManager` to easily enable/disable core engine features or game-specific mechanics, potentially loaded from game configuration.
 
 ```javascript
-// FeatureFlags.js
+// utils/FeatureManager.js
 export class FeatureManager {
-  constructor() {
-    this.features = {
-      autoplay: true,
-      turboMode: true,
-      freeSpins: true,
-      bonusGame: false,
-      debugTools: false
-    };
-  }
-
-  isEnabled(featureName) {
-    return this.features[featureName] === true;
-  }
-
-  enable(featureName) {
-    this.features[featureName] = true;
-  }
-
-  disable(featureName) {
-    this.features[featureName] = false;
-  }
+  constructor(initialFlags = {}) { this.features = initialFlags; }
+  loadFlags(flags) { this.features = { ...this.features, ...flags }; }
+  isEnabled(featureName) { return this.features[featureName] === true; }
 }
-
-export const featureManager = new FeatureManager();
+export const featureManager = new FeatureManager(); // Or inject via DI
 ```
-
-**Example Usage:**
-```javascript
-import { featureManager } from '../utils/FeatureFlags.js';
-
-// In UI initialization
-if (featureManager.isEnabled('autoplay')) {
-  createAutoplayButton();
-}
-
-// Before executing feature logic
-if (featureManager.isEnabled('turboMode')) {
-  // Turbo mode logic
-}
-```
+- Used to conditionally initialize UI elements, register event listeners, or execute logic based on enabled features.
+- Include debug flags like `debug.useMockApi` (defaults to `true` initially) and `debug.forceWin`.
 
 ### 6. Plugin Architecture for Extensions
 
-**Current Issue:** Adding new features requires modifying existing files.
+**Current Issue:** Adding new game features (unique bonuses, side games) requires modifying core engine files.
 
-**Solution:** Implement a plugin system for adding new features.
+**Solution:** Implement a `PluginSystem` to register and manage game-specific features or extensions.
+
+- **Core vs. Plugin:** Define boundaries. Core handles fundamental slot mechanics (reels, basic UI, server comms). Plugins handle specific game rules, bonus rounds, unique presentation elements.
+- **Lifecycle Hooks:** The `PluginSystem` should call standardized methods on plugins if they exist: `init(gameInstance)`, `destroy()`, and potentially event-driven hooks like `onSpinStart()`, `onSpinEnd(resultData)`, `onWinEvaluated(winData)`. This provides clear integration points.
 
 ```javascript
-// PluginSystem.js
+// core/PluginSystem.js
 export class PluginSystem {
   constructor(game) {
     this.game = game;
@@ -296,15 +244,9 @@ export class PluginSystem {
   }
 }
 
-// In Game.js
-this.plugins = new PluginSystem(this);
-this.plugins.register('autoplay', new AutoplayPlugin());
-```
-
-**Example Plugin:**
-```javascript
-// AutoplayPlugin.js
-export class AutoplayPlugin {
+// Example Plugin Lifecycle
+// plugins/MyBonusGamePlugin.js
+export class MyBonusGamePlugin {
   init(game) {
     this.game = game;
     this.eventBus = game.eventBus;
@@ -328,72 +270,231 @@ export class AutoplayPlugin {
 }
 ```
 
-### 7. Dependency Injection Pattern
+### 7. Dependency Injection (DI) Pattern
 
-**Current Issue:** Direct imports create tight coupling and make testing difficult.
+**Current Issue:** Direct imports create tight coupling, making testing and replacement difficult.
 
-**Solution:** Implement dependency injection for cleaner module interactions.
+**Solution:** Use constructor-based Dependency Injection for core engine services.
 
 ```javascript
-// In main.js
+// In main.js or GameFactory.js
+const eventBus = new EventBus();
+const featureManager = new FeatureManager();
+const apiService = new ApiService();
+const animationController = new AnimationController(eventBus);
+// ... other services
+
 const game = new Game({
-  uiManager: new UIManager(),
-  reelManager: new ReelManager(),
-  animationController: new AnimationController(),
-  spinManager: new SpinManager(),
-  eventBus: new EventBus()
+  eventBus,
+  featureManager,
+  apiService,
+  animationController,
+  // ... inject UIManager, ReelManager, SpinManager instances etc.
 });
 
 // In Game.js
-constructor(deps) {
-  this.ui = deps.uiManager;
-  this.reels = deps.reelManager;
-  this.animations = deps.animationController;
-  this.spinner = deps.spinManager;
-  this.eventBus = deps.eventBus;
-  
-  // Initialize with injected dependencies
-  this.ui.init(this.eventBus);
-  this.reels.init(this.eventBus);
-  // etc.
+constructor(dependencies) { this.deps = dependencies; /* Assign dependencies */ }
+```
+- Core modules receive dependencies (`EventBus`, `ApiService`, `FeatureManager`, other managers) via their constructor.
+- Facilitates easier mocking for tests and swapping implementations.
+
+### 8. Multi-Game Configuration Management
+
+**Current Issue:** Configuration assumes a single game setup.
+
+**Solution:** Define a clear strategy for managing configurations across multiple games.
+
+- **Layered Config:** Implement a system where a base engine configuration (in `src/config/`) is merged with game-specific configurations (e.g., `games/game-a/config/`). Game-specific files override base settings.
+- **Loading:** The game initialization process should load the appropriate base + game-specific configs.
+- **Access:** Provide a centralized way (e.g., a `ConfigService` injected via DI) for modules and plugins to access the final, merged configuration values.
+- **Feature Flags:** Game-specific configs could also define which features/plugins are enabled (`FeatureManager.loadFlags(gameConfig.features)`).
+- **Logging Configuration:** Game-specific configs can define enabled logging domains and minimum log levels (e.g., `{ logging: { domains: { 'ApiService': 'INFO', 'UIManager': 'DEBUG', '*': 'WARN' } } }`).
+- Debug flags (`debug.useMockApi`, etc.) can also be part of the game configuration.
+
+### 9. Centralized Error Handling & Logging
+
+**Current Issue:** No standardized approach for handling or reporting errors in production. Limited control over log verbosity.
+
+**Solution:** Implement robust error handling and a flexible, domain-based logging mechanism.
+
+- **Error Boundaries:** Use try/catch blocks in critical sections (API calls, event handlers, animation callbacks).
+- **Centralized Logger:** Create a `Logger` service (injectable via DI) supporting different log levels (DEBUG, INFO, WARN, ERROR) and **logging domains/namespaces**. Modules specify a domain when logging (e.g., `logger.debug('UIManager', 'Button state updated')`).
+- **Configurable Logging:** The `Logger` loads configuration (from `ConfigService` or its own setup) defining the minimum log level for each domain (and a default '*' level). It only outputs logs if the message level meets the threshold for its domain.
+- **Reporting:** In production builds, the `Logger` could send ERROR (and potentially WARN) level logs to a remote monitoring service.
+- **User Feedback:** Define how critical errors are communicated to the user.
+- **Graceful Recovery:** Attempt to recover game state or offer a refresh mechanism upon encountering non-fatal errors where possible.
+
+```javascript
+// Example Logger Usage
+// In UIManager.js (assuming logger is injected)
+this.logger.info('UIManager', 'Initializing UI components...');
+try {
+  // Some operation
+  this.logger.debug('UIManager', 'Operation successful.');
+} catch (error) {
+  this.logger.error('UIManager', 'Operation failed:', error);
+  // Trigger user feedback or recovery
 }
 ```
 
+### 10. Server Integration & Outcome Handling Strategy
+
+**Current Issue:** Game logic currently determines outcomes (reel stops, wins). Production requires server authority. Need a transition path that preserves current functionality during refactoring.
+
+**Solution:** Refactor logic to depend on server-provided outcomes (via events), but use a configurable mock implementation initially.
+
+- **`ApiService` Mocking:** `ApiService.requestSpin` will check `featureManager.isEnabled('debug.useMockApi')` (or similar flag, initially `true`).
+    - If `true`: It calls an internal **private** method (e.g., `_generateMockSpinResult()`) which **encapsulates the current client-side outcome generation logic** (random stops, handling `debug.forceWin`, calculating basic wins based on stops).
+    - If `false`: It makes the actual HTTP request to the backend server.
+    - In both cases, it emits the *same* `server:spinResultReceived` event containing the outcome data (stop positions, win lines, feature triggers, final balance) in the expected server response format.
+- **`SpinManager` / `ResultHandler`:** This module listens *only* for `server:spinResultReceived`. It **does not generate outcomes itself**. It takes the stop positions from the event payload and instructs the `ReelManager`/`Reels` where to stop.
+- **`WinEvaluation` Role Change:** This module listens for `server:spinResultReceived` (or a subsequent `win:evaluateRequest` event triggered by `SpinManager`). Its primary role becomes:
+    - **Validation (Optional):** Verify server win data against the final symbol grid as a sanity check.
+    - **Symbol Identification:** Find the specific `Symbol` instances on screen corresponding to the winning lines provided in the event data.
+    - **Data Preparation:** Prepare data needed for animations (e.g., list of winning symbols, total win amount from server data) and potentially emit an event like `win:validatedForAnimation`.
+    - **It no longer calculates win amounts for state updates.** Balance updates should come directly from `server:spinResultReceived` or `server:balanceUpdated` events consumed elsewhere (e.g., by a state manager module).
+- **Preserving Functionality:** By moving the *current* outcome generation logic into `ApiService._generateMockSpinResult()` and ensuring the rest of the application only reacts to the `server:spinResultReceived` event, the game will function exactly as it does now post-refactoring, while being architecturally ready for the real server.
+
+### 11. Performance & Responsiveness Considerations
+
+**Current Issue:** While the architectural refactor focuses on structure, performance (especially for mobile) and responsive UI layout are critical for production but not explicitly addressed.
+
+**Solution:** Integrate performance best practices where feasible during the refactor and acknowledge the need for dedicated future work.
+
+- **Memory Management:** Emphasize strict resource cleanup in the standardized component lifecycle (`destroy` methods) to prevent memory leaks, crucial on mobile.
+- **Rendering (Awareness):** While not a primary goal of *this* refactor, developers should be mindful of PixiJS best practices (preferring Sprites over Graphics where appropriate, considering batching implications) during implementation.
+- **Object Pooling (Future):** Note that object pooling for frequently created/destroyed objects (like Symbols during reel spins, particles) should be investigated *if* performance profiling reveals bottlenecks, especially targeting mobile devices.
+- **Responsiveness Strategy (Separate):** Acknowledge that a dedicated strategy for handling different screen sizes, aspect ratios, and resolutions (e.g., scaling, responsive layout adjustments, adaptive assets) is required. This architectural refactor should aim not to hinder future responsiveness implementations; components should ideally use relative positioning or layout logic where practical.
+
 ## Implementation Plan
 
-### Phase 1: Documentation and Analysis
-1. Document all current module interfaces
-2. Map out all module dependencies
-3. Identify key coupling points for improvement
+*(Refined Phases)*
 
-### Phase 2: Core Infrastructure
-1. Implement EventBus system
-2. Create standardized module lifecycle template
-3. Update dependency management approach
+### Phase 1: Core Infrastructure & Documentation (Foundation Laying)
 
-### Phase 3: Refactor Key Components
-1. Refactor UIManager to use the event system
-2. Refactor Animation system with the pipeline approach
-3. Update WinEvaluation to emit events instead of direct calls
+*   [ ] **Task 1.1 - 1.5:** Implement `EventBus`, `FeatureManager`, `Logger`; Setup & Run Unit Tests.
+*   [ ] **Task 1.6:** Define standard module lifecycle template (`init`, `destroy`) in documentation. **Emphasize that `destroy` must handle cleanup of all resources (PIXI objects, listeners, timers) to prevent memory leaks.**
+*   [ ] **Task 1.7:** **Documentation:** Start JSDoc headers for core modules.
+*   [ ] **Task 1.8:** Define `server:spinResultReceived` payload structure.
 
-### Phase 4: Enhanced Features
-1. Implement feature flag system
-2. Create plugin architecture
-3. Add first sample plugins (e.g., Autoplay as plugin)
+### Phase 2: DI and Initial Refactoring (Decoupling Core Services)
 
-### Phase 5: Testing and Documentation
-1. Create automated tests for new systems
-2. Update documentation to reflect new architecture
-3. Create developer guide for extending the system
+*   [ ] **Task 2.1:** Implement Dependency Injection container or pattern (e.g., manual injection in `main.js` or `Game.js` constructor).
+*   [ ] **Task 2.2:** Inject `EventBus`, `FeatureManager`, `Logger` into the main `Game` class/entry point and core modules as needed.
+*   [ ] **Task 2.3:** **Refactor `ApiService`:**
+    *   [ ] Inject dependencies (`Logger`, `EventBus`, `FeatureManager`, `ConfigService`?).
+    *   [ ] Implement `requestSpin` with the `debug.useMockApi` check.
+    *   [ ] **Create private `_generateMockSpinResult()`:** Move the *existing* client-side outcome generation logic (random stops, debug win forcing) into this method. Ensure it returns data matching the defined `server:spinResultReceived` payload structure.
+    *   [ ] Ensure `requestSpin` emits `server:spinResultReceived` with data from `_generateMockSpinResult()` when mocked, or from the (future) real API call otherwise.
+    *   [ ] Add domain-specific logging.
+    *   [ ] **Test:** Verify `requestSpin` emits the correct event with correctly structured mock data, preserving current win/stop logic.
+*   [ ] **Task 2.4:** **Refactor `SpinManager` (or create `ResultHandler`):**
+    *   [ ] Inject dependencies (`EventBus`, `Logger`, `ReelManager`).
+    *   [ ] **Remove all outcome generation logic** (random stops, etc.).
+    *   [ ] **Subscribe to `server:spinResultReceived`.**
+    *   [ ] Implement logic to take `stopPositions` from the event payload and call `reel.setFinalStopPosition()` (or similar) on the relevant reels managed by `ReelManager`.
+    *   [ ] Potentially trigger subsequent events like `win:evaluateRequest` if `WinEvaluation` is separate.
+    *   [ ] Add domain-specific logging.
+    *   [ ] **Test:** Verify reels are correctly instructed to stop based *only* on the (mocked) event data.
+*   [ ] **Task 2.5:** **Refactor `UIManager` (Partial):**
+    *   [ ] Inject dependencies (`EventBus`, `Logger`, `FeatureManager`).
+    *   [ ] *Add domain-specific logging* calls.
+    *   [ ] Subscribe to necessary events.
+    *   [ ] Update UI based on events.
+    *   [ ] Ensure balance updates react to `server:balanceUpdated` or the balance field within `server:spinResultReceived`.
+    *   [ ] **Test:** Verify UI updates, especially balance, work correctly based on events.
+*   [ ] **Task 2.6:** **Refactor `GameState`:**
+    *   [ ] Inject `Logger`?
+    *   [ ] Emit `game:stateChanged` or granular events.
+    *   [ ] *Add domain-specific logging* for significant state changes.
+    *   [ ] Ensure balance/feature state updates are primarily driven by consuming server events, not calculated client-side (except via mock).
+    *   [ ] **Test:** Verify state updates, events, and logging.
+*   [ ] **Task 2.7:** Write/update unit tests for refactored modules using mocked dependencies.
+
+### Phase 3: Animation & Win Flow Refactoring (Streamlining Presentation)
+
+*   [ ] **Task 3.1:** Implement `AnimationController` class in `src/core/AnimationController.js` (inject `EventBus`, `Logger`).
+*   [ ] **Task 3.2:** Inject `AnimationController` into the main `Game` class.
+*   [ ] **Task 3.3:** **Refactor `Animations` module:**
+    *   [ ] Inject dependencies (`AnimationController`, `Logger`).
+    *   [ ] *Add domain-specific logging*.
+    *   [ ] Register animation logic with `AnimationController`.
+    *   [ ] **Test:** Verify animations and logging.
+*   [ ] **Task 3.4:** **Refactor `UIManager` (Win Animation):**
+    *   [ ] Inject `AnimationController`, `Logger`.
+    *   [ ] *Add domain-specific logging*.
+    *   [ ] Register `animateWin` logic with `AnimationController`.
+    *   [ ] **Test:** Verify win counter animation and logging.
+*   [ ] **Task 3.5:** **Refactor `WinEvaluation`:**
+    *   [ ] Inject dependencies (`EventBus`, `Logger`).
+    *   [ ] Subscribe to `server:spinResultReceived` or `win:evaluateRequest`.
+    *   [ ] **Change Role:** Modify logic to validate server win data (optional) and identify winning symbol instances based on the event payload.
+    *   [ ] Prepare data structure needed for animations.
+    *   [ ] Emit `win:validatedForAnimation` (or trigger `AnimationController` directly).
+    *   [ ] **Remove win amount calculation for state updates.**
+    *   [ ] Add domain-specific logging.
+    *   [ ] **Test:** Verify it correctly identifies symbols for animation based on (mocked) event data.
+*   [ ] **Task 3.6:** Refactor `PaylineGraphics` (subscribe to relevant event, e.g., `win:validatedForAnimation`, inject deps, add logging).
+*   [ ] **Task 3.7:** Update integration tests for the win flow, ensuring it's driven by the (mocked) `server:spinResultReceived` event through to animations.
+*   **Note:** When refactoring animations, be mindful of potential performance implications (e.g., number of simultaneous tweens, complexity).
+
+### Phase 4: Extensibility Features (Plugins & Config)
+
+*   [ ] **Task 4.1:** Implement `PluginSystem` class in `src/core/PluginSystem.js` (inject `Game` instance or core dependencies like `Logger`, `EventBus`).
+*   [ ] **Task 4.2:** Integrate `PluginSystem` into `Game.js`.
+*   [ ] **Task 4.3:** Implement Multi-Game Configuration loader.
+*   [ ] **Task 4.4:** Create `ConfigService` (inject `Logger`), provide access to merged config.
+*   [ ] **Task 4.5:** Update `FeatureManager` to load flags from `ConfigService`.
+*   [ ] **Task 4.6:** Update `Logger` service to load domain/level configuration from `ConfigService` and implement filtering logic.
+*   [ ] **Task 4.7:** **Refactor Autoplay Plugin:**
+    *   [ ] Create `src/plugins/AutoplayPlugin.js`.
+    *   [ ] Move logic, inject deps (`Logger`, `EventBus`, etc.).
+    *   [ ] *Add domain-specific logging* (`this.logger.info('AutoplayPlugin', ...)`).
+    *   [ ] Register plugin.
+    *   [ ] Ensure plugin reacts appropriately to server events if needed (e.g., stopping autoplay on server error).
+    *   [ ] **Test:** Verify Autoplay functionality and logging.
+*   [ ] **Task 4.8:** Enhance `Logger` for potential remote reporting hooks.
+
+### Phase 5: Error Handling, Polish, Performance & Final Documentation
+
+*   [ ] **Task 5.1:** Implement Centralized Error Handling strategy.
+*   [ ] **Task 5.2:** Refine Plugin Lifecycle hooks.
+*   [ ] **Task 5.3:** **Performance Profiling:** Conduct initial profiling on key interactions.
+*   [ ] **Task 5.4:** **Responsiveness Strategy Placeholder:** Create `docs/responsiveness-strategy.md`.
+*   [ ] **Task 5.5:** **Example Game:** Create sample game, config, plugin.
+*   [ ] **Task 5.6:** **Documentation:** Write comprehensive Developer Guide.
+*   [ ] **Task 5.7:** Final end-to-end testing (mock API).
+*   [ ] **Task 5.8 (Future):** Implement real API calls.
+*   [ ] **Task 5.9 (Future):** Detailed performance optimization.
+*   [ ] **Task 5.10 (Future):** Implement responsiveness strategy.
+
+## Roadmap & Tasks
+
+**Guiding Principle:** Each refactoring step should be incremental and accompanied by testing to ensure existing functionality is preserved. **Performance, memory efficiency, and considerations for future mobile responsiveness should guide implementation choices where practical.**
+
+*(... Detailed Tasks 1.1 - 5.2 as previously defined ...)*
+
+### Phase 5: Error Handling, Polish, Performance & Final Documentation
+
+*   [ ] **Task 5.1:** Implement Centralized Error Handling strategy.
+*   [ ] **Task 5.2:** Refine Plugin Lifecycle hooks.
+*   [ ] **Task 5.3:** **Performance Profiling:** Conduct initial profiling on key interactions.
+*   [ ] **Task 5.4:** **Responsiveness Strategy Placeholder:** Create `docs/responsiveness-strategy.md`.
+*   [ ] **Task 5.5:** **Example Game:** Create sample game, config, plugin.
+*   [ ] **Task 5.6:** **Documentation:** Write comprehensive Developer Guide.
+*   [ ] **Task 5.7:** Final end-to-end testing (mock API).
+*   [ ] **Task 5.8 (Future):** Implement real API calls.
+*   [ ] **Task 5.9 (Future):** Detailed performance optimization.
+*   [ ] **Task 5.10 (Future):** Implement responsiveness strategy.
 
 ## Expected Benefits
 
-1. **Reduced Coupling**: Modules will interact through events instead of direct imports
-2. **Improved Testability**: Isolated components are easier to test
-3. **Better Extensibility**: New features can be added as plugins without modifying core code
-4. **Clearer Developer Experience**: Well-documented interfaces make the system easier to understand
-5. **More Flexible Configuration**: Feature flags provide easy customization options
+1. **Reduced Coupling & Increased Cohesion**: Modules focus on their core responsibility, interacting via events or injected services.
+2. **Improved Testability**: DI and decoupled modules allow for robust unit and integration testing.
+3. **High Extensibility**: New games and features are added primarily through configuration and plugins, minimizing core engine changes.
+4. **Clearer Developer Experience**: Standardized patterns, clear interfaces, and documentation ease onboarding and development.
+5. **Production Readiness**: Robust error handling, configuration management, and feature flags support stable deployment and maintenance.
 
 ## Conclusion
 
-These improvements will transform the already well-structured codebase into an even more extensible and maintainable system. The event-driven architecture and plugin system will make it significantly easier to add new features, while standardized interfaces and documentation will reduce the learning curve for new developers.
+Implementing this refined plan will establish a powerful, flexible, and maintainable foundation for the slot engine. It directly addresses the requirements for building and scaling multiple production-quality games efficiently and reliably.
