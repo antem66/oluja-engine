@@ -1,6 +1,37 @@
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
 
+// Define button textures map (will be populated during init)
+let buttonTextures = {};
+
+/**
+ * Initializes button textures
+ * @param {Object} resources - The PIXI resources
+ */
+export function initButtonTextures(resources) {
+    buttonTextures = {
+        'spin': resources['spin.svg'].texture,
+        'stop': resources['stop.svg'].texture,
+        'plus': resources['plus.svg'].texture,
+        'minus': resources['minus.svg'].texture,
+        'turbo': resources['turbo.svg'].texture,
+        'autoplay': resources['autoplay.svg'].texture,
+        'paytable': resources['paytable.svg'].texture,
+        'settings': resources['settings.svg'].texture,
+        'money': resources['money.svg'].texture,
+        // Add more button textures as needed
+    };
+
+    // Check that we got all the textures
+    for (const key in buttonTextures) {
+        if (!buttonTextures[key]) {
+            console.error(`ButtonFactory: Missing texture for ${key}`);
+        }
+    }
+    
+    console.log("ButtonFactory: Button textures initialized");
+}
+
 /**
  * Creates a reusable PixiJS button component with improved visuals.
  * @param {string} text - The text label for the button (ignored if iconType is provided).

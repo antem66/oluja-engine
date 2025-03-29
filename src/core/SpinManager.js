@@ -2,7 +2,7 @@ import { state, updateState } from './GameState.js';
 import { evaluateWin } from '../features/WinEvaluation.js';
 import { handleFreeSpinEnd } from '../features/FreeSpins.js';
 import { handleAutoplayNextSpin } from '../features/Autoplay.js';
-import { setButtonsEnabled } from '../ui/UIManager.js';
+import { setButtonsEnabled, animateSpinButtonRotation, stopSpinButtonRotation } from '../ui/UIManager.js';
 import { clearWinLines } from '../features/PaylineGraphics.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import {
@@ -48,6 +48,9 @@ export class SpinManager {
         updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
         setButtonsEnabled(false);
         clearWinLines();
+        
+        // Animate the spin button rotation
+        animateSpinButtonRotation();
 
         const isTurbo = state.isTurboMode;
         const startTime = performance.now();
@@ -107,6 +110,9 @@ export class SpinManager {
         // Note: isSpinning is set to false here, but transition starts
         updateState({ isSpinning: false, isTransitioning: true });
         console.log("SpinManager: All reels stopped moving.");
+        
+        // Stop the spin button rotation
+        stopSpinButtonRotation();
 
         // Evaluate wins *directly* now, the delay will be handled in Game.update
         console.log("SpinManager: Evaluating wins...");

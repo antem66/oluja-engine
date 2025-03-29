@@ -1,4 +1,4 @@
-import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS } from '../config/gameSettings.js'; // Import NUM_REELS
+import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS, DEFAULT_CURRENCY } from '../config/gameSettings.js'; // Import NUM_REELS and DEFAULT_CURRENCY
 import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
 
 // --- Central Game State ---
@@ -8,6 +8,7 @@ export let state = {
     balance: 10000,
     currentBetPerLine: BET_PER_LINE_LEVELS[3] || 0.1, // Default to a mid-level bet
     currentTotalBet: (BET_PER_LINE_LEVELS[3] || 0.1) * NUM_PAYLINES,
+    currentCurrency: DEFAULT_CURRENCY, // Track current currency setting (EUR/USD)
     numReels: NUM_REELS, // Add number of reels to state
     lastTotalWin: 0,
     /** @type {Array<{lineIndex: number, symbolId: string, count: number, winAmount: number, symbols: Array<import('./Symbol.js').Symbol>}>} */
@@ -46,6 +47,7 @@ export function initGameState() {
         balance: 10000,
         currentBetPerLine: BET_PER_LINE_LEVELS[3] || 0.1,
         currentTotalBet: (BET_PER_LINE_LEVELS[3] || 0.1) * NUM_PAYLINES,
+        currentCurrency: DEFAULT_CURRENCY, // Reset to default currency
         numReels: NUM_REELS, // Add number of reels to state reset
         lastTotalWin: 0,
         winningLinesInfo: [], // Reset to empty array

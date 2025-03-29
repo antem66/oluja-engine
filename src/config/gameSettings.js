@@ -13,6 +13,28 @@ export const ENABLE_FREE_SPINS = true; // Config flag to enable/disable free spi
 export const normalBgColor = 0x2f4f4f;
 export const freeSpinsBgColor = 0x4b0082;
 
+// Currency settings
+export const CURRENCY = {
+  EUR: {
+    symbol: "€",
+    format: (value) => `${CURRENCY.EUR.symbol}${formatNumberEU(value)}` // European format: 10.000,45€
+  },
+  USD: {
+    symbol: "$",
+    format: (value) => `${CURRENCY.USD.symbol}${formatNumberUS(value)}` // US format: $10,000.45
+  }
+};
+export const DEFAULT_CURRENCY = "EUR"; // Default currency to use
+
+// Helper functions for number formatting
+function formatNumberEU(value) {
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".").replace(".", ",");
+}
+
+function formatNumberUS(value) {
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 // Derived constants (can also be calculated where needed, but useful here)
 export const REEL_VISIBLE_HEIGHT = SYMBOLS_PER_REEL_VISIBLE * SYMBOL_SIZE;
 export const reelAreaX = (GAME_WIDTH - NUM_REELS * REEL_WIDTH) / 2;
