@@ -21,7 +21,7 @@ import {
     REEL_STOP_STAGGER, baseSpinDuration, stopTweenDuration, // Normal settings
     turboBaseSpinDuration, turboReelStopStagger // Turbo settings
 } from '../config/animationSettings.js';
-import { state, updateState, initGameState } from './GameState.js';
+import { state, updateState, initGameState, destroyGameState } from './GameState.js';
 // Re-add Reel import for JSDoc hints in debug methods temporarily moved to SpinManager
 import { Reel } from './Reel.js';
 // Removed ButtonFactory import - now handled by UIManager
@@ -30,18 +30,17 @@ import { Reel } from './Reel.js';
 // import * as handlers from '../ui/ButtonHandlers.js';
 import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
 import { initNotifications } from '../ui/Notifications.js'; // init only
-import { initWinEvaluation, evaluateWin } from '../features/WinEvaluation.js';
+import * as WinEvaluation from '../features/WinEvaluation.js'; // Import the module itself
 import { initPaylineGraphics, clearWinLines } from '../features/PaylineGraphics.js'; // Import clearWinLines here
 import { initFreeSpins, handleFreeSpinEnd } from '../features/FreeSpins.js';
 import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
-import { initUIManager, updateDisplays, setButtonsEnabled } from '../ui/UIManager.js'; // Assuming UIManager exists
-import { LogoManager } from '../ui/LogoManager.js'; // Import LogoManager
+import { UIManager } from '../ui/UIManager.js'; // Import UIManager class
+import { LogoManager } from '../ui/LogoManager.js'; // Corrected path
 import { FreeSpinsUIManager } from '../ui/FreeSpinsUIManager.js'; // Import FreeSpinsUIManager
 import { BackgroundManager } from './BackgroundManager.js'; // Import BackgroundManager
 import { ReelManager } from './ReelManager.js'; // Import ReelManager
 import { SpinManager } from './SpinManager.js'; // Import SpinManager
-import { handleAutoplayNextSpin } from '../features/Autoplay.js';
 import { SYMBOL_DEFINITIONS } from '../config/symbolDefinitions.js'; // Import symbol defs for asset loading
 import { initDebugPanel } from '../ui/DebugPanel.js'; // Import debug panel
 import { gsap } from 'gsap'; // Import GSAP for animations
@@ -50,7 +49,17 @@ import { globalEventBus } from '../utils/EventBus.js'; // Keep for type hinting
 import { featureManager } from '../utils/FeatureManager.js'; // Keep for type hinting
 import { logger } from '../utils/Logger.js'; // Keep for type hinting
 import { ResultHandler } from './ResultHandler.js'; // Import ResultHandler
+import { AnimationController } from './AnimationController.js'; // Import new controller
+import { initAutoplay } from '../features/Autoplay.js'; // Import initAutoplay directly
 
+/**
+ * @typedef {object} GameDependencies
+ * @property {import('../utils/Logger.js').Logger} logger
+ * @property {import('../utils/EventBus.js').EventBus} eventBus
+ * @property {import('./ApiService.js').ApiService} apiService
+ * @property {import('../utils/FeatureManager.js').FeatureManager} featureManager
+ * @property {object} initialState // Add initial state type
+ */
 
 // --- Module-level variables ---
 let app = null; // Pixi Application instance
@@ -101,37 +110,52 @@ export class Game {
     spinManager = null;
     /** @type {ResultHandler | null} */
     resultHandler = null; // Add ResultHandler instance
+    /** @type {UIManager | null} */ // Add UIManager instance property
+    uiManager = null;
+    /** @type {AnimationController | null} */ // Add property for the instance
+    animationController = null;
 
-    /** @type {object} */
-    deps = {}; // To store injected dependencies
+    /** @type {object | null} */ // Changed type annotation
+    deps = null; // To store injected dependencies
 
     /** @type {HTMLElement | null} */
     canvasContainer = null;
 
+    /** @type {object | null} */
+    initialState = null; // Add property to store initial state
+
+    /**
+     * @property {UIManager} uiManager
+     * @property {ResultHandler} resultHandler
+     * @property {AnimationController} animationController // Add new dependency type
+     */
+
     /**
      * @param {string} canvasContainerId - ID of the DOM element to contain the canvas.
-     * @param {object} dependencies - Object containing core services/dependencies.
-     * @param {import('../utils/EventBus.js').EventBus} dependencies.eventBus
-     * @param {import('../utils/FeatureManager.js').FeatureManager} dependencies.featureManager
-     * @param {import('../utils/Logger.js').Logger} dependencies.logger
-     * @param {import('./ApiService.js').ApiService} dependencies.apiService
+     * @param {GameDependencies} dependencies - Core services + initial state.
      */
-    constructor(canvasContainerId, dependencies) {
+    constructor(canvasContainerId, /** @type {GameDependencies} */ dependencies) {
         this.canvasContainer = document.getElementById(canvasContainerId);
         if (!this.canvasContainer) {
             const log = dependencies?.logger?.error || console.error;
             log('Game: Constructor', `Canvas container #${canvasContainerId} not found.`);
             return; 
         }
-        if (!dependencies || !dependencies.eventBus || !dependencies.featureManager || !dependencies.logger || !dependencies.apiService) {
+        if (!dependencies || !dependencies.logger || !dependencies.eventBus || !dependencies.apiService || !dependencies.featureManager) {
             const log = dependencies?.logger?.error || console.error;
-            log('Game: Constructor', 'Core dependencies (eventBus, featureManager, logger, apiService) are required!');
+            log('Game: Constructor', 'Core dependencies (logger, eventBus, apiService, featureManager) are required!');
             return; 
         }
-
+        if (!dependencies.initialState) {
+             (dependencies.logger || console).error('Game: Constructor', 'Initial state is required in dependencies!');
+            return;
+        }
+        
+        // Store core dependencies and initial state
         this.deps = dependencies; 
+        this.initialState = dependencies.initialState; 
+
         this.deps.logger.info('Game', 'Game instance created.');
-        initGameState();
     }
 
     async init() {
@@ -142,15 +166,19 @@ export class Game {
             await this._setupPixiApp();
             await this._loadAssets();
             this._createLayers();
-            this._createManagers(); // Create managers after layers exist
+            this._createManagers(); // Create managers first
 
-            // Create temporary container for win lines only
+            // Check if managers were created successfully before proceeding
+            if (!this.backgroundManager || !this.reelManager || !this.animationController || !this.uiManager || !this.spinManager || !this.resultHandler || !this.freeSpinsUIManager) {
+                (this.deps.logger || console).error('Game', 'Core manager creation failed. Halting initialization.');
+                return;
+            }
+
             const winLineGraphics = new PIXI.Graphics();
+            this._createGameElements(winLineGraphics); 
+            this._initCoreModules(winLineGraphics); // Init modules, passing managers
 
-            this._createGameElements(winLineGraphics); // Pass only winLineGraphics
-            this._initCoreModules(winLineGraphics); // Pass only winLineGraphics
             this._finalizeSetup();
-
             console.log("Game Initialized Successfully");
 
         } catch (err) {
@@ -260,40 +288,39 @@ export class Game {
     }
 
     _createManagers() {
-        const { logger, eventBus, apiService } = this.deps;
-        if (!logger || !eventBus || !apiService) {
-            console.error("Game Init Error: Core dependencies (logger, eventBus, apiService) missing in Game instance.");
+        const { logger, eventBus, apiService, featureManager } = this.deps;
+        if (!logger || !eventBus || !apiService || !featureManager) {
+            console.error("Game Init Error: Core dependencies missing in Game instance.");
             return;
         }
-
-        if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer) {
+        if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer || !this.layerUI) {
              console.error("Game Init Error: Required layers or ticker not available for manager creation.");
              return;
         }
         
+        // Instantiate managers with correct arguments
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
-        this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
         this.reelManager = new ReelManager(this.layerReels, app.ticker, logger);
-        
-        // Instantiate ResultHandler, passing dependencies including reelManager
-        this.resultHandler = new ResultHandler({
-            eventBus: eventBus,
-            logger: logger,
-            reelManager: this.reelManager
+        // Instantiate AnimationController first 
+        this.animationController = new AnimationController({ logger, eventBus });
+        // Now instantiate UIManager, passing animationController
+        this.uiManager = new UIManager({
+            parentLayer: this.layerUI, logger, eventBus, featureManager, 
+            animationController: this.animationController 
         });
-        this.resultHandler.init(); // Initialize ResultHandler to subscribe to events
-
-        // Instantiate the OLD SpinManager (or remove if ResultHandler fully replaces its needed parts?)
-        // For now, keep it but ensure it doesn't conflict with ResultHandler setting stops
-        // TODO: Re-evaluate SpinManager's role and remaining responsibilities
         this.spinManager = new SpinManager(this.reelManager, logger, eventBus, apiService);
-        
+        this.resultHandler = new ResultHandler({ eventBus, logger, reelManager: this.reelManager });
+        this.resultHandler.init(); 
+
+        this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
         new LogoManager(this, this.layerLogo, logger, eventBus); 
 
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
         // Expose managers for debug panel access
         if (typeof window !== 'undefined') {
+            // @ts-ignore
+            window.gameApp = this; 
             // @ts-ignore
             window.gameApp.backgroundManager = this.backgroundManager;
             // @ts-ignore
@@ -303,8 +330,11 @@ export class Game {
             // @ts-ignore
             window.gameApp.spinManager = this.spinManager;
             // @ts-ignore
-            window.gameApp.resultHandler = this.resultHandler; // Expose new handler
-            // Note: LogoManager instance isn't stored on Game, so not exposed here directly
+            window.gameApp.resultHandler = this.resultHandler;
+            // @ts-ignore
+            window.gameApp.uiManager = this.uiManager; 
+            // @ts-ignore
+            window.gameApp.animationController = this.animationController; 
         }
         logger.info('Game', 'Core managers created and dependencies injected.');
     }
@@ -313,108 +343,93 @@ export class Game {
      * @param {PIXI.Graphics} winLineGraphics
      */
     _createGameElements(winLineGraphics) {
-        // Reels are created in ReelManager
-
-        // --- Add WinLine Graphics to Layer ---
-        if (this.layerWinLines) { // Null check added
+        if (this.layerWinLines) { 
             this.layerWinLines.addChild(winLineGraphics);
         }
-
-        // --- Setup UI --- is handled within UIManager ---
     }
 
     /**
      * @param {PIXI.Graphics} winLineGraphics
      */
     _initCoreModules(winLineGraphics) {
-        // Initialize modules that depend on game elements or temporary containers
-        // Add null checks for managers and layers before accessing/passing them
-        // Update null check to include the new layerFullScreenEffects
-        if (!this.reelManager || !this.layerOverlays || !this.layerParticles || !this.layerUI || !this.layerDebug || !app?.ticker || !this.notificationsContainer || !this.winAnnouncementsContainer || !this.layerParticles || !this.layerFullScreenEffects ) { // Added layerFullScreenEffects check
-             console.error("Game Init Error: Required managers, layers, or ticker not available for core module initialization.");
-             return;
+        const { logger, eventBus, featureManager, apiService } = this.deps;
+        // Ensure dependencies and managers are available
+        if (!logger || !eventBus || !featureManager || !apiService || !app || !this.notificationsContainer || !this.winAnnouncementsContainer || !this.layerDebug || !this.layerFullScreenEffects || !this.spinManager || !this.animationController || !this.backgroundManager || !this.reelManager || !this.uiManager) { 
+            (logger || console).error('Game', '_initCoreModules: Missing dependencies, managers, layers, or app instance.');
+            return; 
         }
 
-        const currentReels = this.reelManager.reels; // Access reels directly after null check
-        const reelContainerRef = this.reelManager.reelContainer; // Access container directly after null check
+        // Managers already checked in init(), null check here mainly for type safety downstream
 
-        // Add null check for reelContainerRef before calling initFreeSpins
-        if (!reelContainerRef) {
-            console.error("Game Init Error: ReelManager's reelContainer is null during core module init.");
-            return; // Cannot proceed without the reel container
+        if (!this.initialState) { // Add check for initial state
+             (this.deps.logger || console).error('Game', '_initCoreModules: Initial state missing.');
+            return;
         }
 
-        // Pass the new layerFullScreenEffects to initFreeSpins
-        // Assuming signature update: initFreeSpins(app, reelContainerRef, currentReels, effectsLayer)
-        initFreeSpins(app, reelContainerRef, currentReels, this.layerFullScreenEffects);
-        initPaylineGraphics(winLineGraphics);
-        // Pass dedicated containers to modules
-        initNotifications(this.notificationsContainer); // Pass dedicated notifications container
-        initAnimations(this.winAnnouncementsContainer, this.layerParticles); // Pass dedicated win announcements container
-        initTurboMode(currentReels);
-        initWinEvaluation(currentReels);
-
-        // --- Initialize UIManager ---
-        // Define distinct text styles
+        // Define UI styles 
         const uiStyles = {
-            label: {
-                fontFamily: "Arial, sans-serif", 
-                fontSize: 16, // Standard size for labels
-                fill: 0xCCCCCC, // Lighter gray for labels
-                fontWeight: 'normal'
-            },
-            balanceValue: {
-                fontFamily: '"Arial Black", Gadget, sans-serif',
-                fontSize: 18, // Slightly smaller than original value, but bold
-                fill: 0xFFFFFF, // White
-                fontWeight: 'bold',
-                stroke: { color: 0x000000, width: 1 } // Thinner stroke
-            },
-            betValue: {
-                fontFamily: '"Arial Black", Gadget, sans-serif',
-                fontSize: 20, // Size for bet amount in the middle
-                fill: 0xFFFFFF, // White
-                fontWeight: 'bold',
-                stroke: { color: 0x000000, width: 1 }
-            },
-            winValue: { // Style for the main win display
-                fontFamily: '"Arial Black", Gadget, sans-serif',
-                fontSize: 24,
-                fill: 0xf1c40f, // Gold color
-                fontWeight: 'bold',
-                stroke: { color: 0x000000, width: 2 }
-            },
-            winRollup: { // Style for the win rollup animation
-                fontFamily: '"Arial Black", Gadget, sans-serif',
-                fontSize: 40, // Large size for rollup
-                fill: 0xffd700, // Brighter gold
-                fontWeight: 'bold',
-                stroke: { color: 0x000000, width: 3 }
-            }
+            label: new PIXI.TextStyle({ fontFamily: 'Arial', fontSize: 14, fill: 0xAAAAAA }),
+            balanceValue: new PIXI.TextStyle({ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', fill: 0xFFFFFF }),
+            betValue: new PIXI.TextStyle({ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', fill: 0xFFFFFF }),
+            winValue: new PIXI.TextStyle({ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', fill: 0xFFFF00 }),
+            winRollup: new PIXI.TextStyle({ fontFamily: 'Arial', fontSize: 24, fontWeight: 'bold', fill: 0xFFFF00, stroke: { color: 0x000000, width: 2 } }),
         };
 
-        if (this.spinManager) { // Ensure spinManager exists
-             // Pass the styles object instead of individual styles
-             initUIManager(this.layerUI, uiStyles, this.spinManager);
-        } else {
-             console.error("Game Init Error: SpinManager not available when initializing UIManager.");
-             // Handle error: maybe initialize UIManager without spin capabilities or halt?
-             // For now, just log the error.
-        }
+        // Init UIManager, passing initial state
+        this.uiManager.init(uiStyles, this.initialState);
 
-        // --- Initialize Info Overlay (DOM) ---
-        infoOverlayElement = document.getElementById('infoOverlay');
+        // Prepare dependencies object for modules needing multiple managers
+        const moduleDeps = {
+            logger, eventBus, featureManager, apiService, 
+            reelManager: this.reelManager, uiManager: this.uiManager, app: app, 
+            spinManager: this.spinManager, animationController: this.animationController, 
+            backgroundManager: this.backgroundManager,
+            initialState: this.initialState, // Pass initial state if needed by others
+        };
+
+        // Initialize modules, passing specific dependencies they need
+        initPaylineGraphics({ ...moduleDeps, graphics: winLineGraphics }); 
+        WinEvaluation.init({ ...moduleDeps }); 
+
+        // Init utility UI modules with specific deps
+        if (this.notificationsContainer) { 
+             initNotifications({ logger, eventBus, container: this.notificationsContainer }); 
+        } else { logger.error('Game', 'Cannot init Notifications, container missing.'); }
+        
+        const infoOverlayElement = document.getElementById('info-overlay');
         if (infoOverlayElement) {
-            initInfoOverlay(infoOverlayElement);
-            updateInfoOverlay(); // Initial update
+            initInfoOverlay({ logger, eventBus, overlayElement: infoOverlayElement }); 
+        } else { logger.warn('Game', 'InfoOverlay element #info-overlay not found in DOM.'); }
+        
+        if (this.layerDebug) {
+             // Call initDebugPanel with direct args based on its signature
+             initDebugPanel(app, this.layerDebug);
+        } else { logger.error('Game', 'Cannot init DebugPanel, layer missing.'); }
+
+        // Update particle animations
+        updateParticles(0);
+
+        // Init Animations module
+        if (this.winAnnouncementsContainer && this.layerParticles) { 
+            initAnimations({ 
+                logger: logger,
+                animationController: this.animationController, 
+                overlayContainer: this.winAnnouncementsContainer,
+                particleContainer: this.layerParticles 
+            });
         } else {
-            console.warn("Game Setup: infoOverlay element not found in DOM.");
+            logger.error('Game', 'Cannot initialize Animations: Missing required layers.');
         }
 
-        // --- Initialize Debug Panel ---
-        if (this.layerDebug && app) {
-             initDebugPanel(app, this.layerDebug);
-        }
+        // Initialize Feature Modules using full moduleDeps
+        initTurboMode({ ...moduleDeps }); 
+        initAutoplay({ ...moduleDeps }); 
+        initFreeSpins({
+            ...moduleDeps, 
+            effectsLayer: this.layerFullScreenEffects
+        }); 
+
+        logger.info('Game', 'Core modules initialized.');
     }
 
     _finalizeSetup() {
@@ -426,10 +441,10 @@ export class Game {
             console.error("Finalize Setup Error: Pixi stage not available for sorting.");
         }
 
-        // Initial UI updates and state settings
-        updateDisplays();
-        setButtonsEnabled(true);
-        applyTurboSettings(state.isTurboMode);
+        // Initial UI updates and state settings are now handled by UIManager listening to events
+        // updateDisplays(); // REMOVED
+        // setButtonsEnabled(true); // REMOVED
+        applyTurboSettings(state.isTurboMode); // Keep this? Turbo logic might need initial application
 
         // Start game loop
         if (app?.ticker) {
@@ -464,27 +479,18 @@ export class Game {
             }
 
             // --- Uncommented Spin End Check ---
-            // Check if the game was spinning and all reels have now stopped
             if (state.isSpinning && !anyReelMoving && !state.isTransitioning) {
-                // Set isTransitioning immediately to prevent duplicate calls or other actions
                 updateState({ isTransitioning: true });
                 console.log("Game.update: Reels stopped moving. Delaying SpinManager.handleSpinEnd...");
-
-                // Delay the call to handleSpinEnd to allow visual reel stop tweens to finish
-                // Use stopTweenDuration from animationSettings plus a small buffer
-                // Ensure stopTweenDuration is in milliseconds if imported from settings
-                const stopTweenDurationMs = stopTweenDuration; // Assuming it's already in ms
-                const evaluationDelay = stopTweenDurationMs + 100; // Buffer (e.g., 100ms)
+                const stopTweenDurationMs = stopTweenDuration; 
+                const evaluationDelay = stopTweenDurationMs + 100; 
 
                 setTimeout(() => {
-                    // Null check for spinManager
                     if (this.spinManager) {
                         this.spinManager.handleSpinEnd();
                     } else {
                         console.error("Game.update Error: Spin ended but SpinManager is not available.");
-                        // Fallback safety: reset state and enable buttons if manager is missing
-                        updateState({ isSpinning: false, isTransitioning: false });
-                        setButtonsEnabled(true);
+                        // setButtonsEnabled(true); // REMOVED - UIManager handles this based on state
                     }
                 }, evaluationDelay);
             }
@@ -546,30 +552,68 @@ export class Game {
     // Removed adjustBackground method - now handled by BackgroundManager
 
     destroy() {
-        // Make sure to destroy the result handler to unsubscribe listeners
+        this.deps.logger?.info('Game', 'Destroying game instance...');
+        // Destroy plugins first (commented out)
+        // this.pluginSystem?.destroyPlugins();
+        
+        // Destroy modules & managers 
         this.resultHandler?.destroy();
-
-        // Destroy other managers and Pixi app
-        // TODO: Call destroy() on other managers (ReelManager, SpinManager, BackgroundManager, FreeSpinsUIManager) if they implement it
-
+        this.uiManager?.destroy(); 
+        this.animationController?.destroy();
+        this.spinManager?.destroy(); // Assuming SpinManager might have destroy later
+        this.reelManager?.destroy(); // Assuming ReelManager might have destroy later
+        this.backgroundManager?.destroy(); // Assuming BackgroundManager might have destroy later
+        this.freeSpinsUIManager?.destroy(); // Assuming FreeSpinsUIManager has destroy
+        // TODO: Call destroy on TurboMode, Autoplay, FreeSpins if they implement it
+        
+        // Stop ticker
+        app?.ticker?.stop(); // Use module-level app
+        
+        // Destroy Pixi Application
         if (app?.stage) {
-            app.stage.destroy({ children: true }); // Destroy stage and children
-            this.deps.logger?.info('Game', 'Pixi stage destroyed.');
+            app.stage.destroy({ children: true });
         }
         if (app) {
-            app.destroy(true, { children: true }); // Destroy app, canvas, textures
+            app.destroy(true, { children: true }); 
             app = null;
             globalThis.__PIXI_APP__ = undefined;
-            this.deps.logger?.info('Game', 'Pixi application destroyed.');
         }
         
-        // Remove global references if they exist
+        // Destroy GameState AFTER other cleanup
+        destroyGameState();
+
+        // Remove global references
         if (typeof window !== 'undefined') {
             // @ts-ignore
             delete window.gameApp;
         }
 
-        this.deps.logger?.info('Game', 'Destroyed.'); // Use injected logger
+        this.deps.logger?.info('Game', 'Destroyed game instance.');
+
+        // Nullify references
+        this.layerBackground = null;
+        this.layerReels = null;
+        this.layerWinLines = null;
+        this.layerUI = null;
+        this.layerLogo = null;
+        this.layerOverlays = null;
+        this.layerParticles = null;
+        this.layerDebug = null;
+        this.layerFullScreenEffects = null;
+        this.fsIndicatorContainer = null;
+        this.notificationsContainer = null;
+        this.winAnnouncementsContainer = null;
+        this.backgroundSprite = null;
+        this.freeSpinsUIManager = null;
+        this.backgroundManager = null;
+        this.reelManager = null;
+        this.spinManager = null;
+        this.resultHandler = null;
+        this.uiManager = null;
+        this.animationController = null;
+        this.canvasContainer = null;
+        this.winLineGraphics = null; // Nullify graphics reference used by legacy modules
+        this.deps = null; // Clear deps object
     }
 }
 

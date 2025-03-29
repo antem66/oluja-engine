@@ -1,41 +1,59 @@
-import { skipBounceInTurbo } from '../config/animationSettings.js'; // Removed updateAnimationSettings import
-import { state } from '../core/GameState.js'; // Assuming state access
-import { updateTurboButtonState as updateBtnState } from '../ui/UIManager.js'; // Assuming UI management
+import { skipBounceInTurbo } from '../config/animationSettings.js';
+// Removed GameState import
+// Removed UIManager import
 
-// Placeholder for reels data - this should be passed in or accessed via GameState/Game module
-let reelsRef = [];
-export function initTurboMode(reels) {
-    reelsRef = reels;
+// Import types
+import { Logger } from '../utils/Logger.js';
+import { EventBus } from '../utils/EventBus.js';
+import { FeatureManager } from '../utils/FeatureManager.js';
+
+// --- Module-level variables ---
+/** @type {Logger | null} */
+let logger = null;
+/** @type {EventBus | null} */
+let eventBus = null;
+/** @type {FeatureManager | null} */
+let featureManager = null;
+
+// Removed reelsRef
+
+/**
+ * Initializes the TurboMode module with dependencies.
+ * @param {object} dependencies
+ * @param {Logger} dependencies.logger
+ * @param {EventBus} dependencies.eventBus
+ * @param {FeatureManager} dependencies.featureManager
+ */
+export function initTurboMode(dependencies) {
+    if (!dependencies || !dependencies.logger || !dependencies.eventBus || !dependencies.featureManager) {
+        console.error("TurboMode Init Error: Missing dependencies (logger, eventBus, featureManager).");
+        return;
+    }
+    logger = dependencies.logger;
+    eventBus = dependencies.eventBus;
+    featureManager = dependencies.featureManager;
+
+    logger.info('TurboMode', 'Initialized.');
+    // No event listeners needed here currently, as UI updates react to GameState changes
 }
 
 /**
  * Applies turbo settings to the game.
- * Updates animation timings and reel bounce behavior based on the turbo state.
+ * Currently, this primarily involves logging, as actual speed changes are handled elsewhere
+ * based on reading `state.isTurboMode` when needed (e.g., spin duration calculation).
  * @param {boolean} isTurbo - Whether turbo mode is currently active.
  */
 export function applyTurboSettings(isTurbo) {
-    // updateAnimationSettings is removed as settings are now applied directly based on state.isTurboMode
-
-    // Update reel-specific behavior if needed (like skipping bounce, though currently unused by tween logic)
-    // This assumes reelsRef is initialized and contains reel objects with a 'skipBounce' property
-    if (reelsRef && reelsRef.length > 0) {
-        reelsRef.forEach(reel => {
-            if (reel) { // Check if reel object exists
-                reel.skipBounce = isTurbo && skipBounceInTurbo;
-            } else {
-                console.warn("TurboMode: Found undefined reel in reelsRef during applyTurboSettings.");
-            }
-        });
-    } else {
-        // This might happen if called before reels are created, maybe log a warning
-        // console.warn("TurboMode: applyTurboSettings called before reelsRef was initialized or populated.");
-    }
-
-    // Update the button state visually (handled by UIManager)
-    // updateBtnState(isTurbo); // Call the function imported from UIManager
+    // Logic for directly modifying reel properties (like skipBounce) removed.
+    // Spin duration/speed logic in Game.js or SpinManager should read state.isTurboMode.
+    // UI updates are handled by UIManager reacting to state:changed:isTurboMode events.
+    logger?.info('TurboMode', `applyTurboSettings called with isTurbo: ${isTurbo}.`);
 }
 
-// Note: updateTurboButtonState is now assumed to be part of UIManager.js
-// It will read the `isTurboMode` from the shared state and update the button's appearance.
-// The toggleTurbo function in ButtonHandlers.js calls applyTurboSettings here
-// and then calls the UIManager's updateTurboButtonState.
+// Optional: Add destroy function if needed later for cleanup
+export function destroy() {
+    logger?.info('TurboMode', 'Destroyed.');
+    logger = null;
+    eventBus = null;
+    featureManager = null;
+}
