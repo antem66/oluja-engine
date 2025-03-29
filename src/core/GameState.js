@@ -292,14 +292,21 @@ export function updateState(updates) {
     // Merge the updates into the state
     state = { ...state, ...updates };
 
-    // Emit events for properties that actually changed
+    // Emit granular events for properties that actually changed
     for (const key in changedProperties) {
         const { oldValue, newValue } = changedProperties[key];
         const eventName = `state:changed:${key}`;
         const payload = { property: key, oldValue, newValue };
         eventBusInstance.emit(eventName, payload);
-        // Optional: More detailed log after emit
-        // loggerInstance.info('GameState', `Event emitted: ${eventName}`, payload);
+    }
+    
+    // Also emit a general state change event if any properties changed
+    if (Object.keys(changedProperties).length > 0) {
+        eventBusInstance.emit('game:stateChanged', { 
+            updatedProps: Object.keys(changedProperties),
+            newState: state // Pass the full new state
+        });
+        loggerInstance.debug('GameState', 'Emitted game:stateChanged event.');
     }
 }
 
