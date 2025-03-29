@@ -21,6 +21,19 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
   customFilters = []; // Track custom filters separately from base filters
 
   constructor(symbolId) {
+    // *** ADDED CHECK ***: Ensure symbolId is valid
+    if (typeof symbolId !== 'string' || symbolId === '') {
+        console.error(`SymbolSprite Error: Invalid symbolId received: ${symbolId}. Using fallback.`);
+        // Force fallback and prevent further errors
+        super(PIXI.Texture.WHITE);
+        this.symbolId = '__INVALID__'; // Assign a placeholder ID
+        this.anchor.set(0.5);
+        this.width = SYMBOL_SIZE * 0.9;
+        this.height = SYMBOL_SIZE * 0.9;
+        this.x = REEL_WIDTH / 2;
+        return; // Exit constructor early
+    }
+
     // TODO: Replace placeholder with actual texture loading based on symbolId
     // Use the preloaded texture from PIXI.Assets by its alias (which is the symbolId)
     const texture = PIXI.Assets.get(symbolId);
@@ -53,9 +66,10 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
    * @returns {PIXI.Filter} The added filter
    */
   addFilter(filter, name) {
-    // Initialize filters array if not exists
-    if (!this.filters) {
-      this.filters = [];
+    // Ensure filters is an array
+    if (!Array.isArray(this.filters)) {
+      // If it's a single filter, put it in an array. If null/undefined, create new array.
+      this.filters = this.filters ? [this.filters] : [];
     }
     
     // Add name property to filter for reference
@@ -76,7 +90,8 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
    * @returns {boolean} True if filter was found and removed
    */
   removeFilter(filterOrName) {
-    if (!this.filters || !this.customFilters.length) return false;
+    // Ensure filters is an array and we have custom filters to check against
+    if (!Array.isArray(this.filters) || this.filters.length === 0 || !this.customFilters.length) return false;
     
     let filterIndex = -1;
     
@@ -102,6 +117,10 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
         this.filters = null;
       }
       
+      // We need to re-assign filters for Pixi to update
+      // eslint-disable-next-line no-self-assign
+      this.filters = this.filters;
+      
       return true;
     }
     
@@ -112,7 +131,8 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
    * Removes all custom filters that were added
    */
   clearCustomFilters() {
-    if (!this.filters) return;
+    // Ensure filters is an array
+    if (!Array.isArray(this.filters) || this.filters.length === 0) return;
     
     // Remove all custom filters from main filters array
     this.customFilters.forEach(filter => {
@@ -129,6 +149,10 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
     if (this.filters.length === 0) {
       this.filters = null;
     }
+    
+    // Re-assign filters for Pixi to update
+    // eslint-disable-next-line no-self-assign
+    this.filters = this.filters;
   }
   
   /**
@@ -137,7 +161,12 @@ export class SymbolSprite extends PIXI.Sprite { // Rename class to SymbolSprite
    * @returns {PIXI.Filter|null} The filter or null if not found
    */
   getFilter(name) {
-    if (!this.filters) return null;
+    if (!Array.isArray(this.filters)) {
+        // If it's a single filter, check its name
+        // @ts-ignore Check if name property exists
+        return (this.filters && this.filters.name === name) ? this.filters : null;
+    }
+    // @ts-ignore Check if name property exists
     return this.filters.find(f => f.name === name) || null;
   }
 }

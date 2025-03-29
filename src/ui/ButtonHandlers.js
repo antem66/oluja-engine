@@ -6,7 +6,7 @@ import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
 // --- Placeholder Imports (Will be replaced with actual module imports later) ---
 // These represent dependencies that need to be resolved once other modules are created.
 import { state, updateState } from '../core/GameState.js'; // Assuming GameState exports state object and update function
-import { updateDisplays, updateAutoplayButtonState, updateTurboButtonState, setButtonsEnabled } from './UIManager.js'; // Assuming UIManager handles UI updates
+import { updateDisplays, updateAutoplayButtonState, updateTurboButtonState, setButtonsEnabled, getSpinManagerStartFunction } from './UIManager.js'; // Assuming UIManager handles UI updates
 import { flashElement } from './Notifications.js'; // Assuming Notifications handles flashing
 import { applyTurboSettings as applyTurbo } from '../features/TurboMode.js'; // Assuming TurboMode handles applying settings
 // Removed import for global startSpinLoop
@@ -133,11 +133,14 @@ export function startSpin(isFreeSpin = false) {
   // Reset target stopping index for chained stops
   updateState({ targetStoppingReelIndex: 0 }); // This might be redundant if SpinManager handles it
 
-  // Initiate the spin via SpinManager on the global gameApp instance
-  if (window.gameApp && window.gameApp.spinManager) {
-      window.gameApp.spinManager.startSpin(); // Call the manager's method
+  // Get the spin function from UIManager
+  const spinFunc = getSpinManagerStartFunction();
+
+  // Initiate the spin via the retrieved function
+  if (spinFunc) {
+      spinFunc(); // Call the SpinManager's startSpin method
   } else {
-      console.error("Cannot start spin: SpinManager not found on window.gameApp");
+      console.error("Cannot start spin: Spin function not available from UIManager.");
       // Re-enable buttons if spin couldn't start
       setButtonsEnabled(true);
       updateState({ isSpinning: false });

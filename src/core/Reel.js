@@ -119,9 +119,9 @@ export class Reel {
         console.log(`Reel ${this.reelIndex}: Starting spin (infinite test)`);
     }
 
-    // scheduleStop is not needed for infinite spin test, but keep it for now
     scheduleStop(targetStopTime) {
-        // this.targetStopTime = targetStopTime;
+        this.targetStopTime = targetStopTime; // Uncommented to store stop time
+        console.log(`Reel ${this.reelIndex}: Scheduled to stop near time ${targetStopTime.toFixed(0)}`);
     }
 
     // --- Symbol Alignment --- (Restored)
@@ -142,25 +142,46 @@ export class Reel {
 
             const symbolOffset = currentPosition - Math.floor(currentPosition);
             symbolSprite.y = (relativeIndex - symbolOffset) * SYMBOL_SIZE + (SYMBOL_SIZE / 2);
+            console.log(`Reel ${this.reelIndex}, Symbol ${i}, Y: ${symbolSprite.y.toFixed(2)}, Pos: ${currentPosition.toFixed(2)}`); // ADD THIS LOG
 
-            // --- Temporarily Commented Out Symbol Replacement Logic ---
-            /*
+            // --- Uncommented Symbol Replacement Logic ---
             const expectedSymbolId = this.strip[targetStripIndex];
-            if (symbolSprite.symbolId !== expectedSymbolId) {
+
+            // *** ADDED CHECK ***: Ensure expectedSymbolId is valid before proceeding
+            if (typeof expectedSymbolId !== 'string' || expectedSymbolId === '') {
+                console.error(`[Reel ${this.reelIndex}] Invalid expectedSymbolId at index ${targetStripIndex}. Skipping replacement for symbol ${i}.`);
+                // Ensure the current symbol is not null before skipping
+                if (!symbolSprite) this.symbols[i] = null; // Keep it null if it was already
+                continue; // Skip to the next symbol in the loop
+            }
+
+            // Ensure symbolSprite has a property like 'symbolId' for comparison
+            // Assuming createSymbolGraphic adds this property.
+            // @ts-ignore - Add check if symbolSprite has symbolId property before comparing
+            if (symbolSprite && typeof symbolSprite.symbolId !== 'undefined' && symbolSprite.symbolId !== expectedSymbolId) {
                 const oldSymbolY = symbolSprite.y;
+
+                // Important: Remove child *before* destroying
                 this.container.removeChild(symbolSprite);
-                symbolSprite.destroy();
+                symbolSprite.destroy({ children: true }); // Ensure proper cleanup
 
                 const newSymbol = createSymbolGraphic(expectedSymbolId);
                 if (newSymbol) {
+                    // Assign symbolId if createSymbolGraphic doesn't
+                    // newSymbol.symbolId = expectedSymbolId; 
                     this.symbols[i] = newSymbol;
                     this.container.addChildAt(newSymbol, i); // Use addChildAt for order
                     newSymbol.y = oldSymbolY;
                 } else {
                     console.error(`Failed to create symbol graphic for ID: ${expectedSymbolId}`);
+                    // Handle error: maybe push a placeholder or skip?
+                    // For now, push null to avoid errors down the line, but log it
+                    this.symbols[i] = null;
+                    console.warn(`Pushed null to symbols array at index ${i} for reel ${this.reelIndex}`);
                 }
+            } else if (symbolSprite && typeof symbolSprite.symbolId === 'undefined') {
+                 console.warn(`Symbol sprite at index ${i} on reel ${this.reelIndex} is missing symbolId property.`);
             }
-            */
         }
     }
 
@@ -217,7 +238,7 @@ export class Reel {
         let needsAlign = false;
         let reelIsActive = true; // Restore variable declaration
 
-        // --- Simplified State Machine ---
+        // --- State Machine with Stop Logic ---
         switch (this.state) {
             case 'accelerating':
                 this.spinSpeed = Math.min(maxSpinSpeed, this.spinSpeed + spinAcceleration * delta);
@@ -231,41 +252,86 @@ export class Reel {
                 break;
 
             case 'spinning':
-                this.position += maxSpinSpeed * delta;
-                this.updateSpinEffects(1.0);
-                needsAlign = true;
-                break;
+                // Check if it's time to initiate the stop tween
+                if (this.targetStopTime > 0 && now >= this.targetStopTime - stopTweenDuration) {
+                    this.state = 'tweeningStop';
+                    this.spinSpeed = 0; // Stop natural spinning
+                    console.log(`Reel ${this.reelIndex}: Initiating stop tween at time ${now.toFixed(0)}`);
 
-            // Keep tweeningStop commented out for now
-            /*
-            case 'tweeningStop':
-                // GSAP handles logical position update. onUpdate sets needsAlign.
-                if (!this.stopTween || !this.stopTween.isActive()) {
-                     this.state = 'stopped';
-                     this.position = this.finalStopPosition; // Snap logical position
-                     needsAlign = true; // Align one last time
-                     // reelIsActive = false; // This is handled by the state switch below
-                     this.updateSpinEffects(0);
-                     console.warn(`Reel ${this.reelIndex}: Stop tween inactive/failed.`);
+                    // *** DEBUG LOG ***: Check finalStopPosition before tweening
+                    if (isNaN(this.finalStopPosition)) {
+                        console.error(`[Reel ${this.reelIndex}] *** ERROR: finalStopPosition is NaN before tween start!`);
+                    } else {
+                        console.log(`[Reel ${this.reelIndex}] finalStopPosition before tween: ${this.finalStopPosition}`);
+                    }
+
+                    // Kill any previous tween just in case
+                    if (this.stopTween) {
+                        this.stopTween.kill();
+                    }
+
+                    // Create the GSAP tween to stop the reel
+                    this.stopTween = gsap.to(this, {
+                        position: this.finalStopPosition, // Target the final logical position
+                        duration: stopTweenDuration / 1000, // GSAP uses seconds
+                        ease: 'quad.out', // Smooth deceleration
+                        onUpdate: () => {
+                            // Update visuals during the tween
+                            this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length; // Wrap position during tween
+                            this.alignReelSymbols();
+                            // Gradually reduce spin effects during tween
+                            const progress = this.stopTween ? this.stopTween.progress() : 1;
+                            this.updateSpinEffects(1 - progress);
+                        },
+                        onComplete: () => {
+                            console.log(`Reel ${this.reelIndex}: Stop tween completed at time ${performance.now().toFixed(0)}`);
+                            this.state = 'stopped';
+                            this.position = this.finalStopPosition; // Ensure exact final position
+                            this.stopTween = null;
+                            this.updateSpinEffects(0); // Turn off effects completely
+                            this.alignReelSymbols(); // Align one last time
+                        }
+                    });
+                    // Tween started, no need for natural position update this frame
+                    needsAlign = false; // onUpdate will handle alignment
                 } else {
-                    needsAlign = true; // Ensure alignment during tween
+                    // Continue spinning normally
+                    this.position += maxSpinSpeed * delta;
+                    this.updateSpinEffects(1.0);
+                    needsAlign = true;
                 }
                 break;
-            */
+
+            // Uncomment and adjust tweeningStop case
+            case 'tweeningStop':
+                // GSAP tween handles position updates via onUpdate.
+                // The onUpdate callback now sets needsAlign = true implicitly by calling alignReelSymbols.
+                // We just need to check if the tween is still active.
+                reelIsActive = this.stopTween ? this.stopTween.isActive() : false;
+                if (!reelIsActive) {
+                    // Fallback if tween completed but onComplete didn't run or state didn't change
+                    console.warn(`Reel ${this.reelIndex}: Tween stopped unexpectedly or onComplete failed. Forcing state to 'stopped'.`);
+                    this.state = 'stopped';
+                    this.position = this.finalStopPosition; // Snap logical position
+                    this.updateSpinEffects(0);
+                    this.alignReelSymbols(); // Align one last time
+                }
+                // No need to set needsAlign here, onUpdate handles it.
+                break;
+
             case 'stopped': // Restore correct stopped/idle behavior
             case 'idle':
                 reelIsActive = false; // Reel is not active
                 this.updateSpinEffects(0); // Ensure effects are off
                 // Do not change position or set needsAlign
-                break;
-        }
+              break;         }
 
-        // Align symbols if needed (and wrap position)
-        if (needsAlign) {
-             this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length;
-             this.alignReelSymbols();
-        }
+         // Align symbols if needed (and wrap position)
+         if (needsAlign) {
+              this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length;
+              this.alignReelSymbols();
+         }
 
-        return true; // Always return true to keep Game loop thinking it's active
-    }
-}
+         return reelIsActive; // Restore returning the actual state activity
+     }
+ }

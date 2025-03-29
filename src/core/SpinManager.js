@@ -55,7 +55,7 @@ export class SpinManager {
          // @ts-ignore - Null check above ensures reelManager is valid here
          const currentReels = this.reelManager.reels;
 
-         // Generate forced win pattern if in debug mode
+        // Generate forced win pattern if in debug mode
         if (state.isDebugMode && state.forceWin) {
             console.log("Debug mode active: Forcing a win pattern");
             winPattern = this._generateRandomWinPattern(); // Use internal helper method
@@ -71,7 +71,7 @@ export class SpinManager {
             if (state.isDebugMode && state.forceWin && winPattern && winPattern.positions) {
                  stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]); // Use internal helper
             } else {
-                 stopIndex = Math.floor(Math.random() * reel.totalSymbols);
+                 stopIndex = Math.floor(Math.random() * reel.strip.length);
             }
             reel.stopIndex = stopIndex; // Set the target stop index on the reel
             reel.finalStopPosition = stopIndex; // Ensure final position matches

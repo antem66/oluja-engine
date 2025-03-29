@@ -4,11 +4,19 @@ import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
 
 export class ReelManager {
+    /** @type {Reel[]} */
     reels = [];
+    /** @type {PIXI.Container | null} */
     reelContainer = null;
+    /** @type {PIXI.Container | null} */
     parentLayer = null;
+    /** @type {PIXI.Ticker | null} */
     appTicker = null;
 
+    /**
+     * @param {PIXI.Container} parentLayer
+     * @param {PIXI.Ticker} appTicker
+     */
     constructor(parentLayer, appTicker) {
         if (!parentLayer) {
             console.error("ReelManager: Parent layer is required!");
@@ -41,12 +49,15 @@ export class ReelManager {
     }
 
     _createReels() {
-        if (!this.reelContainer) return;
+        if (!this.reelContainer || !this.appTicker) return;
+
+        const container = this.reelContainer;
+        const ticker = this.appTicker;
 
         for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
-            const reel = new Reel(i, REEL_STRIPS[i], this.appTicker);
+            const reel = new Reel(i, REEL_STRIPS[i], ticker);
             this.reels.push(reel);
-            this.reelContainer.addChild(reel.container);
+            container.addChild(reel.container);
         }
     }
 
@@ -63,18 +74,27 @@ export class ReelManager {
         // but it's safer if Game adds this mask graphic directly.
         // For now, let's try adding it relative to the parent layer.
         // This might need adjustment if the parentLayer isn't directly on the stage.
-        if (this.parentLayer.parent) {
+        if (this.parentLayer?.parent) {
              this.parentLayer.parent.addChild(reelMask);
         } else {
-            console.warn("ReelManager: Could not add mask graphic to stage.");
+            console.warn("ReelManager: Could not add mask graphic to stage via parent.parent.");
             // As a fallback, add it to the parent layer itself, though this might not be correct visually.
-            this.parentLayer.addChild(reelMask);
+            if (this.parentLayer) {
+                this.parentLayer.addChild(reelMask);
+            }
         }
     }
 
     // Method to update all reels - called by Game's update loop
+    /**
+     * @param {number} delta
+     * @param {number} now
+     * @returns {boolean} - True if any reel is still moving
+     */
     update(delta, now) {
         let anyReelMoving = false;
+        if (!this.appTicker) return false;
+
         this.reels.forEach((reel) => {
             const isActive = reel.update(delta, now);
             if (isActive) {

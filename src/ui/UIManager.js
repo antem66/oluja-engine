@@ -18,7 +18,18 @@ let spinButton = null;
 let betDecreaseButton = null;
 let betIncreaseButton = null;
 
+// Reference to the SpinManager
+let spinManagerRef = null;
+
 // Removed FS UI variables
+
+/**
+ * Returns the bound startSpin function from the stored SpinManager instance.
+ * @returns {Function | null} The bound startSpin function or null if manager isn't set.
+ */
+export function getSpinManagerStartFunction() {
+    return spinManagerRef ? spinManagerRef.startSpin.bind(spinManagerRef) : null;
+}
 
 /**
  * Initializes the UI Manager.
@@ -26,11 +37,19 @@ let betIncreaseButton = null;
  * @param {PIXI.Container} parentLayer - The layer to add the UI elements to (e.g., layerUI).
  * @param {object} uiTextStyle - Style object for labels.
  * @param {object} uiValueStyle - Style object for value displays.
+ * @param {object} spinManagerInstance - Instance of the SpinManager.
  */
-export function initUIManager(parentLayer, uiTextStyle, uiValueStyle) {
+export function initUIManager(parentLayer, uiTextStyle, uiValueStyle, spinManagerInstance) {
     if (!parentLayer) {
         console.error("UIManager: Parent layer is required!");
         return;
+    }
+    // Store the SpinManager instance
+    if (!spinManagerInstance) {
+         console.error("UIManager: SpinManager instance is required!");
+         // Decide how to handle: return? throw? For now, log and continue but spin won't work.
+    } else {
+        spinManagerRef = spinManagerInstance;
     }
 
     // Create and add this manager's container to the parent layer
@@ -101,9 +120,25 @@ export function initUIManager(parentLayer, uiTextStyle, uiValueStyle) {
     betIncreaseButton = createButton("", GAME_WIDTH - 115, bottomUIY + 52, handlers.increaseBet, {}, internalContainer, btnW, btnH, false, 'plus');
     betIncreaseButton.name = "betIncreaseButton";
 
-    // Spin Button
-    spinButton = createButton("", GAME_WIDTH - 80, GAME_HEIGHT / 2 + 80, handlers.startSpin, {}, internalContainer, spinBtnSize, spinBtnSize, true, 'spin');
-    spinButton.name = "spinButton";
+    // Spin Button - Use spinManagerRef for the callback
+    if (spinManagerRef) {
+         spinButton = createButton(
+             "",
+             GAME_WIDTH - 80,
+             GAME_HEIGHT / 2 + 80,
+             spinManagerRef.startSpin.bind(spinManagerRef), // Bind the method
+             {},
+             internalContainer,
+             spinBtnSize,
+             spinBtnSize,
+             true,
+             'spin'
+         );
+         spinButton.name = "spinButton";
+    } else {
+        console.error("UIManager: Spin button could not be created - SpinManager not provided.");
+        // Optionally create a disabled placeholder button
+    }
 
     // Turbo Button
     turboButton = createButton("", 100, bottomUIY + 52, handlers.toggleTurbo, {}, internalContainer, btnW, btnH, false, 'turbo');

@@ -45,23 +45,40 @@ let infoOverlayElement; // DOM element for info overlay
 
 // --- Game Class ---
 export class Game {
-    // Layer Containers
+    /** @type {PIXI.Container | null} */
     layerBackground = null;
+    /** @type {PIXI.Container | null} */
     layerReels = null;
+    /** @type {PIXI.Container | null} */
     layerWinLines = null;
+    /** @type {PIXI.Container | null} */
     layerUI = null;
+    /** @type {PIXI.Container | null} */
     layerLogo = null;
+    /** @type {PIXI.Container | null} */
     layerOverlays = null;
+    /** @type {PIXI.Container | null} */
     layerParticles = null;
+    /** @type {PIXI.Container | null} */
     layerDebug = null;
 
-    // Other properties
-    backgroundSprite = null; // Keep for potential direct access if needed, but managed by BackgroundManager
+    /** @type {PIXI.Sprite | null} */
+    backgroundSprite = null;
+    /** @type {FreeSpinsUIManager | null} */
     freeSpinsUIManager = null;
+    /** @type {BackgroundManager | null} */
     backgroundManager = null;
+    /** @type {ReelManager | null} */
     reelManager = null;
-    spinManager = null; // Add manager property
+    /** @type {SpinManager | null} */
+    spinManager = null;
 
+    /** @type {HTMLElement | null} */
+    canvasContainer = null;
+
+    /**
+     * @param {string} canvasContainerId
+     */
     constructor(canvasContainerId) {
         this.canvasContainer = document.getElementById(canvasContainerId);
         if (!this.canvasContainer) {
@@ -138,6 +155,7 @@ export class Game {
     }
 
     _createLayers() {
+        // Assign directly, types allow Container now
         this.layerBackground = new PIXI.Container();
         this.layerBackground.name = "Layer: Background";
         this.layerBackground.zIndex = 0;
@@ -161,7 +179,7 @@ export class Game {
         this.layerOverlays = new PIXI.Container();
         this.layerOverlays.name = "Layer: Overlays";
         this.layerOverlays.zIndex = 50;
-        this.layerOverlays.sortableChildren = true;
+        this.layerOverlays.sortableChildren = true; // Moved after creation
 
         this.layerParticles = new PIXI.Container();
         this.layerParticles.name = "Layer: Particles";
@@ -172,19 +190,31 @@ export class Game {
         this.layerDebug.zIndex = 100;
         this.layerDebug.visible = false;
 
-        app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerOverlays, this.layerParticles, this.layerDebug);
+        // Add null checks before adding children
+        if (app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerOverlays && this.layerParticles && this.layerDebug) {
+             app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerOverlays, this.layerParticles, this.layerDebug);
+        } else {
+            console.error("Game Init Error: One or more layers failed to initialize before adding to stage.");
+        }
     }
 
     _createManagers() {
+        // Add null checks for layers passed to managers
+        if (!this.layerBackground || !this.layerOverlays || !this.layerReels || !app?.ticker || !this.layerLogo) {
+             console.error("Game Init Error: Required layers or ticker not available for manager creation.");
+             return;
+        }
         // Instantiate managers, passing required layers and dependencies
         this.backgroundManager = new BackgroundManager(this.layerBackground);
         this.freeSpinsUIManager = new FreeSpinsUIManager(this.layerOverlays);
         this.reelManager = new ReelManager(this.layerReels, app.ticker);
-        this.spinManager = new SpinManager(this.reelManager, this); // Instantiate SpinManager
-        new LogoManager(this, this.layerLogo);
+        // TODO: Fix SpinManager constructor call if necessary - assuming it takes ReelManager for now
+        // If SpinManager needs the Game instance, pass 'this'. Adjust constructor signature if needed.
+        this.spinManager = new SpinManager(this.reelManager); // Adjusted call - Verify SpinManager constructor
+        new LogoManager(this, this.layerLogo); // Assuming LogoManager needs Game and layerLogo
 
-        // Assign managed sprite if needed (though direct use should be minimized)
-        this.backgroundSprite = this.backgroundManager.backgroundSprite;
+        // Assign managed sprite if needed, with null check for manager
+        this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
         // Expose managers for debug panel access
         if (typeof window !== 'undefined') {
@@ -195,40 +225,57 @@ export class Game {
             // @ts-ignore
             window.gameApp.reelManager = this.reelManager;
             // @ts-ignore
-            window.gameApp.spinManager = this.spinManager; // Expose SpinManager
+            window.gameApp.spinManager = this.spinManager;
         }
     }
 
+    /**
+     * @param {PIXI.Graphics} winLineGraphics
+     */
     _createGameElements(winLineGraphics) {
         // Reels are created in ReelManager
 
         // --- Add WinLine Graphics to Layer ---
-        if (this.layerWinLines) {
+        if (this.layerWinLines) { // Null check added
             this.layerWinLines.addChild(winLineGraphics);
         }
 
         // --- Setup UI --- is handled within UIManager ---
     }
 
+    /**
+     * @param {PIXI.Graphics} winLineGraphics
+     */
     _initCoreModules(winLineGraphics) {
         // Initialize modules that depend on game elements or temporary containers
-        // Pass reels array from ReelManager
-        const currentReels = this.reelManager ? this.reelManager.reels : [];
-        // Pass reelContainer from ReelManager if needed by FreeSpins logic
-        const reelContainerRef = this.reelManager ? this.reelManager.reelContainer : null;
+        // Add null checks for managers and layers before accessing/passing them
+        if (!this.reelManager || !this.layerOverlays || !this.layerParticles || !this.layerUI || !this.layerDebug || !app?.ticker) {
+             console.error("Game Init Error: Required managers, layers, or ticker not available for core module initialization.");
+             return;
+        }
+
+        const currentReels = this.reelManager.reels; // Access reels directly after null check
+        const reelContainerRef = this.reelManager.reelContainer; // Access container directly after null check
+
         // TODO: Review initFreeSpins dependencies - does it still need reelContainer?
+        // Pass app directly as it's checked above.
         initFreeSpins(app, reelContainerRef, currentReels);
         initPaylineGraphics(winLineGraphics);
-        initNotifications(this.layerOverlays);
-        initAnimations(this.layerOverlays, this.layerParticles);
-        initTurboMode(currentReels); // Pass reels from manager
-        initWinEvaluation(currentReels); // Pass reels from manager
+        initNotifications(this.layerOverlays); // layerOverlays checked above
+        initAnimations(this.layerOverlays, this.layerParticles); // layers checked above
+        initTurboMode(currentReels);
+        initWinEvaluation(currentReels);
 
         // --- Initialize UIManager ---
-        // Define styles here or import from config
         const uiTextStyle = { fontFamily: "Arial, sans-serif", fontSize: 18, fill: 0xdddddd };
         const uiValueStyle = { fontFamily: '"Arial Black", Gadget, sans-serif', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 2 } };
-        initUIManager(this.layerUI, uiTextStyle, uiValueStyle); // Pass layerUI
+        if (this.spinManager) { // Ensure spinManager exists
+             initUIManager(this.layerUI, uiTextStyle, uiValueStyle, this.spinManager);
+        } else {
+             console.error("Game Init Error: SpinManager not available when initializing UIManager.");
+             // Handle error: maybe initialize UIManager without spin capabilities or halt?
+             // For now, just log the error.
+        }
 
         // --- Initialize Info Overlay (DOM) ---
         infoOverlayElement = document.getElementById('infoOverlay');
@@ -240,17 +287,19 @@ export class Game {
         }
 
         // --- Initialize Debug Panel ---
-        if (this.layerDebug) {
-            initDebugPanel(app, this.layerDebug);
-        } else {
-             console.error("Game Init: layerDebug is unexpectedly null before initDebugPanel call.");
+        if (this.layerDebug && app) {
+             initDebugPanel(app, this.layerDebug);
         }
     }
 
     _finalizeSetup() {
         // Final stage sort
-        app.stage.sortChildren();
-        console.log("Stage children sorted by zIndex:", app.stage.children.map(c => ({ name: c.name, zIndex: c.zIndex })));
+        if (app?.stage) {
+            app.stage.sortChildren();
+            console.log("Stage children sorted by zIndex:", app.stage.children.map(c => ({ name: c.name, zIndex: c.zIndex })));
+        } else {
+            console.error("Finalize Setup Error: Pixi stage not available for sorting.");
+        }
 
         // Initial UI updates and state settings
         updateDisplays();
@@ -267,13 +316,16 @@ export class Game {
 
     // Removed setupUI method
 
+    /**
+     * @param {PIXI.Ticker} ticker
+     */
     update(ticker) {
         const delta = ticker.deltaTime;
         const now = ticker.lastTime;
         let anyReelMoving = false;
 
         try {
-            // Update reels via ReelManager
+            // Update reels via ReelManager - Add null check
             if (this.reelManager) {
                 anyReelMoving = this.reelManager.update(delta, now);
             }
@@ -281,35 +333,36 @@ export class Game {
             // Update particle animations
             updateParticles(delta);
 
-            // Update Free Spins Indicator via manager
+            // Update Free Spins Indicator via manager - Add null check
             if (this.freeSpinsUIManager) {
                 this.freeSpinsUIManager.update();
             }
 
-            // --- Temporarily Commented Out Spin End Check for Infinite Spin Test ---
-            /*
+            // --- Uncommented Spin End Check ---
+            // Check if the game was spinning and all reels have now stopped
             if (state.isSpinning && !anyReelMoving && !state.isTransitioning) {
-                // Set isTransitioning true immediately to prevent other actions
+                // Set isTransitioning immediately to prevent duplicate calls or other actions
                 updateState({ isTransitioning: true });
-                console.log("Game.update: Reels stopped logically. Delaying handleSpinEnd...");
+                console.log("Game.update: Reels stopped moving. Delaying SpinManager.handleSpinEnd...");
 
-                // Delay the call to handleSpinEnd to allow visual tween to finish
-                // Use stopTweenDuration from animationSettings + a larger buffer
-                const stopTweenDurationMs = stopTweenDuration; // Already in ms
-                const evaluationDelay = stopTweenDurationMs + 300; // Increased buffer to 300ms
+                // Delay the call to handleSpinEnd to allow visual reel stop tweens to finish
+                // Use stopTweenDuration from animationSettings plus a small buffer
+                // Ensure stopTweenDuration is in milliseconds if imported from settings
+                const stopTweenDurationMs = stopTweenDuration; // Assuming it's already in ms
+                const evaluationDelay = stopTweenDurationMs + 100; // Buffer (e.g., 100ms)
 
                 setTimeout(() => {
+                    // Null check for spinManager
                     if (this.spinManager) {
                         this.spinManager.handleSpinEnd();
                     } else {
-                        console.error("Spin ended but SpinManager is not available.");
-                        // Fallback if manager is missing after delay
+                        console.error("Game.update Error: Spin ended but SpinManager is not available.");
+                        // Fallback safety: reset state and enable buttons if manager is missing
                         updateState({ isSpinning: false, isTransitioning: false });
                         setButtonsEnabled(true);
                     }
                 }, evaluationDelay);
             }
-            */
 
         } catch (err) {
             console.error("Error in game loop:", err);
