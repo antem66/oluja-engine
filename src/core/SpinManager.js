@@ -114,18 +114,19 @@ export class SpinManager {
     startSpin() {
         this.logger?.info('SpinManager', 'startSpin() called.');
 
-        if (state.isSpinning || state.isInFreeSpins || state.isFeatureTransitioning) {
-            this.logger?.warn('SpinManager', 'Spin requested but already spinning or in transition/FS.');
+        // --- MODIFIED CHECK: Allow spins during FS, but not during transitions or other spins ---
+        if (state.isSpinning || state.isFeatureTransitioning) { 
+            this.logger?.warn('SpinManager', 'Spin requested but already spinning or in transition.');
             return;
         }
+        // --- END MODIFICATION ---
+
         if (!this.reelManager || !this.eventBus) {
             this.logger?.error('SpinManager', 'Cannot start spin: ReelManager or EventBus missing.');
             return;
         }
-        if (state.isSpinning) {
-            this.logger?.warn('SpinManager', 'Spin requested but already spinning.');
-            return; // Don't start if already spinning
-        }
+        // Redundant check, covered above
+        // if (state.isSpinning) { ... }
 
         // --- INTERRUPT previous win presentation --- 
         this.logger?.debug('SpinManager', 'Emitting spin:interruptAnimations');
@@ -137,24 +138,37 @@ export class SpinManager {
 
         this.logger?.debug('SpinManager', 'Starting spin sequence...');
 
-        // --- Deduct Bet --- 
-        const currentBet = state.currentTotalBet;
-        const currentBalance = state.balance;
-        const newBalance = currentBalance - currentBet;
-        if (newBalance < 0) { // Basic insufficient funds check
-            this.logger?.warn('SpinManager', 'Insufficient funds to spin.');
-            // TODO: Emit event for UI notification?
-            this.eventBus?.emit('ui:notification:show', { message: 'Insufficient funds!', type: 'error' });
-            return; // Stop spin start
-        }
-        this.logger?.info('SpinManager', `Deducting bet ${currentBet}. New balance: ${newBalance}`);
-
-        // Update state including new balance
-        updateState({ 
+        // --- Deduct Bet (ONLY if not in Free Spins) --- 
+        let stateUpdates = { 
             isSpinning: true, 
-            balance: newBalance, 
-            lastTotalWin: 0 // Reset last win 
-        });
+            lastTotalWin: 0 // Reset last win always
+        };
+
+        if (!state.isInFreeSpins) {
+            this.logger?.debug('SpinManager', 'Normal spin: Deducting bet.');
+            const currentBet = state.currentTotalBet;
+            const currentBalance = state.balance;
+            const newBalance = currentBalance - currentBet;
+            if (newBalance < 0) { // Basic insufficient funds check
+                this.logger?.warn('SpinManager', 'Insufficient funds to spin.');
+                this.eventBus?.emit('ui:notification:show', { message: 'Insufficient funds!', type: 'error' });
+                return; // Stop spin start
+            }
+            this.logger?.info('SpinManager', `Deducting bet ${currentBet}. New balance: ${newBalance}`);
+            stateUpdates.balance = newBalance; // Add balance update only for normal spins
+        } else {
+            this.logger?.debug('SpinManager', 'Free spin: Skipping bet deduction.');
+            // Decrement remaining free spins count
+            if (state.freeSpinsRemaining > 0) {
+                stateUpdates.freeSpinsRemaining = state.freeSpinsRemaining - 1;
+            } else {
+                // This case shouldn't normally happen if logic is correct, but log it.
+                this.logger?.warn('SpinManager', 'Attempted free spin with 0 remaining spins.');
+            }
+        }
+
+        // Update state 
+        updateState(stateUpdates);
 
         this.eventBus?.emit('spin:started');
 

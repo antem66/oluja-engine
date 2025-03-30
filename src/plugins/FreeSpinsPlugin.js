@@ -168,16 +168,19 @@ export class FreeSpinsPlugin {
                         message: `${spinsAwarded} FREE SPINS AWARDED!`,
                         duration: 3000,
                         onComplete: () => { 
-                             this.logger?.debug(FreeSpinsPlugin.pluginName, 'Notification complete callback STARTED.');
+                            this.logger?.debug(FreeSpinsPlugin.pluginName, 'Notification complete callback STARTED.');
+                            
+                            // --- FIX TIMING: End transition BEFORE triggering spin ---
+                            this.logger?.debug(FreeSpinsPlugin.pluginName, 'Ending feature transition (in notification callback).');
+                            updateState({ isFeatureTransitioning: false }); 
+                            // --- END FIX ---
+
                             if (this._isInFreeSpins) {
                                 this.logger?.info(FreeSpinsPlugin.pluginName, 'Notification complete, scheduling first spin.');
                                 this._triggerNextSpin(); 
                             } else {
                                  this.logger?.warn(FreeSpinsPlugin.pluginName, 'Notification complete, but no longer in Free Spins state. First spin cancelled.');
                             }
-                            // End transition AFTER spin is triggered (or attempt fails)
-                            this.logger?.debug(FreeSpinsPlugin.pluginName, 'Ending feature transition (in notification callback).');
-                            updateState({ isFeatureTransitioning: false }); 
                         }
                     });
                     this.logger?.info(FreeSpinsPlugin.pluginName, 'Emitted notification:show event.');

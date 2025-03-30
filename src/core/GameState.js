@@ -97,17 +97,18 @@ export function initGameState(dependencies) {
     // Assign to the exported state variable using the passed-in initialState
     state = { ...dependencies.initialState };
 
-    // --- BEGIN EDIT: Restore button listener registration --- 
-    // Subscribe to events (Example: UI button clicks)
+    // --- BEGIN EDIT: Remove button listener registration --- 
+    // Subscribe ONLY to events GameState needs to directly react to
     if (eventBusInstance) {
-        const unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
-        listeners.push(unsubscribeButtonClick); // Add to listeners array
-        loggerInstance?.info('GameState', 'Subscribed to ui:button:click event.');
-        
         // Subscribe to specific stop request from AutoplayPlugin (if needed)
         const unsubscribeAutoplayStop = eventBusInstance.on('autoplay:requestStop', _handleAutoplayStopRequest);
         listeners.push(unsubscribeAutoplayStop);
         loggerInstance?.info('GameState', 'Subscribed to autoplay:requestStop event.');
+        
+        // REMOVED: ui:button:click listener - Handled by specific managers/plugins
+        // const unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
+        // listeners.push(unsubscribeButtonClick); 
+        // loggerInstance?.info('GameState', 'Subscribed to ui:button:click event.');
     } else {
         loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to events.');
     }
