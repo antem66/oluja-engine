@@ -18,8 +18,8 @@ const spinBtnSize = 110; // Keep specific size for spin button
 const sideMargin = 35;
 const buttonSpacing = 10;
 const textButtonGap = 20; // Gap between button groups and text areas
-const standardButtonY = panelCenterY - btnSize / 2;
-const spinButtonY = panelCenterY - spinBtnSize / 2 - 25; // Adjusted spin button Y
+const standardButtonY = panelCenterY - btnSize / 2; // Removed the -5 offset
+const spinButtonY = panelCenterY - spinBtnSize / 2 - 15; // Adjusted spin button Y
 
 // Calculated Positions
 const turboX = sideMargin;

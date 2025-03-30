@@ -147,16 +147,15 @@ export class UIManager {
         this.parentLayer.addChild(this.internalContainer);
 
         // --- Define Sizes and Spacing ---
-        const panelHeight = 80;
+        const panelHeight = 140;
         const panelY = GAME_HEIGHT - panelHeight;
         const panelCenterY = panelY + panelHeight / 2;
         const btnSize = 40; // Moved these back here for clarity in text display positioning
         const spinBtnSize = 85;
         const sideMargin = 35;
-        const buttonSpacing = 20;
-        const textButtonGap = 20;
-        const labelOffset = -15;
-        const valueOffset = 15;
+        const textButtonGap = 30; 
+        // Remove verticalTextGap, we'll use button Y position
+        // const verticalTextGap = 5;
 
         // --- Create Gradient Background Sprite ---
         const gradientTexture = this._createGradientTexture(panelHeight, 'rgba(0,0,0,1)', 'rgba(0,0,0,0)');
@@ -173,7 +172,7 @@ export class UIManager {
         // ------------------------------------------
 
         this._buildPanelFromConfig(); // Build buttons from config (added on top of gradient)
-        this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, textButtonGap, initialState); // Add text displays (added on top of gradient)
+        this._createTextDisplays(panelCenterY, textButtonGap, initialState); // Add text displays (added on top of gradient)
         
         // Set initial state visually using initialState
         // Visual state should now be set by listeners/plugins reacting to initial state event
@@ -258,15 +257,15 @@ export class UIManager {
     // --- END EDIT ---
 
     // --- BEGIN EDIT: Rewritten Text Display Creation/Positioning ---
-    _createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, textButtonGap, initialState) {
+    // Accept standardButtonY for vertical alignment reference
+    _createTextDisplays(standardButtonY, textButtonGap, initialState) {
         if (!this.internalContainer || !this.uiStyles || !initialState) { 
             this.logger?.error("UIManager", "Cannot create text displays - internalContainer, uiStyles, or initialState missing.");
             return;
         }
         
-        // Define button sizes needed for positioning calculations
         const btnSize = 40; 
-        const spinBtnSize = 85;
+        const spinBtnSize = 85; // Need spinBtnSize as well
 
         // Get button instances from the map
         const betDecreaseButton = this.buttons.get('betDecrease');
@@ -281,24 +280,27 @@ export class UIManager {
         }
 
         // --- Bet Display (Centered between +/- buttons) ---
-        // Calculate center X based on the actual button positions (pivot is centered)
         const betAreaCenterX = (betDecreaseButton.x + betIncreaseButton.x) / 2;
-        this.betLabel = this._createText("TOTAL BET", this.uiStyles.label, betAreaCenterX, panelCenterY + labelOffset);
+        const buttonCenterY = standardButtonY + btnSize / 2; 
+        // Position label centered with button, value below label
+        const labelY = buttonCenterY;
+        const valueY = labelY + 20; // Gap between label center and value center
+
+        this.betLabel = this._createText("TOTAL BET", this.uiStyles.label, betAreaCenterX, labelY);
         const initialBetFormatted = this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency);
-        this.betText = this._createText(initialBetFormatted, this.uiStyles.betValue, betAreaCenterX, panelCenterY + valueOffset);
+        this.betText = this._createText(initialBetFormatted, this.uiStyles.betValue, betAreaCenterX, valueY);
 
         // --- Balance Display (Position relative to Autoplay button) ---
-        // Calculate position to the right of the autoplay button's right edge
         const balanceX = autoplayButton.x + btnSize / 2 + textButtonGap;
-        this.balanceLabel = this._createText("BALANCE", this.uiStyles.label, balanceX, panelCenterY + labelOffset, 0); // Anchor Left
+        this.balanceLabel = this._createText("BALANCE", this.uiStyles.label, balanceX, labelY, 0); // Anchor Left
         const initialBalanceFormatted = this._formatMoney(initialState.balance, initialState.currentCurrency);
-        this.balanceText = this._createText(initialBalanceFormatted, this.uiStyles.balanceValue, balanceX, panelCenterY + valueOffset, 0); // Anchor Left
+        this.balanceText = this._createText(initialBalanceFormatted, this.uiStyles.balanceValue, balanceX, valueY, 0); // Anchor Left
 
         // --- Win Display (Centered Horizontally) ---
         const winX = GAME_WIDTH / 2; // Center on the screen
-        this.winLabel = this._createText("WIN", this.uiStyles.label, winX, panelCenterY + labelOffset, 0.5); // Anchor Center
+        this.winLabel = this._createText("WIN", this.uiStyles.label, winX, labelY, 0.5); // Use same labelY
         const initialWinFormatted = this._formatMoney(0, initialState.currentCurrency); // Start win at 0
-        this.winText = this._createText(initialWinFormatted, this.uiStyles.winValue, winX, panelCenterY + valueOffset, 0.5); // Anchor Center
+        this.winText = this._createText(initialWinFormatted, this.uiStyles.winValue, winX, valueY, 0.5); // Use same valueY
 
         // Hide win display initially
         if (this.winLabel) this.winLabel.visible = false;
@@ -491,24 +493,8 @@ export class UIManager {
         if (this.winLabel) this.winLabel.visible = false;
     }
 
-    // --- Utility --- 
-    
-    /** @private */
-    _formatMoney(value, currencyCode) {
-        if (value === undefined || value === null || isNaN(value)) {
-            this.logger?.warn('UIManager', '_formatMoney called with invalid value:', value);
-            value = 0;
-        }
-        // Use default currency from settings if code is missing (e.g., initial rollup text)
-        const codeToUse = currencyCode || CURRENCY.USD; 
-        const currency = CURRENCY[codeToUse];
-        if (!currency) {
-            this.logger?.error('UIManager', `Currency format not found for ${codeToUse}`);
-            return String(value); // Fallback
-        }
-        return currency.format(value);
-    }
 
+    
     // --- Public Methods (Now accept newState) ---
 
     updateOtherDisplays(currentState) { 
