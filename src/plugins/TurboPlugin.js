@@ -69,15 +69,9 @@ export class TurboPlugin {
 
         // Listen for general state changes to update the button if state is changed elsewhere
         const unsubscribeState = this.eventBus.on('game:stateChanged', (eventData) => {
-            this.logger?.debug('TurboPlugin', 'Received game:stateChanged', { 
-                updatedProps: eventData.updatedProps, 
-                newState_isTurboMode: eventData.newState?.isTurboMode 
-            });
             if (eventData.updatedProps.includes('isTurboMode')) {
                 this.logger?.debug('TurboPlugin', 'Processing isTurboMode state change.');
-                const turboStateFromEvent = eventData.newState.isTurboMode;
-                this.logger?.debug('TurboPlugin', `Calling _updateButtonState with: ${turboStateFromEvent}`);
-                this._updateButtonState(turboStateFromEvent);
+                this._updateButtonState(eventData.newState.isTurboMode);
             }
         });
 
@@ -90,7 +84,6 @@ export class TurboPlugin {
      * @private
      */
     _handleTurboButtonClick() {
-        this.logger?.info('TurboPlugin', '_handleTurboButtonClick called.');
         const currentTurboState = state.isTurboMode;
         const newTurboState = !currentTurboState;
         this.logger?.info('TurboPlugin', `Turbo button clicked. Toggling state from ${currentTurboState} to ${newTurboState}.`);

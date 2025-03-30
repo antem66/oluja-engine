@@ -117,13 +117,15 @@ export class AutoplayPlugin {
     _handleStateChangeForAutoplay(eventData) {
     // --- END LINTER FIX ---
         try {
-            // --- BEGIN ADD LOG ---
+            // --- BEGIN REMOVE LOG ---
+            /*
             this.logger?.debug(AutoplayPlugin.pluginName, 'Received game:stateChanged', { 
                 updatedProps: eventData.updatedProps, 
                 newState_isAutoplaying: eventData.newState?.isAutoplaying,
                 newState_spinsRemaining: eventData.newState?.autoplaySpinsRemaining
             });
-            // --- END ADD LOG ---
+            */
+            // --- END REMOVE LOG ---
             const { newState, updatedProps } = eventData;
             // Update local tracking state if relevant properties changed
             if (updatedProps.includes('isAutoplaying')) {
@@ -131,9 +133,6 @@ export class AutoplayPlugin {
                 this._isAutoplaying = newState.isAutoplaying;
                 if (changed) {
                      this.logger?.debug(AutoplayPlugin.pluginName, `Local isAutoplaying updated to: ${this._isAutoplaying}`);
-                     // --- BEGIN ADD LOG ---
-                     this.logger?.debug(AutoplayPlugin.pluginName, `Calling _updateButtonState with: ${this._isAutoplaying}`);
-                     // --- END ADD LOG ---
                      this._updateButtonState(this._isAutoplaying);
                      // If autoplay was turned OFF externally, clear timeout
                      if (!this._isAutoplaying && this._nextSpinTimeout) {
