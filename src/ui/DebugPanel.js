@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js';
 import { state, updateState } from '../core/GameState.js';
 import { EventBus } from '../utils/EventBus.js';
+import { GAME_WIDTH } from '../config/gameSettings.js';
 
 let eventBusInstance = null;
 let debugContainer = null;
@@ -29,8 +30,9 @@ export function initDebugPanel(app, layerDebug, bus) {
         app.stage.addChild(debugContainer); // Keep original behavior as fallback
     }
 
-    // Position in top-right corner
-    debugContainer.x = app.screen.width - 250;
+    // Position in top-right corner (relative to logical GAME_WIDTH)
+    const panelWidth = 240;
+    debugContainer.x = GAME_WIDTH - panelWidth - 10; 
     debugContainer.y = 10;
     
     // Create panel background
@@ -58,7 +60,7 @@ export function initDebugPanel(app, layerDebug, bus) {
     title.y = 10;
     debugContainer.addChild(title);
     
-    // Add toggle button in top-left corner of main screen
+    // Add toggle button relative to the debug panel's container
     const toggleBtn = new PIXI.Graphics();
     toggleBtn.beginFill(0xff0000, 0.7);
     toggleBtn.drawRect(0, 0, 30, 30);
@@ -76,6 +78,7 @@ export function initDebugPanel(app, layerDebug, bus) {
     toggleText.y = 7;
     toggleBtn.addChild(toggleText);
     
+    // Position toggle button in top-left corner of the screen
     toggleBtn.x = 10;
     toggleBtn.y = 10;
     toggleBtn.eventMode = 'static';
