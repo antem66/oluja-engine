@@ -88,6 +88,10 @@ export class UIManager {
     _listeners = []; // To store unsubscribe functions
     /** @type {Function | null} */
     _unregisterWinRollup = null; // To store unregister function for winRollup
+    /** @type {object} */
+    _balanceRollupValues = { currentValue: 0 }; // Store tween target
+    /** @type {number} */
+    _lastKnownBalance = 0; // Track last displayed balance
 
     /**
      * @param {object} dependencies
@@ -169,8 +173,13 @@ export class UIManager {
              this.logger?.warn("UIManager", "Failed to register 'winRollup' animation. AnimationController might be missing or registration failed.");
         }
 
+        // Register balance animation
+        this.animationController?.registerAnimation('balanceRollup', this.animateBalance.bind(this));
+
         this.logger?.info("UIManager", "Initialized.");
         this.eventBus?.emit('ui:initialized');
+
+        this._lastKnownBalance = initialState.balance; // Initialize tracked balance
     }
 
     _createButtons(panelCenterY, btnSize, spinBtnSize, sideMargin, buttonSpacing) {
@@ -358,8 +367,26 @@ export class UIManager {
         const newState = eventData.newState;
         this.logger?.debug('UIManager', 'Handling game:stateChanged', { newState });
         
-        // Pass newState to update methods
-        this.updateDisplays(newState); 
+        // --- Trigger Balance Animation --- 
+        const balanceChanged = newState.balance !== this._lastKnownBalance;
+        // Animate if change is significant (adjust tolerance if needed)
+        const tolerance = 0.001; 
+        if (balanceChanged && Math.abs(newState.balance - this._lastKnownBalance) > tolerance) {
+            this.logger?.debug('UIManager', 'Balance change detected, triggering animation.');
+            // Set the starting point for the animation object
+            this._balanceRollupValues.currentValue = this._lastKnownBalance;
+            this.animationController?.playAnimation('balanceRollup', { amount: newState.balance });
+            // Update last known immediately to prevent re-triggering on same state update
+            this._lastKnownBalance = newState.balance;
+        } else {
+            // If balance didn't change significantly, update text directly
+            if (this.balanceText) { 
+                 this.balanceText.text = this._formatMoney(newState.balance, newState.currentCurrency);
+            }
+        }
+
+        // Pass newState to *other* update methods
+        this.updateOtherDisplays(newState); // Rename original updateDisplays
         this.setButtonsEnabled(newState); 
         this.updateAutoplayButtonState(newState);
         this.updateTurboButtonState(newState);
@@ -374,11 +401,11 @@ export class UIManager {
     }
 
     _handleInterruptAnimations() {
-        this.logger?.debug('UIManager', 'Received spin:interruptAnimations, stopping win rollup.');
-        // Kill the stored win rollup tween if it exists
+        this.logger?.debug('UIManager', 'Received spin:interruptAnimations, stopping animations.');
         gsap.killTweensOf(this._winRollupValues);
-        if (this.winText) this.winText.visible = false; // Hide win text immediately
-        if (this.winLabel) this.winLabel.visible = false; // Hide label
+        gsap.killTweensOf(this._balanceRollupValues); // Kill balance tween
+        if (this.winText) this.winText.visible = false; 
+        if (this.winLabel) this.winLabel.visible = false;
     }
 
     // --- Utility --- 
@@ -401,13 +428,13 @@ export class UIManager {
 
     // --- Public Methods (Now accept newState) ---
 
-    updateDisplays(currentState) { 
-        if (!this.balanceText || !this.betText || !this.winText || !this.winLabel) {
+    updateOtherDisplays(currentState) { 
+        if (!this.betText || !this.winText || !this.winLabel) { // Remove balanceText check
             this.logger?.warn("UIManager", "Cannot update displays - text elements not initialized.");
             return;
         }
-        // Use passed state
-        this.balanceText.text = this._formatMoney(currentState.balance, currentState.currentCurrency);
+        // Remove balance update from here
+        // this.balanceText.text = this._formatMoney(currentState.balance, currentState.currentCurrency);
         this.betText.text = this._formatMoney(currentState.currentTotalBet, currentState.currentCurrency);
         
         const winDisplayThreshold = 0.01;
@@ -422,7 +449,7 @@ export class UIManager {
         }
         
         // Log win display status
-        this.logger?.debug('UIManager.updateDisplays', 'Updating Win Display', {
+        this.logger?.debug('UIManager.updateOtherDisplays', 'Updating Win Display', {
             lastTotalWin: currentState.lastTotalWin,
             showWin: showWin,
             winTextVisible: this.winText?.visible,
@@ -546,6 +573,44 @@ export class UIManager {
                      this.logger?.debug('UIManager', 'Win rollup animation complete.');
                 }
                 this._winRollupTween = null; // Clear reference on completion
+            }
+        });
+    }
+
+    /**
+     * Animates the balance display.
+     * @param {object} data
+     * @param {number} data.amount - The target balance amount.
+     */
+    animateBalance(data) {
+        if (!this.balanceText) return;
+        const targetBalance = data?.amount;
+        if (typeof targetBalance !== 'number') {
+            this.logger?.error('UIManager', 'animateBalance called with invalid data', data);
+            return;
+        }
+        const currentDisplayValue = this._balanceRollupValues.currentValue;
+        const currentCurrencyCode = state.currentCurrency;
+        
+        this.logger?.debug('UIManager', `Animating balance rollup from ${currentDisplayValue} to ${targetBalance}`);
+
+        gsap.killTweensOf(this._balanceRollupValues); // Kill previous tween
+
+        gsap.to(this._balanceRollupValues, {
+            currentValue: targetBalance,
+            duration: 0.5, // Shorter duration for balance usually feels better
+            ease: "power1.out",
+            onUpdate: () => {
+                if (this.balanceText) {
+                    this.balanceText.text = this._formatMoney(this._balanceRollupValues.currentValue, currentCurrencyCode);
+                }
+            },
+            onComplete: () => {
+                if (this.balanceText) {
+                    this.balanceText.text = this._formatMoney(targetBalance, currentCurrencyCode); // Ensure final value is exact
+                }
+                 this._lastKnownBalance = targetBalance; // Update tracked balance on complete
+                 this.logger?.debug('UIManager', 'Balance rollup complete.');
             }
         });
     }

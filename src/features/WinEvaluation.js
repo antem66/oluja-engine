@@ -210,10 +210,14 @@ function _handleEvaluateRequest() {
     logger?.debug('WinEvaluation', `Client-side evaluation complete. Total Win: ${calculatedTotalWin}, Lines: ${calculatedWinningLines.length}, Symbols: ${allSymbolsToAnimate.length}`);
 
     // --- Update Game State --- 
+    const currentBalance = state.balance;
+    const newBalance = currentBalance + calculatedTotalWin;
     updateState({ 
         lastTotalWin: calculatedTotalWin,
-        winningLinesInfo: calculatedWinningLines
+        winningLinesInfo: calculatedWinningLines,
+        balance: newBalance // Add the win to the balance
     });
+    logger?.debug('WinEvaluation', `Win amount ${calculatedTotalWin} added. New balance: ${newBalance}`);
 
     // --- Prepare Animation Payload --- 
     const animationPayload = {

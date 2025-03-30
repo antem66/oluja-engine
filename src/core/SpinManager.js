@@ -135,9 +135,24 @@ export class SpinManager {
 
         this.logger?.debug('SpinManager', 'Starting spin sequence...');
 
-        this.logger?.info('SpinManager', '>>> About to call updateState { isSpinning: true } <<<');
+        // --- Deduct Bet --- 
+        const currentBet = state.currentTotalBet;
+        const currentBalance = state.balance;
+        const newBalance = currentBalance - currentBet;
+        if (newBalance < 0) { // Basic insufficient funds check
+            this.logger?.warn('SpinManager', 'Insufficient funds to spin.');
+            // TODO: Emit event for UI notification?
+            this.eventBus?.emit('ui:notification:show', { message: 'Insufficient funds!', type: 'error' });
+            return; // Stop spin start
+        }
+        this.logger?.info('SpinManager', `Deducting bet ${currentBet}. New balance: ${newBalance}`);
 
-        updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
+        // Update state including new balance
+        updateState({ 
+            isSpinning: true, 
+            balance: newBalance, 
+            lastTotalWin: 0 // Reset last win 
+        });
 
         this.eventBus?.emit('spin:started');
 
