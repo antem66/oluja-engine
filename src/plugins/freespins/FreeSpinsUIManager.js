@@ -1,10 +1,10 @@
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
-import { state } from '../core/GameState.js'; // Import state for checking isInFreeSpins etc.
-import * as SETTINGS from '../config/gameSettings.js';
+import { state } from '../../core/GameState.js'; // Import state for checking isInFreeSpins etc.
+import * as SETTINGS from '../../config/gameSettings.js';
 // Import types for JSDoc
-import { Logger } from '../utils/Logger.js';
-import { EventBus } from '../utils/EventBus.js';
+import { Logger } from '../../utils/Logger.js';
+import { EventBus } from '../../utils/EventBus.js';
 
 export class FreeSpinsUIManager {
     /** @type {PIXI.Container | null} */
@@ -17,15 +17,15 @@ export class FreeSpinsUIManager {
     freeSpinsGlow = null;
     /** @type {PIXI.Container | null} */
     parentContainer = null;
-    /** @type {import('../utils/Logger.js').Logger | null} */
+    /** @type {import('../../utils/Logger.js').Logger | null} */
     logger = null;
-    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    /** @type {import('../../utils/EventBus.js').EventBus | null} */
     eventBus = null;
 
     /** 
      * @param {PIXI.Container | null} parentContainer 
-     * @param {import('../utils/Logger.js').Logger} loggerInstance
-     * @param {import('../utils/EventBus.js').EventBus} eventBusInstance
+     * @param {import('../../utils/Logger.js').Logger} loggerInstance
+     * @param {import('../../utils/EventBus.js').EventBus} eventBusInstance
      */
     constructor(parentContainer, loggerInstance, eventBusInstance) {
         this.logger = loggerInstance;

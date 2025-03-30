@@ -40,6 +40,9 @@ let loggerInstance = null;
 /** @type {Array<Function>} */
 let listeners = []; // Store listener unsubscribe functions
 
+/** @type {Function | null} */ // Store unsubscribe for button clicks
+let _unsubscribeButtonClick = null;
+
 // --- Central Game State ---
 // Using 'let' for properties that change, 'const' for initial settings if not modified elsewhere.
 export let state = {
@@ -105,10 +108,9 @@ export function initGameState(dependencies) {
         listeners.push(unsubscribeAutoplayStop);
         loggerInstance?.info('GameState', 'Subscribed to autoplay:requestStop event.');
         
-        // REMOVED: ui:button:click listener - Handled by specific managers/plugins
-        // const unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
-        // listeners.push(unsubscribeButtonClick); 
-        // loggerInstance?.info('GameState', 'Subscribed to ui:button:click event.');
+        // Subscribe to button clicks for state changes (e.g., bet)
+        _unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
+        loggerInstance?.debug('GameState', 'Subscribed to ui:button:click events.');
     } else {
         loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to events.');
     }
@@ -138,6 +140,12 @@ export function initGameState(dependencies) {
  * Cleans up event listeners.
  */
 export function destroyGameState() {
+    // Unsubscribe from button clicks
+    if (_unsubscribeButtonClick) {
+        _unsubscribeButtonClick();
+        _unsubscribeButtonClick = null;
+        loggerInstance?.debug('GameState', 'Unsubscribed from ui:button:click events.');
+    }
     unsubscribeListeners();
     loggerInstance?.info('GameState', 'Destroyed and unsubscribed listeners.');
     eventBusInstance = null;

@@ -1,12 +1,12 @@
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap'; // Import GSAP
-import { winAnimDelayMultiplier } from '../config/animationSettings.js';
-import { REEL_WIDTH, reelAreaX, reelAreaY, SYMBOL_SIZE } from '../config/gameSettings.js';
-import { PAYLINES } from '../config/paylines.js'; // Import PAYLINES
+import { winAnimDelayMultiplier } from '../../config/animationSettings.js';
+import { REEL_WIDTH, reelAreaX, reelAreaY, SYMBOL_SIZE } from '../../config/gameSettings.js';
+import { PAYLINES } from '../../config/paylines.js'; // Import PAYLINES
 
 // Import types
-import { EventBus } from '../utils/EventBus.js';
-import { Logger } from '../utils/Logger.js';
+/** @typedef {import('../../utils/EventBus.js').EventBus} EventBus */
+/** @typedef {import('../../utils/Logger.js').Logger} Logger */
 
 // --- Module-level variables ---
 /** @type {PIXI.Graphics | null} */

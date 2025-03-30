@@ -4,17 +4,26 @@
  * Handles triggering, managing spins, win accumulation, UI updates, and transitions.
  */
 
-import { state, updateState } from '../core/GameState.js';
+import { state, updateState } from '../../core/GameState.js';
 import * as PIXI from 'pixi.js';
-import { FREE_SPINS_AWARDED, freeSpinsBgColor, normalBgColor } from '../config/gameSettings.js';
+import * as SETTINGS from '../../config/gameSettings.js';
+import { 
+    FREE_SPINS_AWARDED, 
+    freeSpinsBgColor, 
+    normalBgColor, 
+    SCATTER_SYMBOL_ID,
+    MIN_SCATTERS_FOR_FREE_SPINS,
+    ENABLE_FREE_SPINS
+} from '../../config/gameSettings.js';
 
 // Import types for JSDoc
-/** @typedef {import('../utils/Logger.js').Logger} Logger */
-/** @typedef {import('../utils/EventBus.js').EventBus} EventBus */
-/** @typedef {import('../core/SpinManager.js').SpinManager} SpinManager */
-/** @typedef {import('../core/AnimationController.js').AnimationController} AnimationController */
-/** @typedef {import('../core/BackgroundManager.js').BackgroundManager} BackgroundManager */
-/** @typedef {import('../ui/FreeSpinsUIManager.js').FreeSpinsUIManager} FreeSpinsUIManager */
+/** @typedef {import('../../utils/Logger.js').Logger} Logger */
+/** @typedef {import('../../utils/EventBus.js').EventBus} EventBus */
+/** @typedef {import('../../core/SpinManager.js').SpinManager} SpinManager */
+/** @typedef {import('../../core/AnimationController.js').AnimationController} AnimationController */
+/** @typedef {import('../../core/BackgroundManager.js').BackgroundManager} BackgroundManager */
+/** @typedef {import('./FreeSpinsUIManager.js').FreeSpinsUIManager} FreeSpinsUIManager */
+/** @typedef {import('../../core/ReelManager.js').ReelManager} ReelManager */
 
 export class FreeSpinsPlugin {
     static pluginName = 'FreeSpins';
@@ -31,6 +40,8 @@ export class FreeSpinsPlugin {
     backgroundManager = null;
     /** @type {FreeSpinsUIManager | null} */
     freeSpinsUIManager = null;
+    /** @type {ReelManager | null} */
+    reelManager = null;
     /** @type {PIXI.Container | null} */ // Layer for full-screen effects
     effectsLayer = null;
 
@@ -52,8 +63,9 @@ export class FreeSpinsPlugin {
      * @param {SpinManager} dependencies.spinManager
      * @param {AnimationController} dependencies.animationController
      * @param {BackgroundManager} dependencies.backgroundManager
-     * @param {FreeSpinsUIManager} dependencies.freeSpinsUIManager // Assuming the manager is passed
-     * @param {PIXI.Container} dependencies.effectsLayer // Layer for entry/exit animations
+     * @param {FreeSpinsUIManager} dependencies.freeSpinsUIManager
+     * @param {PIXI.Container} dependencies.effectsLayer
+     * @param {ReelManager} dependencies.reelManager
      * @param {object} dependencies.initialState
      */
     constructor(dependencies) {
@@ -64,8 +76,9 @@ export class FreeSpinsPlugin {
         this.backgroundManager = dependencies.backgroundManager;
         this.freeSpinsUIManager = dependencies.freeSpinsUIManager;
         this.effectsLayer = dependencies.effectsLayer;
+        this.reelManager = dependencies.reelManager;
 
-        if (!this.logger || !this.eventBus || !this.spinManager || !this.animationController || !this.backgroundManager || !this.freeSpinsUIManager || !this.effectsLayer) {
+        if (!this.logger || !this.eventBus || !this.spinManager || !this.animationController || !this.backgroundManager || !this.freeSpinsUIManager || !this.effectsLayer || !this.reelManager) {
             console.error("FreeSpinsPlugin: Missing core dependencies.");
             return;
         }
@@ -245,15 +258,54 @@ export class FreeSpinsPlugin {
      */
     _handleReelsStopped() {
         if (!this._isInFreeSpins) {
-            // Not in free spins, do nothing
             return;
         }
-
         this.logger?.debug(FreeSpinsPlugin.pluginName, 'Win evaluation complete during Free Spins.');
 
-        // --- BEGIN IMPLEMENTATION based on old handleFreeSpinEnd ---
+        // --- Get Grid (using placeholder) --- 
+        const grid = this._getGridFromReels();
+        if (!grid) {
+            this.logger?.error(FreeSpinsPlugin.pluginName, 'Cannot handle win evaluation: Failed to get grid.');
+            return; // Cannot proceed without grid
+        }
+
+        // --- SCATTER CHECK LOGIC (Moved from WinEvaluation) --- 
+        let scatterCount = 0;
+        // Define seenSymbols and allSymbolsToAnimate if needed for scatter animation later
+        // const seenSymbols = new Set(); 
+        // const allSymbolsToAnimate = []; 
+        if (ENABLE_FREE_SPINS && SCATTER_SYMBOL_ID) {
+            grid.forEach((column, reelIndex) => {
+                column.forEach((symbolId, rowIndex) => {
+                    if (symbolId === SCATTER_SYMBOL_ID) {
+                        scatterCount++;
+                        // TODO: Optionally identify scatter symbols for animation if needed by this plugin
+                        // const reel = this.reelManager?.reels?.[reelIndex];
+                        // if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) {
+                        //     const symbolSprite = reel.symbols[rowIndex + 1];
+                        //     if (symbolSprite && !seenSymbols.has(symbolSprite)) {
+                        //         seenSymbols.add(symbolSprite);
+                        //         allSymbolsToAnimate.push(symbolSprite); 
+                        //     }
+                        // }
+                    }
+                });
+            });
+        }
+        const freeSpinsTriggered = ENABLE_FREE_SPINS && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS;
+        // --- END SCATTER CHECK LOGIC --- 
+
+        // --- Handle Retrigger --- 
+        if (freeSpinsTriggered) {
+            // Use _handleFreeSpinsTrigger for retrigger logic
+            this.logger?.info(FreeSpinsPlugin.pluginName, `Retrigger detected! Count: ${scatterCount}`);
+            // Don't await here, let the retrigger notification happen concurrently
+            this._handleFreeSpinsTrigger({ spinsAwarded: SETTINGS.FREE_SPINS_AWARDED });
+        }
+
+        // --- Process Win Accumulation and Spin Decrement --- 
         try {
-            // 1. Accumulate Win
+            // 1. Accumulate Win (Only if not a retrigger? Or always? Check game rules - Accumulating always for now)
             const lastWin = state.lastTotalWin; // Read from global state (as updated by WinEvaluation)
             if (lastWin > 0) {
                 const winToAdd = lastWin; // <-- FIX: Add the win directly without multiplying
@@ -293,7 +345,6 @@ export class FreeSpinsPlugin {
                  this._exitFreeSpins();
              }
         }
-        // --- END IMPLEMENTATION ---
     }
 
     // TODO: Add methods for entry sequence (_enterFreeSpins) -> Renamed to _playEntryAnimation
@@ -398,6 +449,18 @@ export class FreeSpinsPlugin {
     }
     // --- END EDIT ---
 
+    // --- PLACEHOLDER: Simulate getting grid from ResultHandler event ---
+    /**
+     * @private
+     * @returns {string[][] | null} The current symbol grid (placeholder).
+     */
+    _getGridFromReels() {
+        if (!this.reelManager?.reels) return null;
+        const grid = this.reelManager.reels.map(reel => reel.symbols.slice(1, 1 + SETTINGS.SYMBOLS_PER_REEL_VISIBLE).map(s => s.symbolId));
+        return grid;
+    }
+    // --- END PLACEHOLDER ---
+
     destroy() {
         this.logger?.info(FreeSpinsPlugin.pluginName, 'Destroying...');
         this._listeners.forEach(unsubscribe => unsubscribe());
@@ -410,5 +473,6 @@ export class FreeSpinsPlugin {
         this.backgroundManager = null;
         this.freeSpinsUIManager = null;
         this.effectsLayer = null;
+        this.reelManager = null;
     }
 }

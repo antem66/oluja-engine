@@ -6,15 +6,15 @@
 
 // Import types for JSDoc
 import * as PIXI from 'pixi.js'; // Import PIXI
-import { Logger } from '../utils/Logger.js';
-import { EventBus } from '../utils/EventBus.js';
-import { SpinManager } from '../core/SpinManager.js';
-import { state, updateState } from '../core/GameState.js'; // TEMP: Import state/updateState
-import { winAnimDelayMultiplier } from '../config/animationSettings.js'; // Import settings
-import { NUM_PAYLINES } from '../config/paylines.js';
+import { Logger } from '../../utils/Logger.js';
+import { EventBus } from '../../utils/EventBus.js';
+import { SpinManager } from '../../core/SpinManager.js';
+import { state, updateState } from '../../core/GameState.js'; // TEMP: Import state/updateState
+import { winAnimDelayMultiplier } from '../../config/animationSettings.js'; // Import settings
+import { NUM_PAYLINES } from '../../config/paylines.js';
 // TODO: Get game dimensions dynamically or from config service
-import { GAME_HEIGHT } from '../config/gameSettings.js';
-/** @typedef {import('../ui/UIManager.js').UIManager} UIManager */ // Import UIManager type for JSDoc
+import { GAME_HEIGHT } from '../../config/gameSettings.js';
+/** @typedef {import('../../ui/UIManager.js').UIManager} UIManager */ // Import UIManager type for JSDoc
 
 export class AutoplayPlugin {
     // --- BEGIN ADD STATIC NAME ---

@@ -30,12 +30,11 @@ import { Reel } from './Reel.js';
 // import * as handlers from '../ui/ButtonHandlers.js';
 import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
 import { initNotifications, showOverlayMessage } from '../ui/Notifications.js'; // init only
-import * as WinEvaluation from '../features/WinEvaluation.js'; // Import the module itself
-import { init as initPaylineGraphics } from '../features/PaylineGraphics.js'; // Import clearWinLines here
-import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
+import { init as initPaylineGraphics } from './presentation/PaylineGraphics.js'; // Import clearWinLines here
+import { initAnimations, updateParticles } from './presentation/Animations.js'; // Import updateParticles here
 import { UIManager } from '../ui/UIManager.js'; // Import UIManager class
 import { LogoManager } from '../ui/LogoManager.js'; // Corrected path
-import { FreeSpinsUIManager } from '../ui/FreeSpinsUIManager.js'; // Import FreeSpinsUIManager
+import { FreeSpinsUIManager } from '../plugins/freespins/FreeSpinsUIManager.js'; // Import FreeSpinsUIManager
 import { BackgroundManager } from './BackgroundManager.js'; // Import BackgroundManager
 import { ReelManager } from './ReelManager.js'; // Import ReelManager
 import { SpinManager } from './SpinManager.js'; // Import SpinManager
@@ -49,9 +48,9 @@ import { logger } from '../utils/Logger.js'; // Keep for type hinting
 import { ResultHandler } from './ResultHandler.js'; // Import ResultHandler
 import { AnimationController } from './AnimationController.js'; // Import new controller
 import { PluginSystem } from './PluginSystem.js'; // <-- Import PluginSystem
-import { AutoplayPlugin } from '../plugins/AutoplayPlugin.js'; // <-- Import the new plugin
-import { TurboPlugin } from '../plugins/TurboPlugin.js';
-import { FreeSpinsPlugin } from '../plugins/FreeSpinsPlugin.js';
+import { AutoplayPlugin } from '../plugins/autoplay/AutoplayPlugin.js'; // <-- Import the new plugin
+import { TurboPlugin } from '../plugins/turbo/TurboPlugin.js';
+import { FreeSpinsPlugin } from '../plugins/freespins/FreeSpinsPlugin.js';
 
 /**
  * @typedef {object} GameDependencies
@@ -345,7 +344,8 @@ export class Game {
             animationController: this.animationController,
             backgroundManager: this.backgroundManager,
             freeSpinsUIManager: this.freeSpinsUIManager,
-            effectsLayer: this.layerFullScreenEffects
+            effectsLayer: this.layerFullScreenEffects,
+            reelManager: this.reelManager
         };
         this.pluginSystem = new PluginSystem(pluginDependencies);
         this.pluginSystem.registerPlugin(AutoplayPlugin); 
@@ -418,7 +418,6 @@ export class Game {
         };
 
         initPaylineGraphics({ ...moduleDeps, graphics: winLineGraphics });
-        WinEvaluation.init({ ...moduleDeps });
 
         if (this.notificationsContainer) {
             initNotifications(this.notificationsContainer);

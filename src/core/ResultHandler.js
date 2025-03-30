@@ -20,6 +20,10 @@
 import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 import { ReelManager } from './ReelManager.js';
+import { state, updateState } from './GameState.js'; // Import state and updateState
+import { PAYTABLE } from '../config/symbolDefinitions.js'; // Example: Need Paytable for validation
+import { PAYLINES } from '../config/paylines.js'; // Example: Need Paylines for validation
+import * as SETTINGS from '../config/gameSettings.js'; // <-- Import SETTINGS
 
 export class ResultHandler {
     /** @type {import('../utils/EventBus.js').EventBus | null} */
@@ -31,6 +35,9 @@ export class ResultHandler {
     
     /** @type {Function | null} */
     _unsubscribeSpinResult = null; // To store the unsubscribe function
+
+    /** @type {Array<Function>} */
+    _listeners = [];
 
     /**
      * @param {object} dependencies
@@ -64,6 +71,17 @@ export class ResultHandler {
         // Store the unsubscribe function for cleanup
         this._unsubscribeSpinResult = this.eventBus.on('server:spinResultReceived', this._handleSpinResultReceived.bind(this));
         this.logger?.info('ResultHandler', 'Initialized and subscribed to server:spinResultReceived.');
+
+        this._subscribeToEvents();
+        this.logger?.info('ResultHandler', 'Initialized and subscribed to events.');
+    }
+
+    _subscribeToEvents() {
+        if (!this.eventBus) return;
+        // Listen for the signal that reels have stopped visually
+        // In Phase 2, this might listen to 'server:spinResultReceived' from ApiService
+        const unsubscribeSpinEnd = this.eventBus.on('spin:stoppedVisuals', this._processSpinResult.bind(this));
+        this._listeners.push(unsubscribeSpinEnd);
     }
 
     /**
@@ -77,9 +95,11 @@ export class ResultHandler {
             this.logger?.info('ResultHandler', 'Unsubscribed from server:spinResultReceived.');
         }
         // Nullify references
+        const loggerRef = this.logger; // Hold reference before nullifying
         this.eventBus = null;
-        this.logger = null;
+        this.logger = null; // Nullify logger
         this.reelManager = null;
+        loggerRef?.info('ResultHandler', 'Destroyed.'); // Log using reference
     }
 
     /**
@@ -134,6 +154,138 @@ export class ResultHandler {
             this.logger?.error('ResultHandler', 'Error in _handleSpinResultReceived handler:', error);
             // Optionally re-throw or emit a specific error event
             // this.eventBus?.emit('system:error', { source: 'ResultHandler', error });
+        }
+    }
+
+    /**
+     * Processes the result of a completed spin.
+     * (FUTURE) This method will receive the authoritative spin result from the server.
+     * It will validate the result, update game state (balance, features), 
+     * and emit events for presentation (paylines, symbol animations, win amounts).
+     * @param {object} [serverResultData] - The result data from the server (in the future).
+     * @private
+     */
+    _processSpinResult(serverResultData) {
+        this.logger?.info('ResultHandler', 'Processing spin result...', serverResultData ? { serverData: true } : { clientMock: true });
+
+        // --- FUTURE SERVER LOGIC --- 
+        // 1. Receive serverResultData from ApiService via event
+        // 2. Validate serverResultData (checksums, sequence numbers, etc.)
+        // 3. Update critical GameState based *only* on server data:
+        //    - updateState({ balance: serverResultData.newBalance });
+        //    - updateState({ lastTotalWin: serverResultData.totalWin }); 
+        //    - updateState({ winningLinesInfo: serverResultData.winningLines });
+        //    - Handle feature triggers from server (e.g., serverResultData.featuresTriggered)
+        //      - eventBus.emit('feature:trigger:freeSpins', { spinsAwarded: serverResultData.freeSpinsAwarded });
+        // 4. Prepare data payload for presentation modules based on validated server data.
+        // --------------------------
+        
+        // --- CURRENT MOCK LOGIC (Replaces WinEvaluation) --- 
+        const grid = this._getGridFromReels();
+        if (!grid) {
+            this.logger?.error('ResultHandler', 'Failed to get grid for mock evaluation.');
+            return;
+        }
+
+        let calculatedTotalWin = 0;
+        const calculatedWinningLines = [];
+        const allSymbolsToAnimate = new Set(); // Use Set for uniqueness
+
+        // Mock Payline Check (similar to WinEvaluation)
+        PAYLINES.forEach((linePath, lineIndex) => {
+            const firstSymbolId = grid[0]?.[linePath?.[0]];
+            if (!firstSymbolId || !PAYTABLE[firstSymbolId]) return;
+
+            let consecutiveCount = 0;
+            if (this.reelManager && this.reelManager.reels) { 
+                for (let reelIndex = 0; reelIndex < this.reelManager.reels.length; reelIndex++) {
+                    if (grid[reelIndex]?.[linePath?.[reelIndex]] === firstSymbolId) {
+                        consecutiveCount++;
+                    } else {
+                        break;
+                    }
+                }
+            } else {
+                 this.logger?.warn('ResultHandler', 'ReelManager or reels array missing for payline check.');
+            }
+            const payoutMap = PAYTABLE[firstSymbolId];
+            const winMultiplier = payoutMap?.[consecutiveCount] || 0;
+            
+            if (winMultiplier > 0) {
+                const lineWin = winMultiplier * state.currentBetPerLine;
+                calculatedTotalWin += lineWin;
+                const lineInfo = { lineIndex, symbolId: firstSymbolId, count: consecutiveCount, winAmount: lineWin };
+                calculatedWinningLines.push(lineInfo);
+                
+                // Add symbols to animate
+                for (let reelIndex = 0; reelIndex < consecutiveCount; reelIndex++) {
+                    const rowIndex = linePath[reelIndex];
+                    const symbolSprite = this.reelManager?.reels?.[reelIndex]?.symbols?.[rowIndex + 1];
+                    if (symbolSprite) allSymbolsToAnimate.add(symbolSprite);
+                }
+            }
+        });
+        
+        // Update non-critical state (for presentation)
+        updateState({
+            lastTotalWin: calculatedTotalWin,
+            winningLinesInfo: calculatedWinningLines,
+        });
+        this.logger?.debug('ResultHandler', `Mock evaluation complete. Win: ${calculatedTotalWin}`);
+
+        // Emit event for payline drawing
+        if (calculatedWinningLines.length > 0) {
+            this.logger?.info('ResultHandler', 'Emitting paylines:show');
+            this.eventBus?.emit('paylines:show', { winningLines: calculatedWinningLines });
+        }
+
+        // Emit event for win animations
+        const animationPayload = {
+            totalWin: calculatedTotalWin,
+            winningLines: calculatedWinningLines, 
+            symbolsToAnimate: Array.from(allSymbolsToAnimate), // Convert Set to Array
+            currentTotalBet: state.currentTotalBet 
+        };
+        this.logger?.info('ResultHandler', 'Emitting win:validatedForAnimation');
+        this.eventBus?.emit('win:validatedForAnimation', animationPayload);
+        
+        // --- END MOCK LOGIC --- 
+
+        // --- Feature Trigger Handling (Example - Moved from WinEvaluation, triggered by server data in future) ---
+        // Mock scatter check - this would use serverResultData.scatterCount in future
+        let scatterCount = 0;
+         if (SETTINGS.ENABLE_FREE_SPINS && SETTINGS.SCATTER_SYMBOL_ID) {
+             grid.forEach(column => {
+                 column.forEach(symbolId => {
+                     if (symbolId === SETTINGS.SCATTER_SYMBOL_ID) scatterCount++;
+                 });
+             });
+         }
+         const freeSpinsTriggered = SETTINGS.ENABLE_FREE_SPINS && scatterCount >= SETTINGS.MIN_SCATTERS_FOR_FREE_SPINS;
+        
+         if (freeSpinsTriggered) {
+             this.logger?.info('ResultHandler', `(Mock) Free Spins Trigger Condition Met! Count: ${scatterCount}`);
+             this.eventBus?.emit('feature:trigger:freeSpins', { spinsAwarded: SETTINGS.FREE_SPINS_AWARDED });
+         }
+        // --- End Feature Trigger --- 
+
+        // Finally, emit event indicating evaluation/processing is complete
+        this.logger?.info('ResultHandler', '>>> EMITTING win:evaluationComplete >>>');
+        this.eventBus?.emit('win:evaluationComplete');
+    }
+
+    /** Helper to get grid - TEMPORARY, mimics WinEvaluation */
+    _getGridFromReels() {
+        if (!this.reelManager?.reels) return null;
+        try {
+            return this.reelManager.reels.map(reel => {
+                if (!reel?.symbols) throw new Error(`Reel ${reel?.reelIndex} has no symbols`);
+                // +1 accounts for the buffer symbol at index 0
+                return reel.symbols.slice(1, 1 + SETTINGS.SYMBOLS_PER_REEL_VISIBLE).map(s => s?.symbolId);
+            });
+        } catch (error) {
+            this.logger?.error('ResultHandler', 'Error getting results grid:', error);
+            return null;
         }
     }
 } 

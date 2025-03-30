@@ -4,12 +4,12 @@
  * Handles toggling turbo state and updating the UI button.
  */
 
-import { state, updateState } from '../core/GameState.js';
+import { state, updateState } from '../../core/GameState.js';
 
 // Import types for JSDoc
-/** @typedef {import('../utils/Logger.js').Logger} Logger */
-/** @typedef {import('../utils/EventBus.js').EventBus} EventBus */
-/** @typedef {import('../ui/UIManager.js').UIManager} UIManager */
+import { Logger } from '../../utils/Logger.js';
+import { EventBus } from '../../utils/EventBus.js';
+import { UIManager } from '../../ui/UIManager.js';
 
 export class TurboPlugin {
     static pluginName = 'TurboMode';

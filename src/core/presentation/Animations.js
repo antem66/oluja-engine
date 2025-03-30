@@ -22,13 +22,13 @@
 
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
-import { winAnimDelayMultiplier } from '../config/animationSettings.js';
-import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
+import { winAnimDelayMultiplier } from '../../config/animationSettings.js';
+import { GAME_WIDTH, GAME_HEIGHT } from '../../config/gameSettings.js';
 
 // Import types for JSDoc
-import { Logger } from '../utils/Logger.js';
-import { AnimationController } from '../core/AnimationController.js';
-import { EventBus } from '../utils/EventBus.js';
+/** @typedef {import('../../utils/Logger.js').Logger} Logger */
+/** @typedef {import('../../core/AnimationController.js').AnimationController} AnimationController */
+/** @typedef {import('../../utils/EventBus.js').EventBus} EventBus */
 
 // Module-level variables for dependencies and containers
 /** @type {Logger | null} */
@@ -168,7 +168,7 @@ function setupDefaultSymbolAnimations() {
  * Animates the scale of winning symbols with a bounce effect.
  * Triggered via AnimationController.playAnimation('symbolWin', { symbols: [...] })
  * @param {object} data - Data payload from AnimationController.
- * @param {Array<import('../core/Symbol.js').SymbolSprite>} data.symbolsToAnimate - Array of SymbolSprite instances to animate.
+ * @param {Array<import('../../core/Symbol.js').SymbolSprite>} data.symbolsToAnimate - Array of SymbolSprite instances to animate.
  * @returns {Promise<void>} A promise that resolves when all symbol animations complete.
  */
 export function animateWinningSymbols(data) {
