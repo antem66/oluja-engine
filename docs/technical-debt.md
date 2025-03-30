@@ -2,19 +2,20 @@
 
 This document tracks known technical issues, areas for improvement, and potential refactoring opportunities in the Oluja Slot Engine codebase.
 
-## Linter Warnings / Type Safety
+## Architecture / Refactoring Opportunities
 
-*   **File:** `src/core/ReelManager.js`
-    *   **Line:** 48 (`this.parentLayer.addChild(this.reelContainer);`)
-    *   **Issue:** Linter flags `this.parentLayer` as potentially null, even though it's checked for non-nullity in the constructor. The type checker might not be correctly inferring the non-null state across methods.
-    *   **Status:** Deferred (Runtime check exists in constructor).
+*   **Area:** UI Panel Layout (`src/config/uiPanelLayout.js`, `src/ui/UIManager.js`)
+    *   **Opportunity:** Enhance the layout system defined in `uiPanelLayout.js`. The current static coordinate calculation might become rigid. Consider implementing a more dynamic layout mechanism (e.g., relative positioning, grid/flex-like logic) within `UIManager._buildPanelFromConfig` to better handle different combinations of enabled/disabled buttons.
+    *   **Status:** Future Enhancement.
 
-*   **File:** `src/core/Game.js`
-    *   **Line:** 262 (`initFreeSpins(app, reelContainerRef, currentReels);`)
-    *   **Issue:** Linter flags `reelContainerRef` (derived from `this.reelManager.reelContainer`) as potentially null when passed to `initFreeSpins`. The function `initFreeSpins` likely expects a non-null `PIXI.Container`. While `this.reelManager` is checked for null earlier in the `_initCoreModules` method, the linter doesn't guarantee `reelContainerRef` isn't null.
-    *   **Status:** Deferred (Runtime check for `this.reelManager` exists). May require checking `initFreeSpins` signature or adding a specific check before the call.
+*   **Area:** Text Element Creation (`src/ui/UIManager.js`)
+    *   **Opportunity:** The Balance, Bet, and Win text elements are still created imperatively in `_createTextDisplays`. For ultimate consistency with the data-driven button approach, these could also be defined in a layout configuration file.
+    *   **Status:** Future Enhancement (Low Priority).
 
-*   **File:** `src/core/Game.js`
-    *   **Line:** 285 (`initDebugPanel(app, this.layerDebug);`)
-    *   **Issue:** Linter flags `this.layerDebug` as potentially null when passed to `initDebugPanel`. Although checked earlier in the `_initCoreModules` method, the `initDebugPanel` function likely expects a non-null `PIXI.Container`.
-    *   **Status:** Deferred (Runtime check `if (this.layerDebug && app)` exists before the call).
+*   **Area:** Plugin State Management (e.g., `src/plugins/AutoplayPlugin.js`)
+    *   **Opportunity:** Plugins like `AutoplayPlugin` still access the global `state` object directly in some places (e.g., checking `state.isSpinning`, `state.isInFreeSpins`). Ideally, plugins should rely solely on the `newState` object provided within the `game:stateChanged` event payload for reacting to state.
+    *   **Status:** Refinement Task.
+
+*   **Area:** Turbo Mode (`src/features/TurboMode.js`)
+    *   **Opportunity:** Apply the same data-driven UI pattern used for Autoplay to the Turbo button/feature. This would involve moving its logic into a `TurboPlugin`, removing Turbo-specific code from `UIManager`, and ensuring the plugin updates the Turbo button's visual state via `UIManager.setButtonVisualState`.
+    *   **Status:** Suggested Next Step.

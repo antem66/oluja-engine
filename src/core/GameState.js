@@ -295,24 +295,24 @@ function _handleBetChange(direction) {
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
-    // --- BEGIN REMOVE LOG --- 
+    // --- BEGIN REMOVE LOG ---
     // REMOVED: console.log(`[GameState] updateState START. Has EventBus: ${!!eventBusInstance}, Has Logger: ${!!loggerInstance}`);
-    // --- END REMOVE LOG --- 
-    
-    console.log('[GameState] updateState CALLED with:', updates);
+    // --- END REMOVE LOG ---
 
-    // --- ADD lastTotalWin LOG --- 
+    // REMOVED: console.log('[GameState] updateState CALLED with:', updates);
+
+    // --- ADD lastTotalWin LOG ---
     if (updates && typeof updates.lastTotalWin === 'number') { // Check if lastTotalWin is present
         const oldValue = state.lastTotalWin;
         const newValue = updates.lastTotalWin;
         const changed = oldValue !== newValue;
-        console.info(`[GameState] Checking lastTotalWin update! New: ${newValue}, Old: ${oldValue}, Changed: ${changed}`, updates);
+        // REMOVED: console.info(`[GameState] Checking lastTotalWin update! New: ${newValue}, Old: ${oldValue}, Changed: ${changed}`, updates);
     }
-    // --- END LOGGING --- 
-    
+    // --- END LOGGING ---
+
     if (!eventBusInstance || !loggerInstance) {
         // ADD ERROR LOG HERE
-        console.error('[GameState] updateState entered BUT eventBus or logger is MISSING!', 
+        console.error('[GameState] updateState entered BUT eventBus or logger is MISSING!',
             { hasEventBus: !!eventBusInstance, hasLogger: !!loggerInstance }
         );
         // Log the update attempt even if we can't emit events
@@ -321,63 +321,54 @@ export function updateState(updates) {
         return; // Cannot proceed with event emission
     }
 
+    // loggerInstance.debug('[GameState] updateState called with updates:', updates); // Keep original debug log
+
     const changedProperties = {};
+    let stateChanged = false; // Ensure stateChanged is declared
 
-    // Store old values and identify changes
+    // REMOVED: loggerInstance.info('[GameState] Preparing to check for state changes...'); // CORRECTED: Use loggerInstance
     for (const key in updates) {
-        if (Object.hasOwnProperty.call(updates, key) && Object.hasOwnProperty.call(state, key)) {
-            const oldValue = state[key];
-            // @ts-ignore - We know key exists in updates
-            const newValue = updates[key];
-            // --- BEGIN REMOVE LOG --- 
-            // Simple log for ALL keys being checked
-            // REMOVED: loggerInstance.info(`GameState.updateState Loop: key=${key}, old=${oldValue}, new=${newValue}, changed=${oldValue !== newValue}`);
-            // --- END REMOVE LOG --- 
+      // REMOVED: loggerInstance.info(`[GameState] Loop iteration for key: ${key}`); // CORRECTED: Use loggerInstance
+      if (updates.hasOwnProperty(key)) {
+        const newValue = updates[key];
+        const oldValue = state[key];
+        // ... existing code ...
 
-            if (oldValue !== newValue) {
-                // Store for event emission after state is updated
-                changedProperties[key] = { oldValue, newValue };
-                 // --- BEGIN REMOVE LOG --- 
-                 // Simple log when a change is detected and added
-                 // REMOVED: loggerInstance.info(`GameState.updateState Loop: Property ${key} ADDED to changedProperties`);
-                 // --- END REMOVE LOG --- 
-                loggerInstance.debug('GameState', `State changing: ${key} from ${JSON.stringify(oldValue)} to ${JSON.stringify(newValue)}`); // Keep this debug
-            }
+        if (oldValue !== newValue) {
+            // Store for event emission after state is updated
+            changedProperties[key] = { oldValue, newValue };
+            stateChanged = true; // Ensure stateChanged is set
+            // loggerInstance.debug('GameState', `State changing: ${key} from ${JSON.stringify(oldValue)} to ${JSON.stringify(newValue)}`); // Keep original debug log
+             loggerInstance.debug('GameState', `State changing: ${key} from ${JSON.stringify(oldValue)} to ${JSON.stringify(newValue)}`); // CORRECTED: Use loggerInstance
         }
+      }
     }
+    // REMOVED: loggerInstance.info(`[GameState] Finished checking state changes. stateChanged: ${stateChanged}`); // CORRECTED: Use loggerInstance
 
     // Merge the updates into the state
     state = { ...state, ...updates };
 
-    // Emit granular events for properties that actually changed
-    try { 
-        for (const key in changedProperties) {
-            const { oldValue, newValue } = changedProperties[key];
-            const eventName = `state:changed:${key}`;
-            const payload = { property: key, oldValue, newValue };
-            eventBusInstance.emit(eventName, payload);
-        }
-    } catch (error) {
-        loggerInstance.error('GameState.updateState', 'Error during granular event emission:', error);
-    }
+    // Emit events only if changes were detected
+    if (stateChanged) {
+      // Emit individual property change events
+      // ... existing code ...
 
-    // Also emit a general state change event if any properties changed
-    if (Object.keys(changedProperties).length > 0) {
-        // --- BEGIN EDIT ---
-        try {
-            eventBusInstance.emit('game:stateChanged', {
-                updatedProps: Object.keys(changedProperties),
-                newState: state // Pass the full new state
-            });
-            loggerInstance.debug('GameState', 'Emitted game:stateChanged event.'); // Keep debug
-        } catch (error) {
-             loggerInstance.error('GameState.updateState', 'Error during game:stateChanged event emission:', error);
-        }
-         // --- END EDIT ---
+      // Also emit a general state change event if any properties changed
+      // ... existing code ...
+      try {
+          eventBusInstance.emit('game:stateChanged', {
+              updatedProps: Object.keys(changedProperties),
+              newState: state // Pass the full new state
+          });
+          // loggerInstance.debug('GameState', 'Emitted game:stateChanged event.'); // Keep original debug log
+          loggerInstance.debug('GameState', 'Emitted game:stateChanged event.'); // CORRECTED: Use loggerInstance
+      } catch (error) {
+           loggerInstance.error('GameState.updateState', 'Error during game:stateChanged event emission:', error);
+      }
+      // ... existing code ...
     } else {
-        // --- BEGIN REMOVE LOG --- 
-        // REMOVED: loggerInstance.warn('GameState.updateState', 'No changed properties detected, skipping event emission.');
-        // --- END REMOVE LOG --- 
+       // REMOVED: loggerInstance.warn('[GameState] No changes detected, skipping event emission.'); // ADDED: Log when no changes detected
+        // ... existing code ...
     }
 }
 
