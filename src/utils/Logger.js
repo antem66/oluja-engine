@@ -10,8 +10,9 @@ export class Logger {
   constructor() {
     // Configuration will be loaded here later (Task 4.6)
     this.config = {
-      // Example structure:
-      // defaultLevel: LOG_LEVELS.INFO,
+      // Default log level - Show INFO and above
+      defaultLevel: LOG_LEVELS.INFO, 
+      // Example structure for domain-specific levels:
       // domains: {
       //   'ApiService': LOG_LEVELS.DEBUG,
       //   'UIManager': LOG_LEVELS.WARN,
@@ -22,12 +23,17 @@ export class Logger {
   // Placeholder for loading config later
   loadConfig(config) {
     this.config = { ...this.config, ...config };
-    console.log("[Logger] Configuration loaded (filtering not yet implemented):", this.config);
+    console.log("[Logger] Configuration loaded:", this.config);
   }
 
   _log(level, domain, ...args) {
-    // TODO (Task 4.6): Implement filtering based on this.config and level/domain
-    // For now, log everything
+    // TODO (Task 4.6): Implement domain-specific filtering based on this.config.domains
+    // --- Basic Level Filtering --- 
+    const configuredLevel = this.config.defaultLevel || LOG_LEVELS.DEBUG; // Default to DEBUG if not set
+    if (level < configuredLevel) {
+        return; // Don't log if level is below configured level
+    }
+    // --- End Basic Level Filtering ---
 
     const timestamp = new Date().toISOString();
     const levelName = Object.keys(LOG_LEVELS).find(key => LOG_LEVELS[key] === level) || 'LOG';
