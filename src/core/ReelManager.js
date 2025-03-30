@@ -46,7 +46,7 @@ export class ReelManager {
      */
     constructor(parentLayer, appTicker, loggerInstance) {
         this.logger = loggerInstance;
-        
+
         if (!parentLayer) {
             this.logger?.error('ReelManager', 'Parent layer is required!');
             return;
@@ -78,14 +78,18 @@ export class ReelManager {
         // this.reelContainer.addChild(reelBackground);
 
         // Add the container to the parent layer
-        this.parentLayer.addChild(this.reelContainer);
+        if (this.parentLayer) {
+            this.parentLayer.addChild(this.reelContainer);
+        } else {
+            this.logger?.error('ReelManager', '_setupContainer called but parentLayer is null.');
+        }
         this.logger?.debug('ReelManager', 'Reel container setup complete.');
     }
 
     _createReels() {
         if (!this.reelContainer || !this.appTicker) {
-             this.logger?.error('ReelManager', '_createReels: Cannot create reels, container or ticker missing.');
-             return;
+            this.logger?.error('ReelManager', '_createReels: Cannot create reels, container or ticker missing.');
+            return;
         }
 
         const container = this.reelContainer;
@@ -97,7 +101,7 @@ export class ReelManager {
                 continue; // Skip creating this reel
             }
             // TODO: Pass logger to Reel constructor when it's updated
-            const reel = new Reel(i, REEL_STRIPS[i], ticker); 
+            const reel = new Reel(i, REEL_STRIPS[i], ticker);
             this.reels.push(reel);
             container.addChild(reel.container);
         }
@@ -114,12 +118,12 @@ export class ReelManager {
             this.logger?.error('ReelManager', 'Cannot apply mask as parentLayer is missing.');
             return;
         }
-        
+
         // Create a mask graphic positioned correctly in world space
         const mask = new PIXI.Graphics()
             .rect(0, 0, SETTINGS.NUM_REELS * SETTINGS.REEL_WIDTH, SETTINGS.REEL_VISIBLE_HEIGHT)
             .fill(0xffffff);
-        
+
         if (!mask) {
             this.logger?.error('ReelManager', 'Failed to create mask graphics.');
             return;
@@ -128,7 +132,7 @@ export class ReelManager {
         // Position the mask graphic itself at the reel area's top-left corner
         mask.x = SETTINGS.reelAreaX;
         mask.y = SETTINGS.reelAreaY;
-        
+
         // Add the mask to the parent layer FIRST
         parentLayer.addChild(mask);
 
@@ -149,10 +153,12 @@ export class ReelManager {
         for (const reel of this.reels) {
             // Use the return value of update() to check if reel is active/moving
             const isActive = reel.update(delta, now);
+            // logger?.debug('ReelManager.update', `Reel ${reel.reelIndex} isActive: ${isActive}`); // Log each reel
             if (isActive) {
                 anyMoving = true;
             }
         }
+        // logger?.debug('ReelManager.update', `Returning anyMoving: ${anyMoving}`); // Log final result
         return anyMoving;
     }
 
