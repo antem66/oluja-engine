@@ -1,20 +1,14 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: white;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
+  background-color: #151720;
   font-family: "Arial Black", Gadget, sans-serif;
   overflow: hidden;
 }
 canvas {
-  border: 2px solid #b8860b;
-  background-color: black;
-  box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
-  border-radius: 25px;
-  overflow: hidden;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .info-overlay {
   position: absolute;
@@ -27,14 +21,4 @@ canvas {
   font-size: 14px;
   display: none;
   z-index: 10;
-}
-
-body {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  margin: 0;
-  background-color: #151720; /* Match CSS file */
-  overflow: hidden; /* Prevent scrollbars */
 }

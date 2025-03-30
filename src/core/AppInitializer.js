@@ -26,6 +26,8 @@ export class AppInitializer {
     /** @type {PIXI.Application | null} */ _app = null;
     /** @type {LoadingScreen | null} */ _loadingScreen = null;
     /** @type {Game | null} */ _gameInstance = null;
+    /** @type {(() => void) | null} */
+    _resizeHandler = null; // Store the bound resize handler for removal
 
     /**
      * @param {string} canvasContainerId - The ID of the HTML element to contain the Pixi canvas.
@@ -46,6 +48,7 @@ export class AppInitializer {
         let loadingScreenShowPromise = null; // To store the promise
         try {
             await this._setupPixiApp();
+            this._setupResizeHandler(); // Setup resize handling after app is created
             // Start showing loading screen, store the promise
             loadingScreenShowPromise = this._showLoadingScreen(); 
             await this._loadAssets();
@@ -81,14 +84,15 @@ export class AppInitializer {
         // Need to await init() for v8
         // Consider making this async and awaiting init if settings are needed
         await this._app.init({ 
-            resizeTo: canvasContainer, 
-            width: SETTINGS.GAME_WIDTH,
-            height: SETTINGS.GAME_HEIGHT,
+            resizeTo: window, 
             backgroundColor: 0x000000, // Default, can be overridden
             resolution: window.devicePixelRatio || 1,
             autoDensity: true,
          });
         // Append canvas after init completes
+        if (canvasContainer.firstChild) {
+            canvasContainer.innerHTML = ''; 
+        }
         canvasContainer.appendChild(this._app.canvas);
         logger.info('AppInitializer', 'Pixi App initialized and added to DOM.');
     }
@@ -218,6 +222,9 @@ export class AppInitializer {
     _setupUnloadCleanup() {
         window.addEventListener('beforeunload', () => {
             logger.info('AppInitializer', 'Cleaning up before unload...');
+            if (this._resizeHandler) {
+                window.removeEventListener('resize', this._resizeHandler);
+            }
             this._gameInstance?.destroy();
             // Call other cleanup functions if needed (e.g., destroyGameState)
         });
@@ -246,5 +253,62 @@ export class AppInitializer {
         }
         // Clean up Pixi app if it was created
         this._app?.destroy(false, { children: true }); // Dont remove canvas view, do remove children
+    }
+
+    /**
+     * Sets up the resize handler to scale and center the game stage.
+     * @private
+     */
+    _setupResizeHandler() {
+        if (!this._app) return;
+
+        const gameWidth = SETTINGS.GAME_WIDTH;
+        const gameHeight = SETTINGS.GAME_HEIGHT;
+        const stage = this._app.stage;
+
+        // Create the resize function
+        const resize = () => {
+            if (!this._app) return; // Guard against app being destroyed
+
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+
+            // Calculate aspect ratios
+            const gameAspectRatio = gameWidth / gameHeight;
+            const screenAspectRatio = screenWidth / screenHeight;
+
+            let scale = 1;
+            let posX = 0;
+            let posY = 0;
+
+            // Determine scale factor and position based on aspect ratios (letterbox/pillarbox)
+            if (screenAspectRatio > gameAspectRatio) {
+                // Screen is wider than the game (letterbox)
+                scale = screenHeight / gameHeight;
+                posX = (screenWidth - gameWidth * scale) / 2;
+                posY = 0;
+            } else {
+                // Screen is taller than the game (pillarbox)
+                scale = screenWidth / gameWidth;
+                posX = 0;
+                posY = (screenHeight - gameHeight * scale) / 2;
+            }
+
+            // Apply scale and position to the main stage
+            stage.scale.set(scale);
+            stage.position.set(posX, posY);
+            
+            logger.debug('AppInitializer', `Resized - Screen: ${screenWidth}x${screenHeight}, Scale: ${scale.toFixed(3)}, Pos: (${posX.toFixed(1)}, ${posY.toFixed(1)})`);
+        };
+
+        // Store the bound handler for removal later
+        this._resizeHandler = resize;
+
+        // Add event listener
+        window.addEventListener('resize', this._resizeHandler);
+
+        // Initial resize call
+        resize();
+        logger.info('AppInitializer', 'Resize handler set up.');
     }
 }
