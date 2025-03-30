@@ -292,7 +292,7 @@ export class LoadingScreen {
         this._progressBarFill.clear().rect(0, 0, targetWidth, this._barHeight).fill({ color: 0xCCCCCC });
 
         // Update text percentage
-        this._progressText.text = `Loading ${percentage}%`;
+        this._progressText.text = `${percentage}%`;
         // Ensure text is centered over the bar
          this._progressText.x = barX + this._barWidth / 2; 
          // Ensure text Y position is correct
@@ -359,7 +359,7 @@ export class LoadingScreen {
      * @returns {Promise<void>}
      */
     hide() {
-        console.log("LoadingScreen hide() called."); 
+        // console.log("LoadingScreen hide() called."); // Removed debug log
         return new Promise((resolve) => {
              if (!this._isVisible || this._hideRequested) {
                 console.log("LoadingScreen hide() aborted: not visible or hide already requested.");
@@ -391,37 +391,30 @@ export class LoadingScreen {
      */
     _scheduleFinalAnimationAndHide(resolve) {
         if (this._hideScheduled) return;
+        if (typeof resolve !== 'function') {
+            // console.warn("LoadingScreen: _scheduleFinalAnimationAndHide called without a valid resolve function."); // Keep warning?
+            return; 
+        }
         this._hideScheduled = true;
         
-        console.log("LoadingScreen _scheduleFinalAnimationAndHide() called.");
+        // console.log("LoadingScreen _scheduleFinalAnimationAndHide() called."); // Removed debug log
 
         this._killVisualTween(); // Stop the potentially running 0-90% tween
 
-        const now = performance.now();
-        const elapsedMs = this._fullyVisibleStartTime ? now - this._fullyVisibleStartTime : 0;
-        const remainingMs = Math.max(0, this._minimumDisplayTimeMs - elapsedMs);
-        
-        // Duration for the final 90%-100% animation
-        // Ensure a minimum duration for visual effect, even if remainingMs is tiny
-        const finalAnimationDuration = Math.max(0.15, remainingMs / 1000); 
-
-        console.log(`Final animation duration: ${finalAnimationDuration}s`);
-
-        // Animate the visual proxy from its current value (should be ~0.9) to 1.0
+        // Animate the visual proxy from its current value to 1.0 quickly
         this._visualTween = gsap.to(this._visualProgressProxy, {
             value: 1,
-            duration: finalAnimationDuration,
-            ease: 'power1.out', // Can use 'none' for linear final fill
+            duration: this._visualProgressProxy.value < 0.99 ? 0.15 : 0, // Quick tween/snap to 100%
+            ease: 'power1.out', 
             onUpdate: this._updateVisualBarAndText.bind(this),
             onComplete: () => {
                 this._visualTween = null;
-                // Ensure visual state is exactly 1 after animation
                 this._visualProgressProxy.value = 1;
-                this._updateVisualBarAndText();
+                this._updateVisualBarAndText(); // Final visual update to 100%
 
-                console.log(`Final animation complete at: ${performance.now()}`);
+                // console.log(`Final animation complete at: ${performance.now()}`); // Removed debug log
                 // Fade out immediately after final animation completes
-                this._executeHide(resolve); 
+                this._executeHide(resolve); // No delay
             }
         });
     }
@@ -432,7 +425,7 @@ export class LoadingScreen {
      * @private
      */
     _executeHide(resolve) { // Accept resolve function
-         console.log(`LoadingScreen _executeHide called at: ${performance.now()}`);
+         // console.log(`LoadingScreen _executeHide called at: ${performance.now()}`); // Removed debug log
         if (!this._container) { 
             console.warn("LoadingScreen: _executeHide called but container is null.");
             resolve(); // Resolve promise even if container is gone
@@ -446,7 +439,7 @@ export class LoadingScreen {
             duration: 0.5,
             ease: 'power1.in',
             onComplete: () => {
-                console.log("LoadingScreen fade-out complete."); // Log completion
+                // console.log("LoadingScreen fade-out complete."); // Removed log completion
                 if (this._container) {
                     this._container.visible = false;
                 }
@@ -488,7 +481,7 @@ export class LoadingScreen {
         this._hideRequested = false;
         this._hideScheduled = false;
         this._resolveHidePromise = null; // Ensure reset on destroy
-        console.log("LoadingScreen destroyed.");
+        // console.log("LoadingScreen destroyed."); // Removed log
     }
 
     /**
