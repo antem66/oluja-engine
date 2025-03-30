@@ -121,14 +121,14 @@ class Button extends PIXI.Container {
     // Store graphic states for efficient updates
     _state = 'idle'; // 'idle', 'hover', 'down', 'active'
     _colors = {
-        idle: { bg: 0x000000, border: 0x555555, alpha: 0.7 },
+        idle: { bg: 0x000000, border: 0xFFFFFF, alpha: 0.7 },
         hover: { bg: 0x000000, border: 0xAAAAAA, alpha: 0.8 },
         down: { bg: 0x000000, border: 0xFFFFFF, alpha: 0.9 },
         active: { bg: 0x111133, border: 0x8888FF, alpha: 0.75 } // Example active state
     };
     _radius = 0;
-    _borderThickness = 1;
-    _borderOffset = 2; // Pixels between border and edge
+    _borderThickness = 2.5;
+    _borderOffset = 6; // Pixels between border and edge
 
     constructor(
         text, x, y,
