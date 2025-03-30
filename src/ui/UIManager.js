@@ -173,7 +173,7 @@ export class UIManager {
         // ------------------------------------------
 
         this._buildPanelFromConfig(); // Build buttons from config (added on top of gradient)
-        this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState); // Add text displays (added on top of gradient)
+        this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, textButtonGap, initialState); // Add text displays (added on top of gradient)
         
         // Set initial state visually using initialState
         // Visual state should now be set by listeners/plugins reacting to initial state event
@@ -257,55 +257,88 @@ export class UIManager {
     }
     // --- END EDIT ---
 
-    _createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState) {
+    // --- BEGIN EDIT: Rewritten Text Display Creation/Positioning ---
+    _createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, textButtonGap, initialState) {
         if (!this.internalContainer || !this.uiStyles || !initialState) { 
             this.logger?.error("UIManager", "Cannot create text displays - internalContainer, uiStyles, or initialState missing.");
             return;
         }
         
-        // Bet Group Center Calculation
-        const spinButtonLeftEdge = GAME_WIDTH - sideMargin - 85; // Assuming spinBtnSize is 85
-        const betAreaRightMargin = spinButtonLeftEdge - textButtonGap;
-        const estimatedBetTextWidth = 100;
-    const betGroupWidth = btnSize + buttonSpacing + estimatedBetTextWidth + buttonSpacing + btnSize;
-    const betGroupCenterX = betAreaRightMargin - betGroupWidth / 2; 
+        // Define button sizes needed for positioning calculations
+        const btnSize = 40; 
+        const spinBtnSize = 85;
 
-        // Create generic text element function
-        const createText = (text, style, x, y, anchorX = 0.5, anchorY = 0.5) => {
-            if (!this.internalContainer) return null; // Guard before addChild
-            const pixiText = new PIXI.Text({ text, style });
-            pixiText.anchor.set(anchorX, anchorY);
-            pixiText.x = x;
-            pixiText.y = y;
-            this.internalContainer.addChild(pixiText);
-            return pixiText;
-        };
+        // Get button instances from the map
+        const betDecreaseButton = this.buttons.get('betDecrease');
+        const betIncreaseButton = this.buttons.get('betIncrease');
+        const autoplayButton = this.buttons.get('autoplay');
+        const spinButton = this.buttons.get('spin');
 
-    // Bet Text & Label
-        this.betLabel = createText("BET", this.uiStyles.label, betGroupCenterX, panelCenterY + labelOffset);
-        this.logger?.info('UIManager._createTextDisplays', 'Initial Bet Data:', { 
-            totalBet: initialState.currentTotalBet, 
-            currency: initialState.currentCurrency 
-        });
-        this.betText = createText(this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency), this.uiStyles.betValue, betGroupCenterX, panelCenterY + valueOffset);
-        
-        // Balance (Left Side)
-        const autoplayButtonRightEdge = sideMargin + btnSize + buttonSpacing + btnSize; // Position after autoplay btn
-        const balanceAreaLeftEdge = autoplayButtonRightEdge + textButtonGap * 2;
-        const balanceCenterX = balanceAreaLeftEdge + 100;
-        this.balanceLabel = createText("BALANCE", this.uiStyles.label, balanceCenterX, panelCenterY + labelOffset);
-        this.balanceText = createText(this._formatMoney(initialState.balance, initialState.currentCurrency), this.uiStyles.balanceValue, balanceCenterX, panelCenterY + valueOffset);
+        // Check if all required buttons exist before proceeding
+        if (!betDecreaseButton || !betIncreaseButton || !autoplayButton || !spinButton) {
+            this.logger?.error("UIManager", "One or more required buttons (bet+/-, autoplay, spin) not found in map. Cannot accurately position text displays.");
+            return; 
+        }
 
-    // Win (Center Screen)
-        const winX = GAME_WIDTH / 2;
-        this.winLabel = createText("WIN", this.uiStyles.label, winX, panelCenterY + labelOffset);
-        this.winText = createText(this._formatMoney(initialState.lastTotalWin, initialState.currentCurrency), this.uiStyles.winValue, winX, panelCenterY + valueOffset);
-        if (this.winText) this.winText.visible = initialState.lastTotalWin > 0;
-        if (this.winLabel) this.winLabel.visible = initialState.lastTotalWin > 0;
+        // --- Bet Display (Centered between +/- buttons) ---
+        // Calculate center X based on the actual button positions (pivot is centered)
+        const betAreaCenterX = (betDecreaseButton.x + betIncreaseButton.x) / 2;
+        this.betLabel = this._createText("TOTAL BET", this.uiStyles.label, betAreaCenterX, panelCenterY + labelOffset);
+        const initialBetFormatted = this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency);
+        this.betText = this._createText(initialBetFormatted, this.uiStyles.betValue, betAreaCenterX, panelCenterY + valueOffset);
 
-    // Win Rollup Text
-        this.winRollupText = createText(this._formatMoney(0, initialState.currentCurrency), this.uiStyles.winRollup, winX, panelCenterY + valueOffset);
-        if (this.winRollupText) this.winRollupText.visible = false;
+        // --- Balance Display (Position relative to Autoplay button) ---
+        // Calculate position to the right of the autoplay button's right edge
+        const balanceX = autoplayButton.x + btnSize / 2 + textButtonGap;
+        this.balanceLabel = this._createText("BALANCE", this.uiStyles.label, balanceX, panelCenterY + labelOffset, 0); // Anchor Left
+        const initialBalanceFormatted = this._formatMoney(initialState.balance, initialState.currentCurrency);
+        this.balanceText = this._createText(initialBalanceFormatted, this.uiStyles.balanceValue, balanceX, panelCenterY + valueOffset, 0); // Anchor Left
+
+        // --- Win Display (Centered Horizontally) ---
+        const winX = GAME_WIDTH / 2; // Center on the screen
+        this.winLabel = this._createText("WIN", this.uiStyles.label, winX, panelCenterY + labelOffset, 0.5); // Anchor Center
+        const initialWinFormatted = this._formatMoney(0, initialState.currentCurrency); // Start win at 0
+        this.winText = this._createText(initialWinFormatted, this.uiStyles.winValue, winX, panelCenterY + valueOffset, 0.5); // Anchor Center
+
+        // Hide win display initially
+        if (this.winLabel) this.winLabel.visible = false;
+        if (this.winText) this.winText.visible = false;
+    }
+    // --- END EDIT ---
+    
+    // --- Helper Methods --- 
+    /**
+     * Creates and adds a PIXI Text object.
+     * @param {string} text - The text content.
+     * @param {PIXI.TextStyle} style - The text style.
+     * @param {number} x - X position.
+     * @param {number} y - Y position.
+     * @param {number} [anchorX=0.5] - Horizontal anchor (0=left, 0.5=center, 1=right).
+     * @param {number} [anchorY=0.5] - Vertical anchor.
+     * @returns {PIXI.Text | null}
+     * @private
+     */
+    _createText(text, style, x, y, anchorX = 0.5, anchorY = 0.5) {
+        if (!this.internalContainer) return null;
+        const pixiText = new PIXI.Text({ text, style });
+        pixiText.anchor.set(anchorX, anchorY);
+        pixiText.x = x;
+        pixiText.y = y;
+        this.internalContainer.addChild(pixiText);
+        return pixiText;
+    }
+    // --- End Helper Methods ---
+
+    /**
+     * Formats a number as currency based on the current state.
+     * @param {number} value - The number to format.
+     * @param {string} [currencyCode=state.currentCurrency] - The currency code.
+     * @returns {string} The formatted currency string.
+     * @private
+     */
+    _formatMoney(value, currencyCode = state.currentCurrency) {
+        const numericValue = typeof value === 'number' ? value : 0;
+        return CURRENCY[currencyCode]?.format(numericValue) ?? `${numericValue.toFixed(2)}`;
     }
 
     /**
@@ -329,50 +362,46 @@ export class UIManager {
      * Cleans up event listeners and animation registrations.
      */
     destroy() {
-        this.logger?.info('UIManager', 'Destroying...'); // Log start
-        
-        // 1. Kill GSAP Tweens
-        gsap.killTweensOf(this._winRollupValues);
-        gsap.killTweensOf(this._balanceRollupValues);
-        // --- BEGIN EDIT (Kill tween for button in map) ---
-        const spinButton = this.buttons.get('spin');
+        this.logger?.info('UIManager', 'Destroying...');
+
+        // Kill tweens
+        if (this._winRollupTween) {
+            this._winRollupTween.kill();
+            this._winRollupTween = null;
+        }
+        gsap.killTweensOf(this._balanceRollupValues); 
+        const spinButton = this.buttons.get('spin'); // Kill spin button tween
         if (spinButton?.buttonIcon) {
             gsap.killTweensOf(spinButton.buttonIcon);
         }
-        // --- END EDIT ---
-        this._winRollupTween = null; // Clear tween reference
         
-        // 2. Unregister win animation (Already done)
+        // Unsubscribe from events
+        this._listeners.forEach(unsubscribe => unsubscribe());
+        this._listeners = [];
+
+        // Unregister animations
         if (this._unregisterWinRollup) {
             this._unregisterWinRollup();
             this._unregisterWinRollup = null;
-            this.logger?.debug('UIManager', 'Unregistered winRollup animation.');
         }
-        
-        // 3. Unsubscribe Event Listeners (Already done)
-        this._listeners.forEach(unsubscribe => unsubscribe());
-        this._listeners = [];
-        this.logger?.debug('UIManager', 'Unsubscribed from EventBus events.');
-
-        // 4. Destroy PIXI Objects
-        // --- BEGIN EDIT (Destroy buttons from map) ---
-        this.buttons.forEach((button, name) => {
-            if (button && typeof button.destroy === 'function') {
-                button.destroy();
-                this.logger?.debug('UIManager', `Destroyed button "${name}".`);
-            }
-        });
-        this.buttons.clear(); // Clear the map
-        // --- END EDIT ---
-        
-        // Now destroy the container and its remaining children (texts, panel)
-        if (this.internalContainer) {
-            this.internalContainer.destroy({ children: true });
-            // this.internalContainer = null; // Optional
+        // Correctly unregister balance animation
+        if (this.animationController?.unregisterAnimation) { 
+            this.animationController.unregisterAnimation('balanceRollup', this.animateBalance.bind(this)); 
         }
-        this.logger?.debug('UIManager', 'Destroyed PIXI elements.');
 
-        // Nullify PIXI element references AFTER destroying container
+        // Destroy background panel 
+        this._backgroundPanel?.destroy();
+        this._backgroundPanel = null;
+
+        // Destroy buttons
+        this.buttons.forEach(button => button.destroy());
+        this.buttons.clear();
+
+        // Destroy the internal container and its children (text elements)
+        this.internalContainer?.destroy({ children: true }); 
+
+        // Nullify references
+        this.internalContainer = null; // Important to nullify after destroy
         this.balanceText = null;
         this.winText = null;
         this.betText = null;
@@ -380,27 +409,14 @@ export class UIManager {
         this.balanceLabel = null;
         this.betLabel = null;
         this.winLabel = null;
-        this.internalContainer = null; // Set to null here
-        
-        // 5. Nullify Dependencies
         this.parentLayer = null;
-        // --- BEGIN EDIT (Fix logger issue in destroy) ---
-        // Log completion BEFORE nullifying the logger itself
-        this.logger?.info('UIManager', 'Destroy complete.');
-        this.logger = null; // Nullify logger LAST
-        // --- END EDIT ---
         this.eventBus = null;
         this.featureManager = null;
-        this.animationController = null;
-
-        // Clean up balance animation registration if applicable
-        if (this.animationController) {
-            this.animationController.unregisterAnimation('balanceRollup');
-        }
-
-        // Destroy background panel if it exists
-        this._backgroundPanel?.destroy();
-        this._backgroundPanel = null;
+        // Log before nullifying logger
+        this.logger?.info('UIManager', 'Destroy complete.');
+        this.logger = null;
+        this.animationController = null; 
+        this.buttonFactory = null;
     }
 
     // --- Event Handlers --- 

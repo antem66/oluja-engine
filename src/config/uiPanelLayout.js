@@ -14,12 +14,12 @@ const panelHeight = 80;
 const panelY = GAME_HEIGHT - panelHeight;
 const panelCenterY = panelY + panelHeight / 2;
 const btnSize = 40;
-const spinBtnSize = 85; // Keep specific size for spin button
+const spinBtnSize = 110; // Keep specific size for spin button
 const sideMargin = 35;
-const buttonSpacing = 20;
+const buttonSpacing = 10;
 const textButtonGap = 20; // Gap between button groups and text areas
 const standardButtonY = panelCenterY - btnSize / 2;
-const spinButtonY = panelCenterY - spinBtnSize / 2 - 15; // Adjusted spin button Y
+const spinButtonY = panelCenterY - spinBtnSize / 2 - 25; // Adjusted spin button Y
 
 // Calculated Positions
 const turboX = sideMargin;
@@ -32,7 +32,7 @@ const spinButtonLeftEdge = spinX; // Use spin button's left edge
 const betAreaRightMargin = spinButtonLeftEdge - textButtonGap; // Margin right of bet area
 // Rough estimate for now, ideally calculate based on text width later
 const estimatedBetTextWidth = 100; 
-const betButtonInternalSpacing = 35; // Spacing between bet text and +/- buttons
+const betButtonInternalSpacing = 15;
 // Adjust calculation for bet group center based on placing buttons relative to text
 const betGroupCenterX = betAreaRightMargin - (btnSize + betButtonInternalSpacing + estimatedBetTextWidth / 2);
 
