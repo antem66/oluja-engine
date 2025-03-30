@@ -25,14 +25,14 @@
     *   [x] Task 2.3: Test payline drawing, animation, and clearing. (DONE)
 *   **Phase 3: Identify & Refactor Other Candidates (Optional)**
     *   [ ] Task 3.1: Review other modules (e.g., UI elements, feature transitions) for non-GSAP animations.
-    *   [ ] Task 3.2: Refactor identified animations if applicable. (Example: Big Win text)
+    *   [x] Task 3.2: Refactor identified animations if applicable. (DONE - Big Win text in `Animations.js`)
 
 **Current Progress:**
 
-*   Phase 1 & 2 complete (found modules already using GSAP or refactored `flashElement`).
-*   Next Step: Consider Phase 3 (e.g., Refactor Big Win text animation) or move to a different feature.
+*   Phase 1, 2 & 3 complete.
 
 **Notes/Decisions:**
 
 *   `showOverlayMessage` and `PaylineGraphics` animations were already using GSAP.
 *   `flashElement` refactored but is not currently used in the codebase.
+*   `_playBigWinText` in `Animations.js` refactored to use GSAP timeline.

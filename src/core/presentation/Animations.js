@@ -378,11 +378,9 @@ function _playBigWinText(data) {
 
         if (winLevel) {
             logger?.info('Animations', `Triggering ${winLevel} Win presentation.`);
-            // Clear any previous interval
-            if (winOverlayAnimInterval) {
-                clearInterval(winOverlayAnimInterval);
-                winOverlayAnimInterval = null;
-            }
+            // Kill any previous tweens on the same container or text (if exists)
+            if (assignedOverlayContainer) gsap.killTweensOf(assignedOverlayContainer.children);
+
             // Remove existing win text if any
             const existingText = assignedOverlayContainer.getChildByName("winOverlayText");
             if (existingText) {
@@ -428,53 +426,44 @@ function _playBigWinText(data) {
 
             assignedOverlayContainer.addChild(winOverlayText);
 
-            // Entrance animation
-            gsap.to(winOverlayText, { alpha: 1, duration: 0.4, ease: "power2.out" });
-            gsap.to(winOverlayText.scale, { x: 1, y: 1, duration: 0.6, ease: "elastic.out(1, 0.5)" });
+            // Use GSAP Timeline for the whole sequence
+            const entranceDuration = 0.6;
+            const pulseDuration = 0.7;
+            const displayDuration = (4000 / 1000) * winAnimDelayMultiplier; // Convert ms to s
+            const fadeOutDuration = 0.5;
 
-            // Pulsing animation using interval for continuous effect
-            let scaleDirection = 1;
-            winOverlayAnimInterval = setInterval(() => {
-                const targetScale = 1 + (0.05 * scaleDirection);
-                gsap.to(winOverlayText.scale, { 
-                    x: targetScale, 
-                    y: targetScale, 
-                    duration: 0.7, // Slower pulse
-                    ease: "sine.inOut" 
-                });
-                scaleDirection *= -1; // Reverse direction
-            }, 800); // Interval matches duration + small buffer
+            const tl = gsap.timeline({
+                onComplete: () => {
+                    if (winOverlayText.parent) { // Check if still attached
+                        assignedOverlayContainer?.removeChild(winOverlayText);
+                        winOverlayText.destroy();
+                    }
+                    resolve(); // Resolve the main promise
+                }
+            });
+
+            tl.to(winOverlayText, { alpha: 1, duration: entranceDuration * 0.6, ease: "power2.out" }, 0)
+              .to(winOverlayText.scale, { x: 1, y: 1, duration: entranceDuration, ease: "elastic.out(1, 0.5)" }, 0)
+              // Add pulsing effect using repeat and yoyo
+              .to(winOverlayText.scale, { 
+                  x: "+=0.05", // Scale up slightly
+                  y: "+=0.05", 
+                  duration: pulseDuration, 
+                  repeat: -1, // Repeat indefinitely until timeline ends
+                  yoyo: true, 
+                  ease: "sine.inOut" 
+              }, entranceDuration) // Start pulsing after entrance
+              // Add delay and fade out
+              .to(winOverlayText, { 
+                  alpha: 0, 
+                  duration: fadeOutDuration, 
+                  ease: "power2.in" 
+              }, `+=${displayDuration}`); // Delay relative to the start of the pulse
 
             // Trigger particle burst via AnimationController
             if (particleCount > 0) {
                  animationController?.playAnimation('particleBurst', { count: particleCount });
             }
-
-            // Automatically remove after a duration
-            const displayDuration = 4000 * winAnimDelayMultiplier; // Longer display time
-            setTimeout(() => {
-                if (winOverlayAnimInterval) {
-                    clearInterval(winOverlayAnimInterval);
-                    winOverlayAnimInterval = null;
-                }
-                if (winOverlayText.parent) { // Check if still attached
-                     gsap.to(winOverlayText, { 
-                         alpha: 0, 
-                         duration: 0.5, 
-                         ease: "power2.in",
-                         onComplete: () => {
-                             if (winOverlayText.parent) {
-                                assignedOverlayContainer?.removeChild(winOverlayText);
-                                winOverlayText.destroy();
-                             }
-                             resolve(); // Resolve the promise when fade out completes
-                         }
-                    });
-                } else {
-                    resolve(); // Resolve if text was already removed
-                }
-            }, displayDuration);
-            
         } else {
             logger?.debug('Animations', 'Win amount did not trigger Big/Mega/Epic presentation.');
             resolve(); // Resolve immediately if no big win triggered

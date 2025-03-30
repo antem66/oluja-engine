@@ -196,11 +196,72 @@ function createDebugOptions() {
     debugContainer.addChild(forceFSBtn);
     // --- Force Free Spins Button --- END
 
-    yPos += 30; // Increment yPos after adding the button
+    yPos += 30;
+
+    // --- Force Specific Wins --- START
+    const forceMegaBtn = createButtonWithText("Force Mega Win", 10, yPos, 100, 22, () => {
+        if (eventBusInstance) {
+            console.log("Debug: Requesting MEGA win for next spin...");
+            eventBusInstance.emit('debug:forceWinLevel', { level: 'mega' });
+        } else {
+            console.error("DebugPanel: EventBus not available to force Mega win.");
+        }
+    });
+    debugContainer.addChild(forceMegaBtn);
+
+    const forceEpicBtn = createButtonWithText("Force Epic Win", 120, yPos, 100, 22, () => {
+        if (eventBusInstance) {
+            console.log("Debug: Requesting EPIC win for next spin...");
+            eventBusInstance.emit('debug:forceWinLevel', { level: 'epic' });
+        } else {
+            console.error("DebugPanel: EventBus not available to force Epic win.");
+        }
+    });
+    debugContainer.addChild(forceEpicBtn);
+    // --- Force Specific Wins --- END
+
+    yPos += 30;
 
     // Update the currentY for the panel (adjust if more controls added)
     // @ts-ignore - Using custom property for position tracking
     debugPanel.currentY = yPos + 10; // Set Y for the next section (Background Adjustments)
+}
+
+/**
+ * Helper to create a button with text (Refactored from balance button)
+ * @param {string} text
+ * @param {number} x 
+ * @param {number} y 
+ * @param {number} width 
+ * @param {number} height 
+ * @param {() => void} onClick 
+ * @param {number} [fillColor=0x444444]
+ * @returns {PIXI.Graphics}
+ */
+function createButtonWithText(text, x, y, width, height, onClick, fillColor = 0x444444) {
+    const btn = new PIXI.Graphics();
+    btn.rect(0, 0, width, height);
+    btn.fill({ color: fillColor });
+    btn.stroke({ width: 1, color: 0xaaaaaa });
+
+    const btnTextStyle = new PIXI.TextStyle({ // Use a shared style or pass as arg if needed
+        fontFamily: 'Arial',
+        fontSize: 12,
+        fill: 0xffffff
+    });
+    const btnText = new PIXI.Text({ text, style: btnTextStyle });
+    // Center text
+    btnText.anchor.set(0.5);
+    btnText.x = width / 2;
+    btnText.y = height / 2;
+    btn.addChild(btnText);
+
+    btn.x = x;
+    btn.y = y;
+    btn.eventMode = 'static';
+    btn.cursor = 'pointer';
+    btn.on('pointerdown', onClick);
+    return btn;
 }
 
 /**

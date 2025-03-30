@@ -373,6 +373,14 @@ export class Game {
             window.gameApp.animationController = this.animationController;
         }
         logger.info('Game', 'Core managers created and dependencies injected.');
+
+        // --- Initialize ApiService --- 
+        if (this.deps.apiService) {
+            this.deps.apiService.init(); // Call init here
+            logger.info('Game', 'ApiService initialized.');
+        } else {
+            logger.error('Game', 'ApiService instance missing, cannot initialize.');
+        }
     }
 
     /**

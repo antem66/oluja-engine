@@ -259,14 +259,14 @@ export class AnimationController {
 
         // 3. Big Win Text/Effects (Check thresholds)
         const winMultiplier = currentTotalBet > 0 ? totalWin / currentTotalBet : 0;
+
         if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
              this.logger?.debug('AnimationController', 'Triggering megaWin animation sequence.');
-             // Example sequence: Could involve text, particles, screen effects
-             animationPromises.push(this.playAnimation('megaWinText', { amount: totalWin })); // Assuming 'megaWinText' is registered
+             animationPromises.push(this.playAnimation('bigWinText', { winAmount: totalWin, currentTotalBet, winLevel: 'MEGA' })); // Call registered animation
              animationPromises.push(this.playAnimation('particleBurst', { intensity: 'high' }));
         } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
              this.logger?.debug('AnimationController', 'Triggering bigWin animation sequence.');
-             animationPromises.push(this.playAnimation('bigWinText', { amount: totalWin })); // Assuming 'bigWinText' is registered
+             animationPromises.push(this.playAnimation('bigWinText', { winAmount: totalWin, currentTotalBet, winLevel: 'BIG' })); // Call registered animation
              animationPromises.push(this.playAnimation('particleBurst', { intensity: 'medium' }));
         }
 
@@ -275,7 +275,6 @@ export class AnimationController {
         // Wait for all triggered core animations to complete
         try {
              await Promise.all(animationPromises);
-             this.logger?.debug('AnimationController', 'All core win animations completed.');
              // Emit event to signal sequence completion (for Autoplay, FreeSpins logic etc.)
              this.eventBus?.emit('win:sequenceComplete');
         } catch (error) {

@@ -46,6 +46,12 @@ export class ApiService {
     config = {};
     initialized = false;
 
+    /** @type {Function | null} */
+    _unsubscribeForceWinLevel = null; // Add listener for debug force win level
+
+    /** @type {'big' | 'mega' | 'epic' | null} */
+    _forcedWinLevel = null; // Store the requested forced win level
+
     /**
      * @param {object} dependencies - Core services dependencies.
      * @param {import('../utils/Logger.js').Logger} dependencies.logger
@@ -70,6 +76,32 @@ export class ApiService {
         // TODO: Configure API endpoints, authentication tokens, etc.
         this.initialized = true;
         this.logger?.info('ApiService', 'Initialized.', this.config);
+
+        // Listen for debug force win level requests
+        if (this.eventBus) {
+            this._unsubscribeForceWinLevel = this.eventBus.on('debug:forceWinLevel', this._handleForceWinLevel.bind(this));
+            this.logger?.info('ApiService', 'Successfully subscribed to debug:forceWinLevel event.');
+        } else {
+            this.logger?.error('ApiService', 'EventBus missing, cannot subscribe to debug:forceWinLevel.');
+            this._unsubscribeForceWinLevel = null;
+        }
+    }
+
+    /**
+     * Handles the debug:forceWinLevel event.
+     * @param {object} event 
+     * @private
+     */
+    _handleForceWinLevel(event) {
+        const level = event?.level;
+        // Add log INSIDE the handler
+        if (level === 'big' || level === 'mega' || level === 'epic') {
+            this.logger?.info('ApiService', `Received debug request to force a '${level}' win on next mock spin.`);
+            this._forcedWinLevel = level;
+        } else {
+            this.logger?.warn('ApiService', 'Received invalid level for debug:forceWinLevel', event);
+            this._forcedWinLevel = null; // Clear any previous force request
+        }
     }
 
     async requestSpin(betInfo) {
@@ -158,10 +190,10 @@ export class ApiService {
      * @returns {object} - Mock spin result matching expected server payload structure.
      */
     _generateMockSpinResultData(currentBetPerLine) {
-        this.logger?.debug('ApiService', '_generateMockSpinResultData called');
+        // this.logger?.debug('ApiService', '_generateMockSpinResultData called', { currentBetPerLine, forcedLevel: this._forcedWinLevel }); // Removed debug log
         // Use GameState directly for this debug flag, as FeatureManager isn't dynamically updated
-        const forceWin = state.forceWin; 
-        this.logger?.debug('ApiService', `Force Win flag is currently: ${forceWin}`);
+        const forceWin = state.forceWin;
+        // this.logger?.debug('ApiService', `Force Win flag is currently: ${forceWin}`); // Removed debug log
 
         const stopPositions = [];
         const mockSymbolGrid = []; // Need grid temporarily for win calculation
@@ -264,15 +296,59 @@ export class ApiService {
         }
 
         // 5. Construct Payload (matching proposed API structure)
-        return {
-            stopPositions: stopPositions, // Array of stop indices [reel0, reel1, ...]
-            winningLines: calculatedWinningLines, // Array of { lineIndex, symbolId, count, winAmount }
-            totalWin: calculatedTotalWin,
-            newBalance: mockNewBalance, // The calculated balance AFTER this spin
-            scatterCount: scatterCount, // Include scatter count
-            symbolsToAnimate: Array.from(symbolsToAnimate), // Convert Set to Array for payload
-            featuresTriggered: featuresTriggered, // Object with triggered features
+        let adjustedWinAmount = calculatedTotalWin;
+        if (this._forcedWinLevel) {
+            let multiplier = 0;
+            switch (this._forcedWinLevel) {
+                case 'big': multiplier = 20; break; // Comfortably above 15
+                case 'mega': multiplier = 50; break; // Comfortably above 40
+                case 'epic': multiplier = 80; break; // Comfortably above 75
+            }
+            // Calculate win based on total bet
+            const totalBet = currentBetPerLine * PAYLINES.length;
+            adjustedWinAmount = totalBet * multiplier;
+            // this.logger?.info('ApiService', `Forcing ${this._forcedWinLevel} win amount: ${adjustedWinAmount.toFixed(2)} (Multiplier: ${multiplier}, TotalBet: ${totalBet})`); // Removed info log
+            // IMPORTANT: Reset the forced level after using it once
+            this._forcedWinLevel = null;
+            // Ensure winningLines and symbolsToAnimate are populated if forcing a win from 0
+            if (calculatedWinningLines.length === 0 && adjustedWinAmount > 0) {
+                 // Need to generate a plausible winning line for the forced amount
+                 // For simplicity, just force a 3-symbol win on line 0 with FACE1
+                 const forcedLine = { lineIndex: 0, symbolId: 'FACE1', count: 3, winAmount: adjustedWinAmount /* Crude approximation */ };
+                 calculatedWinningLines.push(forcedLine);
+                 // Add corresponding symbols to animate
+                 const linePath = PAYLINES[0];
+                 for(let r=0; r<3; r++) {
+                     symbolsToAnimate.add({ reelIndex: r, rowIndex: linePath[r], symbolId: 'FACE1' });
+                 }
+            }
+        }
+        // Adjust balance based on potentially forced win
+        const adjustedNewBalance = state.balance - (currentBetPerLine * PAYLINES.length) + adjustedWinAmount;
+
+        const result = {
+            stopPositions: stopPositions,
+            winningLines: calculatedWinningLines,
+            totalWin: adjustedWinAmount,
+            newBalance: adjustedNewBalance,
+            scatterCount: scatterCount,
+            symbolsToAnimate: Array.from(symbolsToAnimate),
+            featuresTriggered: featuresTriggered,
         };
+
+        return result;
+    }
+
+    destroy() {
+        this.logger?.info('ApiService', 'Destroying...');
+        // Unsubscribe debug listener
+        if (this._unsubscribeForceWinLevel) {
+            this._unsubscribeForceWinLevel();
+            this._unsubscribeForceWinLevel = null;
+        }
+        this.eventBus = null;
+        this.featureManager = null;
+        this.logger = null;
     }
 }
 
