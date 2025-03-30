@@ -308,25 +308,48 @@ Task 3.4: Test Free Spins - DONE
 *   Verify return to base game.
 *   Check for console errors.
 
-Phase 4: Prepare for Server Integration (Current)
+Phase 4: Prepare for Server Integration (COMPLETED)
 
-Objective: Refactor client-side modules to remove mock result generation and prepare them to consume data provided by a server (via ApiService events).
+Objective: Refactor client-side modules to remove mock result generation and prepare them to consume data provided by a server (via ApiService events). - DONE
 
 Key Tasks:
 
-Task 4.1: Refactor ResultHandler.js
+Task 4.1: Refactor ResultHandler.js - DONE
 *   Remove mock win calculation logic within `_processSpinResult`.
 *   Modify `_processSpinResult` (or create a new handler) to accept spin result data (total win, winning lines, symbols to animate, feature triggers) as an argument (simulating data from a server event).
 *   Ensure presentation events (`paylines:show`, `win:validatedForAnimation`, `win:evaluationComplete`) are still emitted, but based on the *received* data, not calculated data.
 
-Phase 5: Server Integration & API Service Implementation
+Task 4.2: Refactor SpinManager.js - DONE
+*   Remove random stop position generation.
+*   Modify `startSpin` (or a related method) to *only* handle the initiation of the visual spin (telling reels to start spinning, deducting bet if applicable, updating state).
+*   Implement a handler for a future `server:spinResultReceived` event (similar to what we started in `ResultHandler`). This handler would receive the `stopPositions` from the server data and instruct the `ReelManager` accordingly.
+
+Task 4.3: Implement Mock in ApiService.js - DONE
+*   Generate random `stopPositions`.
+*   *Immediately* emit a mock `server:spinResultReceived` event on the `EventBus` containing `{ data: { stopPositions: [...] } }`.
+
+Phase 5: Server Integration & API Service Implementation (Current)
 
 Objective: Implement full server communication and API service for the slot engine.
 
 Key Tasks:
 
-Task 5.1: Implement API communication for spin initiation and result reception.
+Task 5.1: Implement API Call Structure in `ApiService.js` - PENDING
+*   Add basic `fetch` structure to `ApiService.requestSpin` (for when `useMock` is false).
+*   Include placeholder URL (`/api/v1/spin`).
+*   Add basic success/error handling (check `response.ok`, parse JSON).
+*   Emit `server:spinResultReceived` on success, `server:error` on failure.
+
+Task 5.2: Develop Server Endpoint - EXTERNAL
+*   Create the backend `/api/v1/spin` endpoint based on the defined interface.
+*   Implement RNG, win calculation, balance management, feature logic on the server.
+
+Task 5.3: Configure API Service
+*   Update `ApiService.init` to accept and store the actual server URL.
+*   Implement authentication handling (e.g., sending tokens).
+
 Task 5.2: Develop a dedicated API service for handling game-related requests and responses.
+
 Task 5.3: Ensure seamless integration with existing client-side logic and data flow.
 
 6. Progress Tracking & Management

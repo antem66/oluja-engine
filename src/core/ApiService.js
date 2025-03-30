@@ -99,26 +99,44 @@ export class ApiService {
                  this.eventBus?.emit('server:error', { type: 'MockGenerationError', message: 'Failed to generate mock result data' });
             }        
         } else {
-            // --- TODO (Future Task 5.8): Implement actual backend API call --- 
-            this.logger.warn('ApiService', 'Real API call not implemented yet!');
-            // Example structure:
-            // try {
-            //   const response = await fetch(this.config.spinEndpoint, {
-            //     method: 'POST',
-            //     headers: { 'Content-Type': 'application/json', /* ... auth headers ... */ },
-            //     body: JSON.stringify(betInfo),
-            //   });
-            //   if (!response.ok) {
-            //     throw new Error(`API Error: ${response.status} ${response.statusText}`);
-            //   }
-            //   const resultData = await response.json();
-            //   this.eventBus.emit('server:spinResultReceived', { data: resultData });
-            // } catch (error) {
-            //   this.logger.error('ApiService', 'API requestSpin failed:', error);
-            //   this.eventBus.emit('server:error', { type: 'ApiError', message: 'Spin request failed', details: error });
-            // }
-            // For now, emit an error or a default non-winning result
-            this.eventBus?.emit('server:error', { type: 'NotImplemented', message: 'Real API spin request not implemented.' });
+            // --- Phase 5: Implement actual backend API call --- 
+            this.logger.warn('ApiService', 'Real API call initiated...');
+            try {
+                // TODO: Get endpoint URL and Auth Token from this.config
+                const endpoint = '/api/v1/spin'; // Placeholder
+                const authToken = 'Bearer PLACEHOLDER_TOKEN'; // Placeholder
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authToken 
+                    },
+                    body: JSON.stringify(betInfo), // Send bet info from SpinManager
+                });
+
+                if (!response.ok) {
+                     // Attempt to parse error message from server if possible
+                     let errorData = { message: `API Error: ${response.status} ${response.statusText}` };
+                     try { 
+                         errorData = await response.json(); 
+                     } catch (parseError) { /* Ignore if body isn't JSON */ }
+                    throw new Error(errorData.message || `API Error: ${response.status}`);
+                }
+
+                const resultData = await response.json();
+                this.logger.info('ApiService', 'Received successful API response:', resultData);
+                // TODO: Validate resultData structure matches expected API response
+                this.eventBus?.emit('server:spinResultReceived', { data: resultData });
+
+            } catch (error) {
+                this.logger.error('ApiService', 'API requestSpin failed:', error);
+                this.eventBus?.emit('server:error', { 
+                    type: 'ApiError', 
+                    message: error.message || 'Spin request failed due to network or server error.', 
+                    details: error 
+                });
+            }
         }
     }
 
