@@ -180,7 +180,7 @@ function createDebugOptions() {
         if (!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning) {
             console.log("Debug: Forcing Free Spins...");
             if (eventBusInstance) {
-                eventBusInstance.emit('feature:trigger:freeSpins', { spinsAwarded: 10 }); // Emit event, default 10 spins
+                eventBusInstance.emit('feature:trigger:freeSpins', { spinsAwarded: 1 }); // Emit event, default 10 spins
             } else {
                 console.error("DebugPanel: EventBus not available to trigger Free Spins.");
             }

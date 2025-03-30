@@ -363,17 +363,21 @@ export class FreeSpinsPlugin {
      */
     _exitFreeSpins() {
         this.logger?.info(FreeSpinsPlugin.pluginName, 'Initiating exit sequence...');
+        
+        // --- FIX: Change background back immediately ---
+        this.logger?.debug(FreeSpinsPlugin.pluginName, 'Changing background back to normal (tweening tint to white).');
+        this.backgroundManager?.changeBackground(0xFFFFFF, 1.5); // <-- Use 0xFFFFFF (white) to restore original colors
+        // --- END FIX ---
+
         // Request state update: transitioning = true?
         updateState({ isFeatureTransitioning: true });
 
-        // TODO: Play exit animation/summary (e.g., using Notifications or AnimationController)
+        // Play exit animation/summary 
         this.eventBus?.emit('notification:show', {
             message: `FREE SPINS COMPLETE\nTOTAL WIN: €${this._totalWin.toFixed(2)}`,
             duration: 4000, // Longer duration for summary
             onComplete: () => {
                 this.logger?.debug(FreeSpinsPlugin.pluginName, 'Exit summary complete.');
-                // Change background back
-                this.backgroundManager?.changeBackground(normalBgColor, 1.5);
                 // Final state update to exit Free Spins
                 updateState({
                     isInFreeSpins: false,
