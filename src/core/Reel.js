@@ -154,32 +154,32 @@ export class Reel {
                 continue; // Skip to the next symbol in the loop
             }
 
-            // Ensure symbolSprite has a property like 'symbolId' for comparison
-            // Assuming createSymbolGraphic adds this property.
-            // @ts-ignore - Add check if symbolSprite has symbolId property before comparing
-            if (symbolSprite && typeof symbolSprite.symbolId !== 'undefined' && symbolSprite.symbolId !== expectedSymbolId) {
-                const oldSymbolY = symbolSprite.y;
-
-                // Important: Remove child *before* destroying
-                this.container.removeChild(symbolSprite);
-                symbolSprite.destroy({ children: true }); // Ensure proper cleanup
-
-                const newSymbol = createSymbolGraphic(expectedSymbolId);
-                if (newSymbol) {
-                    // Assign symbolId if createSymbolGraphic doesn't
-                    // newSymbol.symbolId = expectedSymbolId; 
-                    this.symbols[i] = newSymbol;
-                    this.container.addChildAt(newSymbol, i); // Use addChildAt for order
-                    newSymbol.y = oldSymbolY;
+            // Performance: Only update texture if needed
+            if (symbolSprite && symbolSprite.symbolId !== expectedSymbolId) {
+                const newTexture = PIXI.Assets.get(expectedSymbolId);
+                if (newTexture) {
+                    symbolSprite.texture = newTexture;
+                    symbolSprite.symbolId = expectedSymbolId; // Keep internal ID consistent
+                    // Ensure visibility if it was previously hidden (though unlikely here)
+                    symbolSprite.visible = true; 
                 } else {
-                    console.error(`Failed to create symbol graphic for ID: ${expectedSymbolId}`);
-                    // Handle error: maybe push a placeholder or skip?
-                    // For now, push null to avoid errors down the line, but log it
-                    this.symbols[i] = null;
-                    console.warn(`Pushed null to symbols array at index ${i} for reel ${this.reelIndex}`);
+                     console.error(`[Reel ${this.reelIndex}] Texture not found for symbol ID: ${expectedSymbolId} during align.`);
+                     // Hide the sprite if texture is missing?
+                     symbolSprite.visible = false;
                 }
-            } else if (symbolSprite && typeof symbolSprite.symbolId === 'undefined') {
-                 console.warn(`Symbol sprite at index ${i} on reel ${this.reelIndex} is missing symbolId property.`);
+            } else if (!symbolSprite) {
+                // This case should ideally not happen if constructor is correct,
+                // but handle defensively: try to create the symbol if missing.
+                console.warn(`[Reel ${this.reelIndex}] Symbol missing at index ${i} in alignReelSymbols. Attempting creation.`);
+                const newSymbol = createSymbolGraphic(expectedSymbolId);
+                 if (newSymbol) {
+                     this.symbols[i] = newSymbol;
+                     this.container.addChildAt(newSymbol, i);
+                     // Need to set Y position here as well
+                     newSymbol.y = (relativeIndex - symbolOffset) * SYMBOL_SIZE + (SYMBOL_SIZE / 2);
+                 } else {
+                      console.error(`[Reel ${this.reelIndex}] Failed to create fallback symbol for ${expectedSymbolId}`);
+                 }
             }
         }
     }
