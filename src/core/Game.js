@@ -50,7 +50,8 @@ import { featureManager } from '../utils/FeatureManager.js'; // Keep for type hi
 import { logger } from '../utils/Logger.js'; // Keep for type hinting
 import { ResultHandler } from './ResultHandler.js'; // Import ResultHandler
 import { AnimationController } from './AnimationController.js'; // Import new controller
-import { initAutoplay } from '../features/Autoplay.js'; // Import initAutoplay directly
+import { PluginSystem } from './PluginSystem.js'; // <-- Import PluginSystem
+import { AutoplayPlugin } from '../plugins/AutoplayPlugin.js'; // <-- Import the new plugin
 
 /**
  * @typedef {object} GameDependencies
@@ -114,6 +115,8 @@ export class Game {
     uiManager = null;
     /** @type {AnimationController | null} */ // Add property for the instance
     animationController = null;
+    /** @type {PluginSystem | null} */ // <-- Add PluginSystem instance property
+    pluginSystem = null;
 
     /** @type {object | null} */ // Changed type annotation
     deps = null; // To store injected dependencies
@@ -326,6 +329,32 @@ export class Game {
         this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
         new LogoManager(this, this.layerLogo, logger, eventBus);
 
+        // Instantiate PluginSystem - AFTER core dependencies are ready
+        // --- BEGIN EDIT ---
+        // Assemble a complete dependencies object for plugins
+        const pluginDependencies = {
+            ...this.deps, // Spread the initial dependencies (logger, eventBus, apiService, featureManager, initialState)
+            spinManager: this.spinManager,
+            layerUI: this.layerUI, // Pass the UI layer container
+            // Provide access to the button factory (assuming UIManager exposes it or we import it directly)
+            // Let's assume we need to import createButton for now if UIManager doesn't expose it.
+            // If UIManager *does* expose it (e.g., this.uiManager.buttonFactory), use that instead.
+            // Check UIManager structure - it seems it uses the imported createButton directly.
+            // So, plugins needing it might need direct import, or we pass the function itself.
+            // Passing the imported function reference:
+            factories: { 
+                createButton: this.uiManager?.buttonFactory // Get from UIManager instance
+            }
+            // Add other managers/layers plugins might need: animationController, reelManager, etc.
+            // Example:
+            // animationController: this.animationController, 
+            // reelManager: this.reelManager,
+        };
+        this.pluginSystem = new PluginSystem(pluginDependencies);
+        // --- END EDIT ---
+        // Register plugins here
+        this.pluginSystem.registerPlugin(AutoplayPlugin); 
+
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
         // Expose managers for debug panel access
@@ -420,7 +449,7 @@ export class Game {
         // Update particle animations
         updateParticles(0);
 
-        // Init Animations module
+        // Update Animations module
         if (this.winAnnouncementsContainer && this.layerParticles) {
             initAnimations({
                 logger: logger,
@@ -435,7 +464,6 @@ export class Game {
 
         // Initialize Feature Modules using full moduleDeps
         initTurboMode({ ...moduleDeps });
-        initAutoplay({ ...moduleDeps });
         initFreeSpins({
             ...moduleDeps,
             effectsLayer: this.layerFullScreenEffects
@@ -464,6 +492,9 @@ export class Game {
         } else {
             throw new Error("Pixi ticker not available after init.");
         }
+        
+        // Initialize registered plugins AFTER main setup but BEFORE loop starts
+        this.pluginSystem?.initializePlugins();
     }
 
     // Removed setupUI method
@@ -591,8 +622,8 @@ export class Game {
 
     destroy() {
         this.deps.logger?.info('Game', 'Destroying game instance...');
-        // Destroy plugins first (commented out)
-        // this.pluginSystem?.destroyPlugins();
+        // Destroy plugins first
+        this.pluginSystem?.destroyPlugins();
 
         // Destroy modules & managers 
         this.resultHandler?.destroy();
@@ -667,6 +698,7 @@ export class Game {
         this.canvasContainer = null;
         this.winLineGraphics = null; // Nullify graphics reference used by legacy modules
         this.deps = null; // Clear deps object
+        this.pluginSystem = null; // <-- Nullify PluginSystem
     }
 }
 

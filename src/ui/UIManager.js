@@ -48,6 +48,8 @@ export class UIManager {
     featureManager = null;
     /** @type {import('../core/AnimationController.js').AnimationController | null} */
     animationController = null; // Add AnimationController dependency
+    /** @type {Function | null} */ // Expose the button factory function
+    buttonFactory = null;
 
     // UI Elements
     /** @type {PIXI.Container | null} */
@@ -107,6 +109,7 @@ export class UIManager {
         this.eventBus = dependencies.eventBus;
         this.featureManager = dependencies.featureManager;
         this.animationController = dependencies.animationController; // Store the instance
+        this.buttonFactory = createButton; // Store the imported function reference
         
         // Log instance creation FIRST
         if (this.logger) {
@@ -188,17 +191,18 @@ export class UIManager {
     }
 
     _createButtons(panelCenterY, btnSize, spinBtnSize, sideMargin, buttonSpacing) {
-        if (!this.internalContainer) {
-            this.logger?.error("UIManager", "Cannot create buttons - internalContainer is missing.");
-            return;
-        }
+        if (!this.internalContainer || !this.buttonFactory) return;
         const standardButtonY = panelCenterY - btnSize / 2;
 
         // Use inline arrow functions to emit events
         const createAndStore = (name, x, y, size, icon) => {
             if (!this.internalContainer) return null; 
+            if (!this.buttonFactory) {
+                this.logger?.error('UIManager', 'Cannot create button, buttonFactory is missing.');
+                return null;
+            }
             // Create the button - pass an inline function that emits the click event
-            const button = createButton(
+            const button = this.buttonFactory(
                 "", x, y, 
                 () => { 
                     this.logger?.debug('UIManager', `${name} button clicked.`);
@@ -264,7 +268,11 @@ export class UIManager {
             // Use inline arrow functions to emit events
             const createBetButton = (name, x, icon) => { 
                 if (!this.internalContainer) return null; 
-                const button = createButton(
+                if (!this.buttonFactory) {
+                    this.logger?.error('UIManager', 'Cannot create bet button, buttonFactory is missing.');
+                    return null;
+                }
+                const button = this.buttonFactory(
                     "", x, standardButtonY, 
                     () => { 
                         this.logger?.debug('UIManager', `${name} button clicked.`);
@@ -398,7 +406,12 @@ export class UIManager {
         this.featureManager = null;
         this.animationController = null;
         
-        this.logger?.info('UIManager', 'Destroy complete.');
+        // --- BEGIN EDIT (Use local const for logger check) ---
+        const loggerRef = this.logger; // Store reference
+        if (loggerRef) { // Check the reference
+            loggerRef.info('UIManager', 'Destroy complete.'); // Use the reference
+        }
+        // --- END EDIT ---
     }
 
     // --- Event Handlers --- 
