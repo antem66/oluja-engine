@@ -82,60 +82,39 @@ export let state = {
  * @param {object} dependencies - Core dependencies.
  * @param {EventBus} dependencies.eventBus - The global event bus instance.
  * @param {Logger} dependencies.logger - The global logger instance.
+ * @param {object} dependencies.initialState - The initial state object from config.
  * @returns {typeof state | undefined} The initial state object, or undefined on error.
  */
 export function initGameState(dependencies) {
-    if (!dependencies || !dependencies.eventBus || !dependencies.logger) {
-        console.error('GameState Error: initGameState requires dependencies object with eventBus and logger.');
-        // Fallback to console if logger is missing
+    if (!dependencies || !dependencies.eventBus || !dependencies.logger || !dependencies.initialState) {
+        console.error('GameState Error: initGameState requires dependencies object with eventBus, logger, and initialState.');
         (dependencies?.logger || console).error('GameState', 'Initialization failed: Missing dependencies.');
         return;
     }
     eventBusInstance = dependencies.eventBus;
     loggerInstance = dependencies.logger;
 
-    // Define initial state properties
-    const initialState = {
-        balance: 10000,
-        currentBetPerLine: BET_PER_LINE_LEVELS[3] || 0.1,
-        currentTotalBet: (BET_PER_LINE_LEVELS[3] || 0.1) * NUM_PAYLINES,
-        currentCurrency: DEFAULT_CURRENCY,
-        numReels: NUM_REELS,
-        lastTotalWin: 0,
-        winningLinesInfo: [],
-        isSpinning: false,
-        isTransitioning: false,
-        isFeatureTransitioning: false,
-        targetStoppingReelIndex: -1,
-        isAutoplaying: false,
-        autoplaySpinsRemaining: 0,
-        autoplaySpinsDefault: AUTOPLAY_SPINS_DEFAULT,
-        isTurboMode: false,
-        isInFreeSpins: false,
-        freeSpinsRemaining: 0,
-        totalFreeSpinsWin: 0,
-        isDebugMode: false,
-        forceWin: false,
-    };
-    // Assign to the exported state variable
-    state = { ...initialState };
+    // Assign to the exported state variable using the passed-in initialState
+    state = { ...dependencies.initialState };
 
-    // --- BEGIN EDIT: Remove obsolete button listener registration --- 
-    /*
+    // --- BEGIN EDIT: Restore button listener registration --- 
     // Subscribe to events (Example: UI button clicks)
     if (eventBusInstance) {
         const unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
-        activeListeners.push(unsubscribeButtonClick);
-        // Subscribe to specific stop request
+        listeners.push(unsubscribeButtonClick); // Add to listeners array
+        loggerInstance?.info('GameState', 'Subscribed to ui:button:click event.');
+        
+        // Subscribe to specific stop request from AutoplayPlugin (if needed)
         const unsubscribeAutoplayStop = eventBusInstance.on('autoplay:requestStop', _handleAutoplayStopRequest);
-        activeListeners.push(unsubscribeAutoplayStop);
-        loggerInstance?.info('GameState', 'Subscribed to ui:button:click and autoplay:requestStop events.');
+        listeners.push(unsubscribeAutoplayStop);
+        loggerInstance?.info('GameState', 'Subscribed to autoplay:requestStop event.');
     } else {
         loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to events.');
     }
-    */
     // --- END EDIT ---
-
+    
+    // --- REMOVE Redundant Autoplay Listener Registration ---
+    /*
     // --- Keep only autoplay stop listener ---
     if (eventBusInstance) {
         // Subscribe to specific stop request from AutoplayPlugin (if needed)
@@ -146,11 +125,12 @@ export function initGameState(dependencies) {
         loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to autoplay:requestStop.');
     }
     // --- END REPLACEMENT ---
+    */
 
     loggerInstance?.info('GameState', 'Initialized and dependencies set.', { initialState: state });
 
-    // Return the initial state
-    return initialState;
+    // Return the initial state (the one passed in)
+    return dependencies.initialState;
 }
 
 /**

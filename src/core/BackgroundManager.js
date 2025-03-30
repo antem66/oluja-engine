@@ -98,16 +98,16 @@ export class BackgroundManager {
      * TODO: Implement actual background change logic (e.g., tinting, swapping texture).
      * @param {number} targetColor - The target background color tint (e.g., 0xff0000).
      * @param {number} duration - Duration of the transition in seconds.
+     * @returns {gsap.core.Tween | null} The GSAP tween instance or null if animation doesn't start.
      */
     changeBackground(targetColor, duration) {
-        // this.logger?.info('BackgroundManager', `Placeholder: changeBackground called with color ${targetColor.toString(16)} and duration ${duration}s.`);
-        // TODO: Implement tint animation using GSAP
+        let tween = null; // Variable to store the tween
         if (this.backgroundSprite && typeof gsap !== 'undefined') {
             this.logger?.info('BackgroundManager', `Initiating background tint to 0x${targetColor.toString(16)} over ${duration}s.`);
-            gsap.to(this.backgroundSprite, { 
+            tween = gsap.to(this.backgroundSprite, { 
                 pixi: { tint: targetColor }, 
                 duration: duration, 
-                ease: "power1.inOut" // Add a smooth ease
+                ease: "power1.inOut"
             });
         } else {
             if (!this.backgroundSprite) {
@@ -117,6 +117,7 @@ export class BackgroundManager {
                  this.logger?.error('BackgroundManager', 'GSAP is not defined. Cannot animate background tint.');
             }
         }
+        return tween;
     }
 
     /**

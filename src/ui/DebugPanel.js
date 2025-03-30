@@ -1,7 +1,8 @@
 import * as PIXI from 'pixi.js';
 import { state, updateState } from '../core/GameState.js';
-import { enterFreeSpins } from '../features/FreeSpins.js';
+import { EventBus } from '../utils/EventBus.js';
 
+let eventBusInstance = null;
 let debugContainer = null;
 let debugPanel = null;
 let forceWinCheckbox = null;
@@ -13,12 +14,13 @@ const checkboxStates = new Map();
  * Initializes the debug panel
  * @param {PIXI.Application} app - The PIXI application instance
  * @param {PIXI.Container} layerDebug - The layer to add the debug panel to.
+ * @param {import('../utils/EventBus.js').EventBus} bus - The global event bus.
  */
-export function initDebugPanel(app, layerDebug) { // Added layerDebug parameter
+export function initDebugPanel(app, layerDebug, bus) {
+    eventBusInstance = bus;
     // Create a new container for debug elements
     debugContainer = new PIXI.Container();
     // debugContainer.visible = false; // Visibility controlled by layerDebug now
-    // app.stage.addChild(debugContainer); // Add to layerDebug instead
     if (layerDebug) {
         layerDebug.addChild(debugContainer);
     } else {
@@ -177,7 +179,11 @@ function createDebugOptions() {
     forceFSBtn.on('pointerdown', () => {
         if (!state.isSpinning && !state.isInFreeSpins && !state.isTransitioning) {
             console.log("Debug: Forcing Free Spins...");
-            enterFreeSpins(); // Call the imported function
+            if (eventBusInstance) {
+                eventBusInstance.emit('feature:trigger:freeSpins', { spinsAwarded: 10 }); // Emit event, default 10 spins
+            } else {
+                console.error("DebugPanel: EventBus not available to trigger Free Spins.");
+            }
         } else {
             console.warn("Debug: Cannot force Free Spins now (Game Busy). State:", {
                 spinning: state.isSpinning,

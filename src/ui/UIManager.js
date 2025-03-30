@@ -197,13 +197,11 @@ export class UIManager {
             this.logger?.error('UIManager', 'Cannot build panel from config: Missing internalContainer, buttonFactory, featureManager, or eventBus.');
             return;
         }
-        // --- BEGIN EDIT (Store factory ref) ---
-        const factory = this.buttonFactory; // Ensure TS knows it's not null here
-        // --- END EDIT ---
+        const factory = this.buttonFactory;
 
         UI_PANEL_LAYOUT.forEach(buttonConfig => {
             // Check feature flag if it exists
-            if (buttonConfig.featureFlag && !this.featureManager.isEnabled(buttonConfig.featureFlag)) {
+            if (buttonConfig.featureFlag && !this.featureManager?.isEnabled(buttonConfig.featureFlag)) {
                 this.logger?.debug('UIManager', `Skipping button "${buttonConfig.name}" due to feature flag "${buttonConfig.featureFlag}".`);
                 return; // Skip this button
             }
@@ -221,9 +219,7 @@ export class UIManager {
             }
 
             // Create the button
-            // --- BEGIN EDIT (Use factory ref) ---
             const button = factory(
-            // --- END EDIT ---
                 "", // Label text (if any, most buttons use icons)
                 buttonConfig.position.x,
                 buttonConfig.position.y,
@@ -275,6 +271,10 @@ export class UIManager {
 
     // Bet Text & Label
         this.betLabel = createText("BET", this.uiStyles.label, betGroupCenterX, panelCenterY + labelOffset);
+        this.logger?.info('UIManager._createTextDisplays', 'Initial Bet Data:', { 
+            totalBet: initialState.currentTotalBet, 
+            currency: initialState.currentCurrency 
+        });
         this.betText = createText(this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency), this.uiStyles.betValue, betGroupCenterX, panelCenterY + valueOffset);
         
         // Balance (Left Side)
@@ -370,19 +370,16 @@ export class UIManager {
         this.winLabel = null;
         this.internalContainer = null; // Set to null here
         
-        // 5. Nullify Dependencies (Already done)
+        // 5. Nullify Dependencies
         this.parentLayer = null;
-        this.logger = null;
+        // --- BEGIN EDIT (Fix logger issue in destroy) ---
+        // Log completion BEFORE nullifying the logger itself
+        this.logger?.info('UIManager', 'Destroy complete.');
+        this.logger = null; // Nullify logger LAST
+        // --- END EDIT ---
         this.eventBus = null;
         this.featureManager = null;
         this.animationController = null;
-        
-        // --- BEGIN EDIT (Re-apply logger fix) ---
-        const loggerRef = this.logger; // Store reference
-        if (loggerRef) { // Check the reference
-            loggerRef.info('UIManager', 'Destroy complete.'); // Use the reference
-        }
-        // --- END EDIT ---
     }
 
     // --- Event Handlers --- 

@@ -126,26 +126,26 @@ export class FreeSpinsUIManager {
     }
 
     // Renamed from updateFreeSpinsIndicator
-    update() {
+    updateDisplay(isInFreeSpins, spinsRemaining, totalWin) {
         // Ensure indicator itself exists
         if (!this.freeSpinsIndicator) {
             return;
         }
 
         // Only log if something interesting might happen (entering/exiting FS or indicator visible)
-        if (state.isInFreeSpins || this.freeSpinsIndicator?.visible) {
-            // console.log(`[Trace] FreeSpinsUIManager.update called. isInFreeSpins: ${state.isInFreeSpins}, indicator visible: ${this.freeSpinsIndicator?.visible}`);
+        if (isInFreeSpins || this.freeSpinsIndicator?.visible) {
+            // console.log(`[Trace] FreeSpinsUIManager.updateDisplay called. isInFreeSpins: ${isInFreeSpins}, indicator visible: ${this.freeSpinsIndicator?.visible}`);
         }
 
         // Show/hide based on free spins state
-        const inFreeSpin = state.isInFreeSpins;
-        if (inFreeSpin) {
+        if (isInFreeSpins) {
             // Update text content only if text elements exist
             if (this.freeSpinsCountText) {
-                this.freeSpinsCountText.text = `Remaining: ${state.freeSpinsRemaining}`;
+                this.freeSpinsCountText.text = `Remaining: ${spinsRemaining}`;
             }
             if (this.freeSpinsTotalWinText) {
-                this.freeSpinsTotalWinText.text = `Win: €${state.totalFreeSpinsWin.toFixed(2)}`;
+                const formattedWin = (totalWin ?? 0).toFixed(2);
+                this.freeSpinsTotalWinText.text = `Win: €${formattedWin}`;
             }
 
             // Show indicator if not already visible
@@ -171,7 +171,7 @@ export class FreeSpinsUIManager {
 
             // Flash count text only if it exists and count changed
             // @ts-ignore - _lastCount is dynamic
-            if (this.freeSpinsCountText && this.freeSpinsIndicator._lastCount !== undefined && this.freeSpinsIndicator._lastCount !== state.freeSpinsRemaining) {
+            if (this.freeSpinsCountText && this.freeSpinsIndicator._lastCount !== undefined && this.freeSpinsIndicator._lastCount !== spinsRemaining) {
                 gsap.to(this.freeSpinsCountText.scale, {
                     x: 1.2, y: 1.2,
                     duration: 0.2,
@@ -183,9 +183,9 @@ export class FreeSpinsUIManager {
 
             // Store current count for comparison on next update
             // @ts-ignore - _lastCount is dynamic
-            this.freeSpinsIndicator._lastCount = state.freeSpinsRemaining;
+            this.freeSpinsIndicator._lastCount = spinsRemaining;
 
-        } else if (this.freeSpinsIndicator.visible && !state.isTransitioning) {
+        } else if (this.freeSpinsIndicator.visible) {
             console.log("[Trace] Not in Free Spins & FS indicator visible - Animating out.");
             // Animate it out
             gsap.to(this.freeSpinsIndicator, {

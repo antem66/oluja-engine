@@ -241,7 +241,7 @@ function _handleEvaluateRequest() {
         // --- Handle Feature Triggers --- 
         if (freeSpinsTriggered) {
             logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
-            eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED });
+            eventBus.emit('feature:trigger:freeSpins', { spinsAwarded: FREE_SPINS_AWARDED });
         }
     
     } catch (error) {
