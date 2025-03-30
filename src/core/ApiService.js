@@ -141,8 +141,10 @@ export class ApiService {
      */
     _generateMockSpinResultData(currentBetPerLine) {
         this.logger?.debug('ApiService', '_generateMockSpinResultData called');
-        // Use injected featureManager
-        const forceWin = this.featureManager?.isEnabled('debugForceWin') ?? false;
+        // Use GameState directly for this debug flag, as FeatureManager isn't dynamically updated
+        const forceWin = state.forceWin; 
+        this.logger?.debug('ApiService', `Force Win flag is currently: ${forceWin}`);
+
         const stopPositions = [];
         const mockSymbolGrid = []; // Need grid temporarily for win calculation
         const symbolsToAnimate = new Set(); // Use a Set to avoid duplicates
