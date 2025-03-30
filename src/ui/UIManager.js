@@ -29,6 +29,7 @@ import * as PIXI from 'pixi.js';
 import { GAME_WIDTH, GAME_HEIGHT, CURRENCY } from '../config/gameSettings.js'; 
 import { gsap } from 'gsap';
 import { createButton } from './ButtonFactory.js';
+import { UI_PANEL_LAYOUT } from '../config/uiPanelLayout.js'; // Import the layout config
 // Import types
 import { Logger } from '../utils/Logger.js';
 import { EventBus } from '../utils/EventBus.js';
@@ -51,6 +52,11 @@ export class UIManager {
     /** @type {Function | null} */ // Expose the button factory function
     buttonFactory = null;
 
+    // --- BEGIN EDIT ---
+    /** @type {Map<string, ReturnType<typeof createButton>>} */ // Store buttons by name
+    buttons = new Map();
+    // --- END EDIT ---
+
     // UI Elements
     /** @type {PIXI.Container | null} */
     internalContainer = null;
@@ -68,16 +74,6 @@ export class UIManager {
     betLabel = null;
     /** @type {PIXI.Text | null} */
     winLabel = null;
-    /** @type {ReturnType<typeof createButton> | null} */ // Use inferred type from factory
-    autoplayButton = null;
-    /** @type {ReturnType<typeof createButton> | null} */
-    turboButton = null;
-    /** @type {ReturnType<typeof createButton> | null} */
-    spinButton = null;
-    /** @type {ReturnType<typeof createButton> | null} */
-    betDecreaseButton = null;
-    /** @type {ReturnType<typeof createButton> | null} */
-    betIncreaseButton = null;
 
     /** @type {object | null} */
     uiStyles = null; // Store UI styles
@@ -163,13 +159,14 @@ export class UIManager {
             .fill({ color: 0x1a1a1a, alpha: 0.85 });
         this.internalContainer.addChild(panel);
 
-        this._createButtons(panelCenterY, btnSize, spinBtnSize, sideMargin, buttonSpacing);
+        // --- BEGIN EDIT (Call builder instead of creator) ---
+        this._buildPanelFromConfig(); // Build buttons from config
+        // --- END EDIT ---
         this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState);
         
         // Set initial state visually using initialState
-        // this.updateAutoplayButtonState(initialState);
-        this.updateTurboButtonState(initialState);
-        this.setButtonsEnabled(initialState);
+        // Visual state should now be set by listeners/plugins reacting to initial state event
+        this.setButtonsEnabled(initialState); // Keep generic enabled state setting
 
         // Subscribe to events
         this._subscribeToEvents();
@@ -190,43 +187,67 @@ export class UIManager {
         this._lastKnownBalance = initialState.balance; // Initialize tracked balance
     }
 
-    _createButtons(panelCenterY, btnSize, spinBtnSize, sideMargin, buttonSpacing) {
-        if (!this.internalContainer || !this.buttonFactory) return;
-        const standardButtonY = panelCenterY - btnSize / 2;
+    // --- BEGIN EDIT (Add _buildPanelFromConfig) ---
+    /**
+     * Builds the UI button panel based on the UI_PANEL_LAYOUT configuration.
+     * @private
+     */
+    _buildPanelFromConfig() {
+        if (!this.internalContainer || !this.buttonFactory || !this.featureManager || !this.eventBus) {
+            this.logger?.error('UIManager', 'Cannot build panel from config: Missing internalContainer, buttonFactory, featureManager, or eventBus.');
+            return;
+        }
+        // --- BEGIN EDIT (Store factory ref) ---
+        const factory = this.buttonFactory; // Ensure TS knows it's not null here
+        // --- END EDIT ---
 
-        // Use inline arrow functions to emit events
-        const createAndStore = (name, x, y, size, icon) => {
-            if (!this.internalContainer) return null; 
-            if (!this.buttonFactory) {
-                this.logger?.error('UIManager', 'Cannot create button, buttonFactory is missing.');
-                return null;
+        UI_PANEL_LAYOUT.forEach(buttonConfig => {
+            // Check feature flag if it exists
+            if (buttonConfig.featureFlag && !this.featureManager.isEnabled(buttonConfig.featureFlag)) {
+                this.logger?.debug('UIManager', `Skipping button "${buttonConfig.name}" due to feature flag "${buttonConfig.featureFlag}".`);
+                return; // Skip this button
             }
-            // Create the button - pass an inline function that emits the click event
-            const button = this.buttonFactory(
-                "", x, y, 
-                () => { 
-                    this.logger?.debug('UIManager', `${name} button clicked.`);
-                    this.eventBus?.emit('ui:button:click', { buttonName: name });
-                }, 
-                {}, this.internalContainer, size, size, true, icon
+
+            // Define the onClick handler based on config
+            let onClickHandler = () => {};
+            if (buttonConfig.action?.type === 'emitEvent') {
+                onClickHandler = () => {
+                    this.logger?.debug('UIManager', `Button "${buttonConfig.name}" clicked, emitting: ${buttonConfig.action.eventName}`);
+                    this.eventBus?.emit(buttonConfig.action.eventName, buttonConfig.action.payload);
+                };
+            } else {
+                this.logger?.warn('UIManager', `Button "${buttonConfig.name}" has missing or unsupported action type.`);
+                // Default to no-op or potentially log an error
+            }
+
+            // Create the button
+            // --- BEGIN EDIT (Use factory ref) ---
+            const button = factory(
+            // --- END EDIT ---
+                "", // Label text (if any, most buttons use icons)
+                buttonConfig.position.x,
+                buttonConfig.position.y,
+                onClickHandler, // Use the configured handler
+                {}, // Style overrides (optional)
+                this.internalContainer, // Parent container
+                buttonConfig.size.width,
+                buttonConfig.size.height,
+                true, // Assume interactive
+                buttonConfig.icon // Initial icon
             );
-            button.name = `${name}Button`;
-            this[name + 'Button'] = button;
-            return button;
-        };
 
-        // Left Buttons
-        const turboX = sideMargin;
-        createAndStore('turbo', turboX, standardButtonY, btnSize, 'turbo'); 
+            if (button) {
+                button.name = `${buttonConfig.name}Button`; // Set PIXI name for debugging
+                this.buttons.set(buttonConfig.name, button); // Store button instance in the map
+                this.logger?.debug('UIManager', `Created button "${buttonConfig.name}".`);
+            } else {
+                this.logger?.error('UIManager', `Failed to create button "${buttonConfig.name}".`);
+            }
+        });
 
-        const autoplayX = turboX + btnSize + buttonSpacing;
-        createAndStore('autoplay', autoplayX, standardButtonY, btnSize, 'autoplay');
-
-        // Right Buttons (Spin) - Already emits event
-        const spinX = GAME_WIDTH - sideMargin - spinBtnSize;
-        const spinY = panelCenterY - spinBtnSize / 2 - 15; 
-        createAndStore('spin', spinX, spinY, spinBtnSize, 'spin');
+        this.logger?.info('UIManager', `Built UI panel with ${this.buttons.size} buttons from configuration.`);
     }
+    // --- END EDIT ---
 
     _createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState) {
         if (!this.internalContainer || !this.uiStyles || !initialState) { 
@@ -256,44 +277,6 @@ export class UIManager {
         this.betLabel = createText("BET", this.uiStyles.label, betGroupCenterX, panelCenterY + labelOffset);
         this.betText = createText(this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency), this.uiStyles.betValue, betGroupCenterX, panelCenterY + valueOffset);
         
-        // Bet Buttons (Positioned relative to betText after short delay)
-        setTimeout(() => {
-            if (!this.betText || !this.internalContainer) return;
-            const betTextActualWidth = this.betText.width;
-            const standardButtonY = panelCenterY - btnSize / 2; 
-            const betButtonSpacing = 35;
-            
-            // Use inline arrow functions to emit events
-            const createBetButton = (name, x, icon) => { 
-                if (!this.internalContainer) return null; 
-                if (!this.buttonFactory) {
-                    this.logger?.error('UIManager', 'Cannot create bet button, buttonFactory is missing.');
-                    return null;
-                }
-                const button = this.buttonFactory(
-                    "", x, standardButtonY, 
-                    () => { 
-                        this.logger?.debug('UIManager', `${name} button clicked.`);
-                        this.eventBus?.emit('ui:button:click', { buttonName: name });
-                    }, 
-                    {}, this.internalContainer, btnSize, btnSize, true, icon
-                );
-                 button.name = `${name}Button`;
-                 this[name + 'Button'] = button;
-            };
-
-            const decreaseX = betGroupCenterX - (betTextActualWidth / 2) - betButtonSpacing - (btnSize / 2);
-            // Pass button name directly, remove handlers.decreaseBet
-            createBetButton('betDecrease', decreaseX, 'minus');
-
-            const increaseX = betGroupCenterX + (betTextActualWidth / 2) + betButtonSpacing - (btnSize / 2);
-            // Pass button name directly, remove handlers.increaseBet
-            createBetButton('betIncrease', increaseX, 'plus');
-            
-            // Re-apply initial button enabled state after buttons are created
-            this.setButtonsEnabled(initialState);
-        }, 0);
-
         // Balance (Left Side)
         const autoplayButtonRightEdge = sideMargin + btnSize + buttonSpacing + btnSize; // Position after autoplay btn
         const balanceAreaLeftEdge = autoplayButtonRightEdge + textButtonGap * 2;
@@ -339,9 +322,12 @@ export class UIManager {
         // 1. Kill GSAP Tweens
         gsap.killTweensOf(this._winRollupValues);
         gsap.killTweensOf(this._balanceRollupValues);
-        if (this.spinButton?.buttonIcon) {
-            gsap.killTweensOf(this.spinButton.buttonIcon);
+        // --- BEGIN EDIT (Kill tween for button in map) ---
+        const spinButton = this.buttons.get('spin');
+        if (spinButton?.buttonIcon) {
+            gsap.killTweensOf(spinButton.buttonIcon);
         }
+        // --- END EDIT ---
         this._winRollupTween = null; // Clear tween reference
         
         // 2. Unregister win animation (Already done)
@@ -357,23 +343,15 @@ export class UIManager {
         this.logger?.debug('UIManager', 'Unsubscribed from EventBus events.');
 
         // 4. Destroy PIXI Objects
-        // Destroying internalContainer should handle children automatically, 
-        // but explicitly destroying buttons might be safer if ButtonFactory 
-        // doesn't fully integrate with PIXI's destroy chain.
-        // Let's destroy buttons explicitly first.
-        const buttons = [
-            this.autoplayButton,
-            this.turboButton,
-            this.spinButton,
-            this.betDecreaseButton,
-            this.betIncreaseButton
-        ];
-        buttons.forEach(button => {
+        // --- BEGIN EDIT (Destroy buttons from map) ---
+        this.buttons.forEach((button, name) => {
             if (button && typeof button.destroy === 'function') {
-                // Assuming ButtonFactory's return object has a destroy method
-                button.destroy(); 
+                button.destroy();
+                this.logger?.debug('UIManager', `Destroyed button "${name}".`);
             }
         });
+        this.buttons.clear(); // Clear the map
+        // --- END EDIT ---
         
         // Now destroy the container and its remaining children (texts, panel)
         if (this.internalContainer) {
@@ -390,11 +368,6 @@ export class UIManager {
         this.balanceLabel = null;
         this.betLabel = null;
         this.winLabel = null;
-        this.autoplayButton = null;
-        this.turboButton = null;
-        this.spinButton = null;
-        this.betDecreaseButton = null;
-        this.betIncreaseButton = null;
         this.internalContainer = null; // Set to null here
         
         // 5. Nullify Dependencies (Already done)
@@ -534,26 +507,32 @@ export class UIManager {
         const cursor = enabled ? 'pointer' : 'default';
 
         const buttonsToToggle = [
-            this.spinButton,
-            this.betDecreaseButton,
-            this.betIncreaseButton,
+            this.buttons.get('spin'),
+            this.buttons.get('betDecrease'),
+            this.buttons.get('betIncrease'),
         ];
 
         // Keep Autoplay & Turbo always interactive 
-        if (this.autoplayButton) {
-            this.autoplayButton.eventMode = 'static';
-            this.autoplayButton.alpha = 1.0;
-            this.autoplayButton.cursor = 'pointer';
+        // --- BEGIN EDIT (Add checks for buttons from map) ---
+        const autoplayButtonRef = this.buttons.get('autoplay');
+        if (autoplayButtonRef) {
+            autoplayButtonRef.eventMode = 'static';
+            autoplayButtonRef.alpha = 1.0;
+            autoplayButtonRef.cursor = 'pointer';
         }
-        if (this.turboButton) {
-            this.turboButton.eventMode = 'static';
-            this.turboButton.alpha = 1.0;
-            this.turboButton.cursor = 'pointer';
+        const turboButtonRef = this.buttons.get('turbo');
+        if (turboButtonRef) {
+            turboButtonRef.eventMode = 'static';
+            turboButtonRef.alpha = 1.0;
+            turboButtonRef.cursor = 'pointer';
         }
+        // --- END EDIT ---
 
         buttonsToToggle.forEach(button => {
-            if (!button) return;
-            const isBetButton = button === this.betDecreaseButton || button === this.betIncreaseButton;
+            if (!button) return; // Already checks if the button itself exists in the array
+            // --- BEGIN EDIT (Add checks for buttons from map for comparison) ---
+            const isBetButton = button === this.buttons.get('betDecrease') || button === this.buttons.get('betIncrease');
+            // --- END EDIT ---
             // Disable bet buttons during FS and Autoplay, otherwise use general 'enabled' state
             const finalEnabled = enabled && !(isBetButton && (currentState.isInFreeSpins || currentState.isAutoplaying));
 
@@ -564,32 +543,47 @@ export class UIManager {
     }
 
     animateSpinButtonRotation() {
-        if (!this.spinButton || !this.spinButton.buttonIcon) {
+        // --- BEGIN EDIT (Add checks for button from map) ---
+        const spinButtonRef = this.buttons.get('spin');
+        if (!spinButtonRef || !spinButtonRef.buttonIcon) {
+        // --- END EDIT ---
             this.logger?.warn('UIManager', 'Cannot animate spin button - button or icon missing.');
             return;
         }
-        const iconElement = this.spinButton.buttonIcon;
+        // --- BEGIN EDIT (Use ref) ---
+        const iconElement = spinButtonRef.buttonIcon;
+        // --- END EDIT ---
         gsap.killTweensOf(iconElement);
         iconElement.angle = 0;
         gsap.to(iconElement, { angle: 360, duration: 1.2, ease: "power1.inOut" });
     }
 
     stopSpinButtonRotation() {
-        if (!this.spinButton || !this.spinButton.buttonIcon) {
+        // --- BEGIN EDIT (Add checks for button from map) ---
+        const spinButtonRef = this.buttons.get('spin');
+        if (!spinButtonRef || !spinButtonRef.buttonIcon) {
+        // --- END EDIT ---
             this.logger?.warn('UIManager', 'Cannot stop spin button animation - button or icon missing.');
             return;
         }
-        const iconElement = this.spinButton.buttonIcon;
+        // --- BEGIN EDIT (Use ref) ---
+        const iconElement = spinButtonRef.buttonIcon;
+        // --- END EDIT ---
         gsap.killTweensOf(iconElement);
         gsap.to(iconElement, { angle: 0, duration: 0.2, ease: "power1.out" });
     }
 
     updateTurboButtonState(currentState) { // Accept state
-        if (!this.turboButton || !this.featureManager) return;
+        // --- BEGIN EDIT (Add checks for button from map) ---
+        const turboButtonRef = this.buttons.get('turbo');
+        if (!turboButtonRef || !this.featureManager) return;
+        // --- END EDIT ---
         // TODO: Check feature flag featureManager.isEnabled('turboMode')
         const isTurbo = currentState.isTurboMode; // Use passed state
-        this.turboButton.updateIcon(isTurbo ? 'turbo-active' : 'turbo');
-        this.turboButton.setActiveState(isTurbo);
+        // --- BEGIN EDIT (Use ref) ---
+        turboButtonRef.updateIcon(isTurbo ? 'turbo-active' : 'turbo');
+        turboButtonRef.setActiveState(isTurbo);
+        // --- END EDIT ---
     }
 
     /**
@@ -684,6 +678,14 @@ export class UIManager {
      * @returns {ReturnType<typeof createButton> | null} The button instance or null if not found.
      */
     getButton(buttonName) {
+        // --- BEGIN EDIT (Use map) ---
+        const button = this.buttons.get(buttonName);
+        if (!button) {
+            this.logger?.warn('UIManager', `getButton called for unknown button: ${buttonName}`);
+            return null;
+        }
+        return button;
+        /* REMOVED old logic
         const buttonPropertyName = `${buttonName}Button`;
         if (this.hasOwnProperty(buttonPropertyName)) {
             // @ts-ignore - We know the property should exist based on the name convention
@@ -691,6 +693,8 @@ export class UIManager {
         }
         this.logger?.warn('UIManager', `getButton called for unknown button: ${buttonName}`);
         return null;
+        */
+       // --- END EDIT ---
     }
     
     /**
@@ -712,7 +716,7 @@ export class UIManager {
             button.updateIcon(isActive ? activeIcon : inactiveIcon);
             button.setActiveState(isActive);
         } else {
-            this.logger?.error('UIManager', `Button \"${buttonName}\" does not support visual state updates (missing methods).`);
+            this.logger?.error('UIManager', `Button "${buttonName}\" does not support visual state updates (missing methods).`);
         }
     }
 }
