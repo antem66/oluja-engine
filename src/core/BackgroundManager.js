@@ -29,10 +29,12 @@ export class BackgroundManager {
 
     _createSprite() {
         try {
-            // Assume BG_IMAGE is loaded via PIXI.Assets in Game.js
-            const texture = PIXI.Assets.get('BG_IMAGE');
+            // Use the alias defined in the manifest
+            const alias = 'background_default';
+            this.logger?.debug(`BackgroundManager: Attempting to get texture with alias: ${alias}`);
+            const texture = PIXI.Assets.get(alias);
             if (!texture) {
-                throw new Error('Background texture (BG_IMAGE) not found in assets.');
+                throw new Error(`Background texture ('${alias}') not found in assets cache.`);
             }
             this.backgroundSprite = new PIXI.Sprite(texture);
             this.backgroundSprite.anchor.set(0.5);

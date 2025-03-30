@@ -59,10 +59,13 @@ import { FreeSpinsPlugin } from '../plugins/freespins/FreeSpinsPlugin.js';
  * @property {import('./ApiService.js').ApiService} apiService
  * @property {import('../utils/FeatureManager.js').FeatureManager} featureManager
  * @property {object} initialState // Add initial state type
+ * @property {import('pixi.js').Application} app // <-- ADDED: Define the Pixi App dependency type
  */
 
 // --- Module-level variables ---
-let app = null; // Pixi Application instance
+// --- BEGIN EDIT: Remove global app variable --- 
+// let app = null; // Pixi Application instance - Now injected and stored as this.app
+// --- END EDIT ---
 // let reels = []; // Array of Reel instances - Now managed by ReelManager
 let infoOverlayElement; // DOM element for info overlay
 
@@ -120,6 +123,9 @@ export class Game {
     /** @type {object | null} */ // Changed type annotation
     deps = null; // To store injected dependencies
 
+    /** @type {PIXI.Application | null} */ // <-- ADDED: Store the Pixi App instance
+    app = null;
+
     /** @type {HTMLElement | null} */
     canvasContainer = null;
 
@@ -138,16 +144,29 @@ export class Game {
      * @param {GameDependencies} dependencies - Core services + initial state.
      */
     constructor(canvasContainerId, /** @type {GameDependencies} */ dependencies) {
-        this.canvasContainer = document.getElementById(canvasContainerId);
-        if (!this.canvasContainer) {
+        // --- BEGIN EDIT: Store canvas container earlier if needed for logging --- 
+        const containerElement = document.getElementById(canvasContainerId);
+        if (!containerElement) {
+            // Cannot use logger here as it's not assigned yet
             console.error(`Game: Constructor - Canvas container #${canvasContainerId} not found.`);
+            // Set a flag or throw to prevent further execution if critical
+            this._constructionFailed = true; 
             return;
         }
+        this.canvasContainer = containerElement;
+        // --- END EDIT ---
+        
         let errorFound = false;
         if (!dependencies) {
             console.error('Game: Constructor - Dependencies object is missing!');
             errorFound = true;
         } else {
+            // --- BEGIN EDIT: Check for injected app instance --- 
+             if (!dependencies.app || !(dependencies.app instanceof PIXI.Application)) {
+                 (dependencies.logger || console).error('Game: Constructor - PIXI App (dependencies.app) is missing or invalid!');
+                 errorFound = true;
+             }
+            // --- END EDIT ---
             if (!dependencies.logger) {
                 console.error('Game: Constructor - Logger dependency is missing!');
                 errorFound = true;
@@ -171,20 +190,32 @@ export class Game {
         }
 
         if (errorFound) {
+             this._constructionFailed = true; // Set flag
             return;
         }
+        
+        // --- BEGIN EDIT: Store dependencies and app instance ---
         this.deps = dependencies;
+        this.app = dependencies.app; // <-- Store the injected PIXI App
         this.initialState = dependencies.initialState;
+        // --- END EDIT ---
 
         this.deps.logger.info('Game', 'Game instance created.');
     }
 
     async init() {
+        if (this._constructionFailed) { // Check flag added in constructor
+            (this.deps?.logger || console).error('Game: Init aborted due to construction failure.');
+            return;
+        }
+        // Ensure app instance is available before proceeding
+        if (!this.app) {
+             (this.deps?.logger || console).error('Game: Init aborted - Pixi Application instance (this.app) is missing.');
+            return;
+        }
         this.deps.logger.info('Game', 'Initialization started...');
         try {
             this._exposeGlobals();
-            await this._setupPixiApp();
-            await this._loadAssets();
             this._createLayers();
             this._createManagers(); // Create managers first
 
@@ -232,38 +263,6 @@ export class Game {
         }
     }
 
-    async _setupPixiApp() {
-        app = new PIXI.Application();
-        globalThis.__PIXI_APP__ = app;
-        await app.init({
-            width: SETTINGS.GAME_WIDTH,
-            height: SETTINGS.GAME_HEIGHT,
-            backgroundColor: SETTINGS.normalBgColor,
-            resolution: window.devicePixelRatio || 1,
-            autoDensity: true,
-        });
-        if (app?.canvas && this.canvasContainer) {
-            this.canvasContainer.appendChild(app.canvas);
-        } else {
-            throw new Error("Pixi Application or canvas could not be initialized.");
-        }
-    }
-
-    async _loadAssets() {
-        const symbolAssets = SYMBOL_DEFINITIONS.map(def => ({
-            alias: def.id,
-            src: `assets/images/${def.id}.png`
-        }));
-        symbolAssets.push({ alias: 'BG_IMAGE', src: 'assets/images/background/bg.png' });
-
-        console.log("Loading symbol assets:", symbolAssets);
-        await PIXI.Assets.load(symbolAssets);
-        console.log("Symbol assets loaded.");
-
-        console.log("Loading button assets...");
-        await loadButtonAssets(); // Keep this call
-    }
-
     _createLayers() {
         this.layerBackground = this._createLayer("Layer: Background", 0);
         this.layerReels = this._createLayer("Layer: Reels", 10);
@@ -293,39 +292,45 @@ export class Game {
             console.error("Game Init Error: Failed to create overlay sub-containers.");
         }
 
-        if (app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerFullScreenEffects && this.layerOverlays && this.layerParticles && this.layerDebug) {
-            app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerFullScreenEffects, this.layerOverlays, this.layerParticles, this.layerDebug);
+        if (this.app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerFullScreenEffects && this.layerOverlays && this.layerParticles && this.layerDebug) {
+            this.app.stage.sortableChildren = true; // Ensure zIndex works
+            this.app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerFullScreenEffects, this.layerOverlays, this.layerParticles, this.layerDebug);
         } else {
-            console.error("Game Init Error: One or more layers failed to initialize before adding to stage.");
+            (this.deps?.logger || console).error("Game Init Error: One or more layers failed to initialize or app stage not available before adding layers.");
         }
 
         if (this.layerWinLines) {
             this.layerWinLines.position.set(SETTINGS.reelAreaX, SETTINGS.reelAreaY);
-            logger?.debug('Game', `Positioned layerWinLines at (${SETTINGS.reelAreaX}, ${SETTINGS.reelAreaY})`);
+            this.deps?.logger?.debug('Game', `Positioned layerWinLines at (${SETTINGS.reelAreaX}, ${SETTINGS.reelAreaY})`);
         }
     }
 
     _createManagers() {
         this.deps.logger?.info('Game', 'Creating managers...'); 
         const { logger, eventBus, apiService, featureManager, initialState } = this.deps;
-        // Assume 'app' is the PIXI.Application instance available in this scope (e.g., from _setupPixiApp)
-        // If not, this needs adjustment based on where 'app' is defined.
-        // For now, assuming 'app' is in scope.
-
+        
+        // --- BEGIN EDIT: Use this.app.ticker and check this.app ---
+        if (!this.app) { // Check if app instance exists on this
+             console.error("Game Init Error: Pixi App instance (this.app) not available for manager creation.");
+             return;
+        }
         if (!logger || !eventBus || !apiService || !featureManager) {
-            console.error("Game Init Error: Core dependencies missing in Game instance.");
+            (this.deps?.logger || console).error("Game Init Error: Core dependencies missing in Game instance.");
             return;
         }
-        // Use app.ticker directly if 'app' is in scope
-        if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer || !this.layerUI) {
-            console.error("Game Init Error: Required layers or ticker not available for manager creation.");
+        // Use this.app.ticker directly 
+        if (!this.layerBackground || !this.layerReels || !this.app.ticker || !this.layerLogo || !this.fsIndicatorContainer || !this.layerUI) {
+            (this.deps?.logger || console).error("Game Init Error: Required layers or ticker not available for manager creation.");
             return;
         }
+        // --- END EDIT ---
 
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
         this.reelManager = new ReelManager(
             this.layerReels, 
-            app.ticker, // Use app.ticker if 'app' is in scope
+            // --- BEGIN EDIT: Use this.app.ticker ---
+            this.app.ticker, 
+            // --- END EDIT ---
             logger,
             eventBus // Inject EventBus
         );
@@ -423,7 +428,7 @@ export class Game {
      */
     _initCoreModules(winLineGraphics) {
         const { logger, eventBus, featureManager, apiService } = this.deps;
-        if (!logger || !eventBus || !featureManager || !apiService || !app || !this.notificationsContainer || !this.winAnnouncementsContainer || !this.layerDebug || !this.layerFullScreenEffects || !this.spinManager || !this.animationController || !this.backgroundManager || !this.reelManager || !this.uiManager) {
+        if (!logger || !eventBus || !featureManager || !apiService || !this.app || !this.notificationsContainer || !this.winAnnouncementsContainer || !this.layerDebug || !this.layerFullScreenEffects || !this.spinManager || !this.animationController || !this.backgroundManager || !this.reelManager || !this.uiManager) {
             (logger || console).error('Game', '_initCoreModules: Missing dependencies, managers, layers, or app instance.');
             return;
         }
@@ -445,7 +450,7 @@ export class Game {
 
         const moduleDeps = {
             logger, eventBus, featureManager, apiService,
-            reelManager: this.reelManager, uiManager: this.uiManager, app: app,
+            reelManager: this.reelManager, uiManager: this.uiManager, app: this.app,
             spinManager: this.spinManager, animationController: this.animationController,
             backgroundManager: this.backgroundManager,
             initialState: this.initialState,
@@ -463,7 +468,7 @@ export class Game {
         } else { logger.warn('Game', 'InfoOverlay element #info-overlay not found in DOM.'); }
 
         if (this.layerDebug) {
-            initDebugPanel(app, this.layerDebug, eventBus);
+            initDebugPanel(this.app, this.layerDebug, eventBus);
         } else { logger.error('Game', 'Cannot init DebugPanel, layer missing.'); }
 
         updateParticles(0);
@@ -485,15 +490,15 @@ export class Game {
     }
 
     _finalizeSetup() {
-        if (app?.stage) {
-            app.stage.sortChildren();
-            console.log("Stage children sorted by zIndex:", app.stage.children.map(c => ({ name: c.name, zIndex: c.zIndex })));
+        if (this.app?.stage) {
+            this.app.stage.sortChildren();
+            console.log("Stage children sorted by zIndex:", this.app.stage.children.map(c => ({ name: c.name, zIndex: c.zIndex })));
         } else {
             console.error("Finalize Setup Error: Pixi stage not available for sorting.");
         }
 
-        if (app?.ticker) {
-            app.ticker.add(this.update.bind(this));
+        if (this.app?.ticker) {
+            this.app.ticker.add(this.update.bind(this));
         } else {
             throw new Error("Pixi ticker not available after init.");
         }
@@ -547,8 +552,8 @@ export class Game {
             }
         } catch (err) {
             console.error("Error in game loop:", err);
-            if (app?.ticker) {
-                app.ticker.stop();
+            if (this.app?.ticker) {
+                this.app.ticker.stop();
             }
             alert("Game loop critical error. Check console.");
         }
@@ -609,14 +614,14 @@ export class Game {
         this.backgroundManager?.destroy();
         this.freeSpinsUIManager?.destroy();
 
-        app?.ticker?.stop();
+        this.app?.ticker?.stop();
 
-        if (app?.stage) {
-            app.stage.destroy({ children: true });
+        if (this.app?.stage) {
+            this.app.stage.destroy({ children: true });
         }
-        if (app) {
-            app.destroy(true, { children: true });
-            app = null;
+        if (this.app) {
+            this.app.destroy(true, { children: true });
+            this.app = null;
             globalThis.__PIXI_APP__ = undefined;
         }
 
