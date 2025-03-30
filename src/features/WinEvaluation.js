@@ -26,7 +26,7 @@
 import { PAYLINES } from '../config/paylines.js';
 import { PAYTABLE } from '../config/symbolDefinitions.js'; // Import PAYTABLE
 import {
-    SYMBOLS_PER_REEL_VISIBLE, 
+    SYMBOLS_PER_REEL_VISIBLE,
     SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, ENABLE_FREE_SPINS, FREE_SPINS_AWARDED // Keep for scatter logic
 } from '../config/gameSettings.js';
 // Removed state and direct effect imports
@@ -66,7 +66,7 @@ export function init(dependencies) {
 
     // Subscribe to evaluation request event
     _unsubscribeEvalRequest = eventBus.on('spin:evaluateRequest', _handleEvaluateRequest); // Changed event
-    
+
     logger.info('WinEvaluation', 'Initialized and subscribed to spin:evaluateRequest.');
 }
 
@@ -95,8 +95,8 @@ function _handleEvaluateRequest() {
     logger?.debug('WinEvaluation', 'Handling spin:evaluateRequest');
 
     if (!eventBus || !logger || !reelManager || !reelManager.reels) {
-         (logger || console).error('WinEvaluation Error: Dependencies not initialized or available.');
-         return;
+        (logger || console).error('WinEvaluation Error: Dependencies not initialized or available.');
+        return;
     }
 
     // --- Get Current Grid --- 
@@ -114,13 +114,13 @@ function _handleEvaluateRequest() {
 
     // Check Paylines
     PAYLINES.forEach((linePath, lineIndex) => {
-        if (!linePath || !reelManager?.reels || linePath.length !== reelManager.reels.length) return; 
+        if (!linePath || !reelManager?.reels || linePath.length !== reelManager.reels.length) return;
 
         const firstSymbolId = grid[0][linePath[0]];
         if (!firstSymbolId || !PAYTABLE[firstSymbolId]) {
             // Log why line is skipped early
             // logger?.debug('WinEvaluation', `Skipping line ${lineIndex}: Invalid first symbol '${firstSymbolId}' or not in paytable.`);
-            return; 
+            return;
         }
 
         let consecutiveCount = 0;
@@ -128,25 +128,25 @@ function _handleEvaluateRequest() {
             if (grid[reelIndex][linePath[reelIndex]] === firstSymbolId) {
                 consecutiveCount++;
             } else {
-                break; 
+                break;
             }
         }
-        
+
         // Get the payout MAP for the first symbol
-        const payoutMap = PAYTABLE[firstSymbolId]; 
+        const payoutMap = PAYTABLE[firstSymbolId];
         // Check if a payout exists for the specific count
         const winMultiplier = payoutMap ? payoutMap[consecutiveCount] : 0;
         // Determine if a win occurred
         const winConditionMet = winMultiplier > 0;
-        
+
         // Log check details - UNCOMMENT
         logger?.debug('WinEvaluation', `Line ${lineIndex}: Symbol='${firstSymbolId}', Count=${consecutiveCount}, PayoutMap=${JSON.stringify(payoutMap)}, Multiplier=${winMultiplier}, Met=${winConditionMet}`);
 
         // Check for win
         if (winConditionMet) {
-            const lineWin = winMultiplier * state.currentBetPerLine; 
+            const lineWin = winMultiplier * state.currentBetPerLine;
             calculatedTotalWin += lineWin;
-            
+
             const lineInfo = {
                 lineIndex: lineIndex,
                 symbolId: firstSymbolId,
@@ -156,22 +156,22 @@ function _handleEvaluateRequest() {
             calculatedWinningLines.push(lineInfo);
             // Log win - UNCOMMENT
             logger?.info('WinEvaluation', `WIN FOUND on Line ${lineIndex}! Symbol=${firstSymbolId}, Count=${consecutiveCount}, Amount=${lineWin}`);
-            
+
             // Identify symbols on this winning line for animation
             for (let reelIndex = 0; reelIndex < consecutiveCount; reelIndex++) {
                 const rowIndex = linePath[reelIndex];
-                 if (rowIndex >= 0 && rowIndex < SYMBOLS_PER_REEL_VISIBLE) {
+                if (rowIndex >= 0 && rowIndex < SYMBOLS_PER_REEL_VISIBLE) {
                     // Check if reel exists before accessing symbols
-                    const reel = reelManager?.reels?.[reelIndex]; 
+                    const reel = reelManager?.reels?.[reelIndex];
                     if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) { // Explicit check for reel
-                        const symbolSprite = reel.symbols[rowIndex + 1]; 
+                        const symbolSprite = reel.symbols[rowIndex + 1];
                         if (symbolSprite && !seenSymbols.has(symbolSprite)) {
                             seenSymbols.add(symbolSprite);
                             allSymbolsToAnimate.push(symbolSprite);
                         }
                     } else {
-                         // Log if reel or symbols array is missing/invalid
-                         logger?.warn('WinEvaluation', `Cannot access symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
+                        // Log if reel or symbols array is missing/invalid
+                        logger?.warn('WinEvaluation', `Cannot access symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
                     }
                 }
             }
@@ -187,37 +187,37 @@ function _handleEvaluateRequest() {
                 if (symbolId === SCATTER_SYMBOL_ID) {
                     scatterCount++;
                     // Identify scatter symbol sprites if needed for animation
-                     const reel = reelManager?.reels?.[reelIndex]; 
-                     // Explicit check for reel before accessing symbols
-                     if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) { 
-                         const symbolSprite = reel.symbols[rowIndex + 1]; 
-                         if (symbolSprite && !seenSymbols.has(symbolSprite)) {
-                             seenSymbols.add(symbolSprite);
-                             allSymbolsToAnimate.push(symbolSprite);
-                         }
-                     } else {
-                         // Log if reel or symbols array is missing/invalid
-                         logger?.warn('WinEvaluation', `Cannot access scatter symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
-                     }
+                    const reel = reelManager?.reels?.[reelIndex];
+                    // Explicit check for reel before accessing symbols
+                    if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) {
+                        const symbolSprite = reel.symbols[rowIndex + 1];
+                        if (symbolSprite && !seenSymbols.has(symbolSprite)) {
+                            seenSymbols.add(symbolSprite);
+                            allSymbolsToAnimate.push(symbolSprite);
+                        }
+                    } else {
+                        // Log if reel or symbols array is missing/invalid
+                        logger?.warn('WinEvaluation', `Cannot access scatter symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
+                    }
                 }
             });
         });
     }
-    
+
     const freeSpinsTriggered = ENABLE_FREE_SPINS && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS;
-    
+
     logger?.debug('WinEvaluation', `Client-side evaluation complete. Total Win: ${calculatedTotalWin}, Lines: ${calculatedWinningLines.length}, Symbols: ${allSymbolsToAnimate.length}`);
 
     // --- Update Game State --- 
     eventBus.emit('state:update', {
         lastTotalWin: calculatedTotalWin,
         // Maybe rename winningLinesInfo to winningLinesResult ?
-        winningLinesInfo: calculatedWinningLines 
+        winningLinesInfo: calculatedWinningLines
     });
 
     // --- Prepare Animation Payload --- 
     const animationPayload = {
-        totalWin: calculatedTotalWin, 
+        totalWin: calculatedTotalWin,
         winningLines: calculatedWinningLines,
         symbolsToAnimate: allSymbolsToAnimate,
         currentTotalBet: state.currentTotalBet // Pass bet for big win calc
@@ -228,8 +228,8 @@ function _handleEvaluateRequest() {
 
     // --- Handle Feature Triggers --- 
     if (freeSpinsTriggered) {
-         logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
-         eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED }); 
+        logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
+        eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED });
     }
 }
 
@@ -245,29 +245,29 @@ function getResultsGrid() {
     const grid = [];
     if (!reelManager || !reelManager.reels) {
         logger?.error("getResultsGrid: reelManager or reels not available.");
-        return []; 
+        return [];
     }
     reelManager.reels.forEach((reel, reelIndex) => {
         const column = [];
         if (reel && reel.strip) {
             const finalLogicalPosition = reel.finalStopPosition;
             if (typeof finalLogicalPosition !== 'number' || finalLogicalPosition < 0) {
-                 logger?.warn('getResultsGrid', `Invalid finalStopPosition for reel ${reelIndex}`);
-                 // Fill column with nulls if stop position is invalid
-                 for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
-                     column.push(null);
-                 }
+                logger?.warn('getResultsGrid', `Invalid finalStopPosition for reel ${reelIndex}`);
+                // Fill column with nulls if stop position is invalid
+                for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                    column.push(null);
+                }
             } else {
-            for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
-                const symbolIndexOnStrip = (finalLogicalPosition + rowIndex + reel.strip.length) % reel.strip.length;
-                column.push(reel.strip[symbolIndexOnStrip]);
+                for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                    const symbolIndexOnStrip = (finalLogicalPosition + rowIndex + reel.strip.length) % reel.strip.length;
+                    column.push(reel.strip[symbolIndexOnStrip]);
                 }
             }
         } else {
-             logger?.error('getResultsGrid', `Invalid reel or strip for Reel ${reelIndex}`);
-             for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
-                 column.push(null);
-             }
+            logger?.error('getResultsGrid', `Invalid reel or strip for Reel ${reelIndex}`);
+            for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                column.push(null);
+            }
         }
         grid.push(column);
     });

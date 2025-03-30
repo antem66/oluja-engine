@@ -23,7 +23,7 @@ import { Logger } from '../utils/Logger.js';
 
 // Define Big Win thresholds (adjust as needed)
 const BIG_WIN_THRESHOLD_MULTIPLIER = 5;
-const MEGA_WIN_THRESHOLD_MULTIPLIER = 20; 
+const MEGA_WIN_THRESHOLD_MULTIPLIER = 20;
 // Add more levels if desired (EPIC_WIN, etc.)
 
 export class AnimationController {
@@ -65,7 +65,7 @@ export class AnimationController {
         // Subscribe to the win validation event
         if (this.eventBus) {
             this._unsubscribeWinValidated = this.eventBus.on(
-                'win:validatedForAnimation', 
+                'win:validatedForAnimation',
                 this._handleWinValidated.bind(this)
             );
             this.logger?.info('AnimationController', 'Subscribed to win:validatedForAnimation.');
@@ -84,11 +84,11 @@ export class AnimationController {
     registerAnimation(animationName, callback) {
         if (typeof callback !== 'function') {
             this.logger?.error('AnimationController', `Failed to register animation "${animationName}": callback is not a function.`);
-            return () => {}; // Return no-op unregister
+            return () => { }; // Return no-op unregister
         }
         if (!this.registeredAnimations) {
-             this.logger?.warn('AnimationController', `Attempted to register animation "${animationName}" after controller was destroyed.`);
-             return () => {};
+            this.logger?.warn('AnimationController', `Attempted to register animation "${animationName}" after controller was destroyed.`);
+            return () => { };
         }
 
         if (!this.registeredAnimations.has(animationName)) {
@@ -100,7 +100,7 @@ export class AnimationController {
         if (callbacks && !callbacks.includes(callback)) { // Add null check for callbacks
             callbacks.push(callback);
             this.logger?.debug('AnimationController', `Registered animation callback for "${animationName}".`);
-        } else if (callbacks && callbacks.includes(callback)){
+        } else if (callbacks && callbacks.includes(callback)) {
             this.logger?.warn('AnimationController', `Attempted to register the same animation callback instance multiple times for "${animationName}".`);
         }
 
@@ -141,10 +141,10 @@ export class AnimationController {
      * @param {any} [data] - Optional data payload to pass to the animation callback functions.
      */
     playAnimation(animationName, data = null) {
-         if (!this.registeredAnimations) {
-             this.logger?.warn('AnimationController', `Attempted to play animation "${animationName}" after controller was destroyed.`);
-             return;
-         }
+        if (!this.registeredAnimations) {
+            this.logger?.warn('AnimationController', `Attempted to play animation "${animationName}" after controller was destroyed.`);
+            return;
+        }
         if (!this.registeredAnimations.has(animationName)) {
             this.logger?.debug('AnimationController', `playAnimation called for "${animationName}", but no callbacks registered.`);
             return;
@@ -152,8 +152,8 @@ export class AnimationController {
 
         const callbacks = this.registeredAnimations.get(animationName);
         if (!callbacks || callbacks.length === 0) {
-             this.logger?.debug('AnimationController', `playAnimation called for "${animationName}", but callback list is empty.`);
-             return;
+            this.logger?.debug('AnimationController', `playAnimation called for "${animationName}", but callback list is empty.`);
+            return;
         }
 
         this.logger?.info('AnimationController', `Playing animation "${animationName}" (${callbacks.length} callbacks)...`, { data });
@@ -165,9 +165,9 @@ export class AnimationController {
                 this.logger?.debug('AnimationController', `Executing callback for "${animationName}"...`);
                 // Execute the registered animation function
                 if (typeof callback === 'function') {
-                     callback(data);
+                    callback(data);
                 } else {
-                     this.logger?.error('AnimationController', `Registered item for "${animationName}" is not a function.`);
+                    this.logger?.error('AnimationController', `Registered item for "${animationName}" is not a function.`);
                 }
                 // Log after calling callback
                 this.logger?.debug('AnimationController', `Callback executed for "${animationName}".`);
@@ -190,8 +190,8 @@ export class AnimationController {
             this._unsubscribeWinValidated = null;
             this.logger?.info('AnimationController', 'Unsubscribed from win:validatedForAnimation.');
         }
-        
-        this.registeredAnimations?.clear(); 
+
+        this.registeredAnimations?.clear();
         this.logger?.info('AnimationController', 'Destroyed.');
         this.eventBus = null;
         this.logger = null;
@@ -199,7 +199,7 @@ export class AnimationController {
     }
 
     // --- Internal Event Handlers ---
-    
+
     /**
      * Handles the validated win event, triggering appropriate animations.
      * @param {object} eventData - Payload from 'win:validatedForAnimation' event.
@@ -228,7 +228,7 @@ export class AnimationController {
             // Log no symbols - UNCOMMENT
             this.logger?.debug('AnimationController', 'No symbols provided for symbolWin animation.');
         }
-        
+
         // --- Big Win Check --- 
         if (totalWin > 0 && currentTotalBet > 0) {
             const winMultiplier = totalWin / currentTotalBet;
@@ -247,18 +247,18 @@ export class AnimationController {
                 this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
                 this.logger?.debug('AnimationController', 'Calling playAnimation for bigWinText.');
                 this.playAnimation('bigWinText', { totalWin, winLevel });
-                
+
                 this.logger?.debug('AnimationController', 'Calling playAnimation for particleBurst.');
-                this.playAnimation('particleBurst', { 
-                    amount: winLevel === 'MEGA' ? 100 : 50, 
-                    duration: winLevel === 'MEGA' ? 3 : 2    
-                 }); 
+                this.playAnimation('particleBurst', {
+                    amount: winLevel === 'MEGA' ? 100 : 50,
+                    duration: winLevel === 'MEGA' ? 3 : 2
+                });
             }
         }
-        
+
         // TODO: Consider adding a general win rollup animation call here?
         // this.playAnimation('winRollup', { amount: totalWin });
-        
+
         // TODO: Consider emitting animation:win:completed after a delay?
         // const longestAnimDuration = ... estimate ...;
         // setTimeout(() => this.eventBus?.emit('animation:win:completed'), longestAnimDuration);

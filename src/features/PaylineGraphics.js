@@ -72,13 +72,20 @@ export function destroy() {
  * @param {object} eventData - Payload from the 'win:validatedForAnimation' event.
  * @private // Make internal
  */
-function _drawLines(eventData) { // Renamed drawWinLines
+function _drawLines(eventData) {
     if (!winLineGraphics || !logger) {
         (logger || console).error("PaylineGraphics Error: Module not initialized (graphics or logger missing).");
         return;
     }
     
-    const currentGraphics = winLineGraphics;
+    const globalPos = winLineGraphics.getGlobalPosition();
+    const parentPos = winLineGraphics.parent?.position; // Access parent position
+    logger?.info('PaylineGraphics', 'Start _drawLines', { 
+        graphicsGlobalPos: `(${globalPos.x.toFixed(1)}, ${globalPos.y.toFixed(1)})`, 
+        parentPos: parentPos ? `(${parentPos.x.toFixed(1)}, ${parentPos.y.toFixed(1)})` : 'N/A' 
+    });
+    
+    const currentGraphics = winLineGraphics; // Draw directly on the main graphics object
     const currentLogger = logger;
     
     const winningLines = eventData?.winningLines;
@@ -90,64 +97,89 @@ function _drawLines(eventData) { // Renamed drawWinLines
 
     currentLogger.debug('PaylineGraphics', `Drawing ${winningLines.length} win lines.`);
 
-    // Stop any previous animations and clear
-    gsap.killTweensOf(currentGraphics); // Kill GSAP tweens
-    currentGraphics.clear();
-    currentGraphics.alpha = 0; // Start transparent
+    // Stop previous animations & Clear the main graphics object
+    gsap.killTweensOf(currentGraphics);
+    currentGraphics.clear(); 
+    currentGraphics.alpha = 1; // Ensure main graphics is ready
 
     const lineColors = [ 
         0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffa500,
         0x800080, 0x008000, 0x800000, 0xadd8e6, 0x90ee90, 0xffb6c1, 0xfaebd7, 0xdda0dd
     ];
 
+    // --- First Pass: Draw Lines --- 
     winningLines.forEach((winInfo) => {
         const linePath = PAYLINES[winInfo.lineIndex];
         if (!linePath) {
              currentLogger.warn('PaylineGraphics', `Invalid lineIndex ${winInfo.lineIndex} in win data.`);
              return;
         }
-
+        
+        currentGraphics.beginPath(); // Start path for this line
         const lineColor = lineColors[winInfo.lineIndex % lineColors.length];
         currentGraphics.lineStyle(5, lineColor, 0.7); 
 
-        let firstValidPoint = true;
         for (let reelIndex = 0; reelIndex < winInfo.count; reelIndex++) {
             const rowIndex = linePath[reelIndex];
-            if (rowIndex === undefined || rowIndex < 0) continue; // Skip if row index invalid
+            if (rowIndex === undefined || rowIndex < 0) continue; 
             
-            // Calculate symbol center position based on config/layout
             const symbolCenterX = reelIndex * REEL_WIDTH + REEL_WIDTH / 2;
-            const symbolCenterY = rowIndex * SYMBOL_SIZE + SYMBOL_SIZE / 2; // Use SYMBOL_SIZE
+            const symbolCenterY = rowIndex * SYMBOL_SIZE + SYMBOL_SIZE / 2; 
             
-            // Log Coordinates
             currentLogger?.debug('PaylineGraphics', `Drawing line ${winInfo.lineIndex}, Reel ${reelIndex}, Row ${rowIndex} -> Coords (${symbolCenterX.toFixed(1)}, ${symbolCenterY.toFixed(1)})`);
 
-            if (firstValidPoint) {
+            // Define the line path
+            if (reelIndex === 0) {
                 currentGraphics.moveTo(symbolCenterX, symbolCenterY);
-                firstValidPoint = false;
             } else {
                 currentGraphics.lineTo(symbolCenterX, symbolCenterY);
             }
-            // Draw circles at symbol centers
-            currentGraphics.drawCircle(symbolCenterX, symbolCenterY, 8).fill({ color: lineColor, alpha: 0.8 });
         }
-        if (!firstValidPoint) {
-            currentGraphics.stroke(); // Draw the line segments
+        
+        // Stroke the line path after defining it
+        if (winInfo.count > 0) { 
+            currentGraphics.stroke();
+        }
+    });
+    
+    // --- Second Pass: Draw Dots --- 
+    winningLines.forEach((winInfo) => {
+        const linePath = PAYLINES[winInfo.lineIndex];
+        if (!linePath) {
+             currentLogger.warn('PaylineGraphics', `Invalid lineIndex ${winInfo.lineIndex} in win data.`);
+             return;
+        }
+        
+        const lineColor = lineColors[winInfo.lineIndex % lineColors.length];
+
+        for (let reelIndex = 0; reelIndex < winInfo.count; reelIndex++) {
+            const rowIndex = linePath[reelIndex];
+            if (rowIndex === undefined || rowIndex < 0) continue; 
+            
+            const symbolCenterX = reelIndex * REEL_WIDTH + REEL_WIDTH / 2;
+            const symbolCenterY = rowIndex * SYMBOL_SIZE + SYMBOL_SIZE / 2; 
+
+            // Draw circles at symbol centers (Filled)
+            // No beginPath/lineStyle needed here, just fill
+            currentGraphics.circle(symbolCenterX, symbolCenterY, 8).fill({ color: lineColor, alpha: 0.8 });
+             // Log dot drawing
+            // currentLogger?.debug('PaylineGraphics', `Drawing dot at (${symbolCenterX.toFixed(1)}, ${symbolCenterY.toFixed(1)})`);
         }
     });
 
     // --- GSAP Fade Animation --- 
+    // Animate the main graphics object
+    currentGraphics.alpha = 0; // Start transparent
     const fadeInDuration = 0.15 * winAnimDelayMultiplier;
-    const displayDuration = 2.8 * winAnimDelayMultiplier; // Slightly shorter than old timeout
+    const displayDuration = 2.8 * winAnimDelayMultiplier; 
     const fadeOutDuration = 0.2 * winAnimDelayMultiplier;
 
-    // Create a GSAP timeline for fade in, hold, fade out
     const tl = gsap.timeline();
-    tl.to(currentGraphics, { alpha: 0.8, duration: fadeInDuration, ease: "power1.in" })
+    tl.to(currentGraphics, { alpha: 0.8, duration: fadeInDuration, ease: "power1.in" }) 
       .to(currentGraphics, { alpha: 0, duration: fadeOutDuration, ease: "power1.out" }, `+=${displayDuration}`)
-      .call(() => { // Add a callback to clear graphics after fade out
-          currentGraphics?.clear(); // Use local const with optional chain
-          currentLogger?.debug('PaylineGraphics', 'Win lines cleared after animation.'); // Use local const
+      .call(() => { 
+          currentGraphics?.clear(); // Clear graphics after fade out
+          currentLogger?.debug('PaylineGraphics', 'Win lines cleared after animation.'); 
       });
 }
 
@@ -156,10 +188,12 @@ function _drawLines(eventData) { // Renamed drawWinLines
  * @private // Make internal
  */
 function _clearLines() { // Renamed clearWinLines and removed export
-    logger?.debug('PaylineGraphics', 'Clearing win lines.'); 
+    logger?.debug('PaylineGraphics', 'Clearing win lines graphics.'); 
     if (winLineGraphics) {
-        gsap.killTweensOf(winLineGraphics); // Stop GSAP animations
+        // Stop animations targeting the graphics object
+        gsap.killTweensOf(winLineGraphics); 
+        // Clear paths from the graphics object
         winLineGraphics.clear();
-        winLineGraphics.alpha = 0;
+        winLineGraphics.alpha = 0; // Ensure it starts transparent if reused
     }
 }
