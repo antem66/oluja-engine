@@ -25,6 +25,7 @@ import * as PIXI from 'pixi.js';
 import { Reel } from './Reel.js';
 import * as SETTINGS from '../config/gameSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js';
+import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 
 export class ReelManager {
@@ -38,14 +39,22 @@ export class ReelManager {
     appTicker = null;
     /** @type {import('../utils/Logger.js').Logger | null} */
     logger = null;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null;
+    /** @type {PIXI.Graphics | null} */
+    maskGraphics = null;
 
     /**
      * @param {PIXI.Container} parentLayer - The PIXI Container to add the reels container to.
      * @param {PIXI.Ticker} appTicker - The PIXI Ticker for updating reels.
      * @param {import('../utils/Logger.js').Logger} loggerInstance
+     * @param {import('../utils/EventBus.js').EventBus} eventBusInstance
      */
-    constructor(parentLayer, appTicker, loggerInstance) {
+    constructor(parentLayer, appTicker, loggerInstance, eventBusInstance) {
+        this.parentLayer = parentLayer;
+        this.appTicker = appTicker;
         this.logger = loggerInstance;
+        this.eventBus = eventBusInstance;
         
         if (!parentLayer) {
             this.logger?.error('ReelManager', 'Parent layer is required!');
@@ -59,9 +68,10 @@ export class ReelManager {
             console.error("ReelManager: Logger instance is required!");
             // Allow continuation for now, but ideally throw or prevent
         }
+        if (!this.eventBus) {
+            this.logger?.warn("ReelManager", "EventBus not provided.");
+        }
 
-        this.parentLayer = parentLayer;
-        this.appTicker = appTicker;
         this._setupContainer();
         this._createReels();
         this._applyMask();
@@ -100,8 +110,8 @@ export class ReelManager {
                 this.logger?.error('ReelManager', `Reel strip configuration missing for reel ${i}.`);
                 continue; // Skip creating this reel
             }
-            // TODO: Pass logger to Reel constructor when it's updated
-            const reel = new Reel(i, REEL_STRIPS[i], ticker); 
+            // Ensure appTicker is passed
+            const reel = new Reel(i, REEL_STRIPS[i], ticker, this.eventBus);
             this.reels.push(reel);
             container.addChild(reel.container);
         }
@@ -211,6 +221,7 @@ export class ReelManager {
         // 3. Nullify references
         this.parentLayer = null;
         this.appTicker = null;
+        this.eventBus = null;
         this.logger = null;
         // Explicitly set reelContainer to null if allowed by types/linter
         this.reelContainer = null; 

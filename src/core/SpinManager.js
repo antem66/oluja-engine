@@ -62,6 +62,8 @@ export class SpinManager {
     _unsubscribeSpinResult = null;
     /** @type {object | null} */ // Store the latest received spin result data temporarily
     _lastSpinResultData = null;
+    /** @type {boolean} */ // Flag to prevent multiple early stop requests per spin
+    _earlyStopRequestedThisSpin = false;
 
     /**
      * @param {import('./ReelManager.js').ReelManager} reelManagerInstance 
@@ -103,6 +105,19 @@ export class SpinManager {
      * Handles the request to start a spin (e.g., from UI button click event).
      */
     handleSpinRequest() {
+        // --- BEGIN EDIT: Early Stop Logic ---
+        if (state.isSpinning) {
+            if (!this._earlyStopRequestedThisSpin) {
+                this.logger?.info('SpinManager', 'Early stop requested by user.');
+                this.eventBus?.emit('spin:requestEarlyStop');
+                this._earlyStopRequestedThisSpin = true; // Prevent further requests this spin
+            } else {
+                this.logger?.debug('SpinManager', 'Early stop already requested this spin, ignoring.');
+            }
+            return; // Don't proceed to start a new spin
+        }
+        // --- END EDIT: Early Stop Logic ---
+
         // TODO (Phase 2): Add checks (balance, state) before proceeding
         // TODO: Refactor Feature Flags
         this.logger?.info('SpinManager', 'Spin requested.');
@@ -238,6 +253,10 @@ export class SpinManager {
      * @private
      */
     _handleSpinResultReceived(eventData) {
+        // --- BEGIN EDIT: Early Stop - Reset flag --- 
+        this._earlyStopRequestedThisSpin = false; // Reset flag when new results arrive
+        // --- END EDIT: Early Stop - Reset flag --- 
+
         this.logger?.info('SpinManager', 'Received server:spinResultReceived', eventData);
         if (!eventData || !eventData.data || !Array.isArray(eventData.data.stopPositions)) {
             this.logger?.error('SpinManager', 'Invalid data received for server:spinResultReceived', eventData);

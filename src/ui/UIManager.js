@@ -426,12 +426,20 @@ export class UIManager {
         this.setButtonsEnabled(newState); 
         
         // Handle spin button animation based on state change
-        if (newState.isSpinning) { 
-            this.animateSpinButtonRotation();
-        } else {
-            // Optional: Stop animation immediately if needed
-            this.stopSpinButtonRotation(); 
+        // --- BEGIN EDIT: Early Stop - Update Spin Button Visuals ---
+        if (eventData.updatedProps?.includes('isSpinning')) {
+            if (newState.isSpinning) { 
+                this.animateSpinButtonRotation();
+                this.setButtonVisualState('spin', true, 'btn_stop', 'btn_spin');
+                this.logger?.debug('UIManager', 'Spin started, changing button to Stop icon.');
+            } else {
+                // Optional: Stop animation immediately if needed
+                this.stopSpinButtonRotation(); 
+                this.setButtonVisualState('spin', false, 'btn_stop', 'btn_spin');
+                this.logger?.debug('UIManager', 'Spin ended, reverting button to Play icon.');
+            }
         }
+        // --- END EDIT: Early Stop - Update Spin Button Visuals ---
     }
 
     _handleInterruptAnimations() {
@@ -496,20 +504,24 @@ export class UIManager {
 
     setButtonsEnabled(currentState) { // Accept state
         // Determine enabled state based on the overall game state
-        const enabled = !currentState.isSpinning && !currentState.isTransitioning;
+        // --- BEGIN EDIT: Early Stop - Keep Spin button enabled during spin ---
+        const generalEnabled = !currentState.isTransitioning; // Remove isSpinning check here
+        const isSpinning = currentState.isSpinning; // Keep track of spinning state
 
-        const alpha = enabled ? 1.0 : 0.5;
-        const eventMode = enabled ? 'static' : 'none';
-        const cursor = enabled ? 'pointer' : 'default';
+        const alpha = generalEnabled ? 1.0 : 0.5;
+        const eventMode = generalEnabled ? 'static' : 'none';
+        const cursor = generalEnabled ? 'pointer' : 'default';
 
         const buttonsToToggle = [
-            this.buttons.get('spin'),
+            // Remove spin button from this list
+            // this.buttons.get('spin'), 
             this.buttons.get('betDecrease'),
             this.buttons.get('betIncrease'),
         ];
+        // --- END EDIT: Early Stop - Keep Spin button enabled during spin ---
 
         // Keep Autoplay & Turbo always interactive 
-        // --- BEGIN EDIT (Add checks for buttons from map) ---
+        // --- BEGIN EDIT (Add checks for buttons from map) ---\
         const autoplayButtonRef = this.buttons.get('autoplay');
         if (autoplayButtonRef) {
             autoplayButtonRef.eventMode = 'static';
@@ -522,7 +534,7 @@ export class UIManager {
             turboButtonRef.alpha = 1.0;
             turboButtonRef.cursor = 'pointer';
         }
-        // --- END EDIT ---
+        // --- END EDIT (Add checks for buttons from map) ---
 
         buttonsToToggle.forEach(button => {
             if (!button) return; // Already checks if the button itself exists in the array
@@ -530,12 +542,25 @@ export class UIManager {
             const isBetButton = button === this.buttons.get('betDecrease') || button === this.buttons.get('betIncrease');
             // --- END EDIT ---
             // Disable bet buttons during FS and Autoplay, otherwise use general 'enabled' state
-            const finalEnabled = enabled && !(isBetButton && (currentState.isInFreeSpins || currentState.isAutoplaying));
+            // --- BEGIN EDIT: Early Stop - Use generalEnabled ---
+            const finalEnabled = generalEnabled && !(isBetButton && (currentState.isInFreeSpins || currentState.isAutoplaying));
+            // --- END EDIT: Early Stop - Use generalEnabled ---
 
             button.eventMode = finalEnabled ? 'static' : 'none';
             button.alpha = finalEnabled ? 1.0 : 0.5;
             button.cursor = finalEnabled ? 'pointer' : 'default';
         });
+        
+        // --- BEGIN EDIT: Early Stop - Handle Spin button separately ---
+        const spinButtonRef = this.buttons.get('spin');
+        if (spinButtonRef) {
+            // Spin button is enabled if game is not transitioning, regardless of spinning state
+            const spinEnabled = generalEnabled; 
+            spinButtonRef.eventMode = spinEnabled ? 'static' : 'none';
+            spinButtonRef.alpha = spinEnabled ? 1.0 : 0.5;
+            spinButtonRef.cursor = spinEnabled ? 'pointer' : 'default';
+        }
+        // --- END EDIT: Early Stop - Handle Spin button separately ---
     }
 
     animateSpinButtonRotation() {

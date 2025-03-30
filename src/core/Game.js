@@ -317,9 +317,26 @@ export class Game {
         }
 
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
-        this.reelManager = new ReelManager(this.layerReels, app.ticker, logger);
+        this.reelManager = new ReelManager(
+            this.layerReels, 
+            this.app.ticker,
+            logger,
+            eventBus
+        );
         
-        this.animationController = new AnimationController({ logger, eventBus });
+        this.animationController = new AnimationController({
+            eventBus: this.deps.eventBus,
+            logger,
+            featureManager,
+            apiService,
+            reelManager: this.reelManager,
+            uiManager: this.uiManager,
+            app: this.app,
+            spinManager: this.spinManager,
+            animationController: this.animationController,
+            backgroundManager: this.backgroundManager,
+            initialState: this.initialState,
+        });
         this.animationController.init();
         
         this.uiManager = new UIManager({

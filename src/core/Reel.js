@@ -3,14 +3,20 @@ import { gsap } from 'gsap'; // Import GSAP
 import { SYMBOL_SIZE, SYMBOLS_PER_REEL_VISIBLE, REEL_WIDTH } from '../config/gameSettings.js';
 import {
     spinAcceleration, maxSpinSpeed,
-    stopTweenDuration // Import new setting
+    stopTweenDuration, // Import new setting
+    EARLY_STOP_DURATION, // Import early stop duration
+    turboReelStopTweenDuration // Import turbo stop duration
 } from '../config/animationSettings.js'; // Import animation parameters
 import { createSymbolGraphic } from './Symbol.js'; // Restore this import
+import { EventBus } from '../utils/EventBus.js'; // Import EventBus type
+import { state } from './GameState.js'; // Import state for Turbo check
 
 export class Reel {
     reelIndex;
     strip;
     appTicker;
+    /** @type {import('../utils/EventBus.js').EventBus | null} */
+    eventBus = null; // Add eventBus dependency
     container;
     symbols = []; // Restore symbols array
     position = 0; // Logical position on the strip (index)
@@ -27,11 +33,14 @@ export class Reel {
     colorMatrix;
     shimmerContainer;
     lightStreaks;
+    /** @type {Function | null} */ // Store unsubscribe function
+    _unsubscribeEarlyStop = null;
 
-    constructor(reelIndex, strip, appTicker) {
+    constructor(reelIndex, strip, appTicker, eventBus) {
         this.reelIndex = reelIndex;
         this.strip = strip;
         this.appTicker = appTicker;
+        this.eventBus = eventBus; // Store eventBus
 
         this.container = new PIXI.Container();
         this.container.x = reelIndex * REEL_WIDTH;
@@ -52,6 +61,13 @@ export class Reel {
             this.container.addChild(symbol);
         }
         this.alignReelSymbols(); // Position initial symbols correctly
+
+        // Subscribe to early stop request
+        if (this.eventBus) {
+            this._unsubscribeEarlyStop = this.eventBus.on('spin:requestEarlyStop', this._handleEarlyStopRequest.bind(this));
+        } else {
+            console.warn(`[Reel ${this.reelIndex}] EventBus not provided, cannot listen for early stop.`);
+        }
     }
 
     /**
@@ -339,9 +355,24 @@ export class Reel {
      }
      
     /**
+     * Handles the early stop request event.
+     * @private
+     */
+    _handleEarlyStopRequest() {
+        // Implementation will be added in the next step (Task 3.3)
+        console.log(`[Reel ${this.reelIndex}] Received spin:requestEarlyStop`);
+    }
+
+    /**
      * Cleans up resources used by the reel.
      */
     destroy() {
+        // 0. Unsubscribe Event Listener
+        if (this._unsubscribeEarlyStop) {
+            this._unsubscribeEarlyStop();
+            this._unsubscribeEarlyStop = null;
+        }
+
         // 1. Kill GSAP Tween
         if (this.stopTween) {
             this.stopTween.kill();
@@ -384,5 +415,6 @@ export class Reel {
         // this.motionBlur = null; // REMOVE null assignment
         // this.colorMatrix = null; // REMOVE null assignment
         // No need to nullify primitives like reelIndex, position, etc.
+        this.eventBus = null; // Nullify eventBus
     }
  }
