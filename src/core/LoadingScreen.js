@@ -1,5 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
+import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js'; // <-- Import game dimensions
 
 /**
  * Manages the display and updates of the loading screen.
@@ -79,29 +80,31 @@ export class LoadingScreen {
     _createElements() {
         if (!this._container || !this._renderer) return;
 
-        const screenWidth = this._renderer.width;
-        const screenHeight = this._renderer.height;
+        // Use logical game dimensions, not renderer (window) size
+        // const screenWidth = this._renderer.width; 
+        // const screenHeight = this._renderer.height;
+        const gameWidth = GAME_WIDTH; 
+        const gameHeight = GAME_HEIGHT;
 
-        // Black background
+        // Background should cover the logical game area
         this._background = new PIXI.Graphics();
-        this._background.rect(0, 0, screenWidth, screenHeight);
+        this._background.rect(0, 0, gameWidth, gameHeight); // Use game dimensions
         this._background.fill({ color: 0x000000, alpha: 1 });
         this._container.addChild(this._background);
 
-        // Logo (Texture will be set in show())
+        // Logo centered within the logical game area
         this._logo = new PIXI.Sprite();
         this._logo.anchor.set(0.5);
-        this._logo.x = screenWidth / 2;
+        this._logo.x = gameWidth / 2;
         this._logo.scale.set(0.5);
-        this._logo.y = screenHeight / 2 - 50; // Position above center
-        this._logo.alpha = 0; // Initially hidden for fade-in
+        this._logo.y = gameHeight / 2 - 50; // Position above logical center
+        this._logo.alpha = 0; 
         this._container.addChild(this._logo);
 
-        // Progress Bar
-        this._barWidth = screenWidth * 0.6; // 60% of screen width
-        const barX = (screenWidth - this._barWidth) / 2;
-        // Initial Y position, will be adjusted in show() based on logo height
-        const barY = screenHeight / 2 + 30; 
+        // Progress Bar width based on logical game width initially
+        this._barWidth = gameWidth * 0.6; 
+        const barX = (gameWidth - this._barWidth) / 2; // Center based on game width
+        const barY = gameHeight / 2 + 30; // Position below logical center
 
         this._progressBarBg = new PIXI.Graphics();
         this._progressBarBg.rect(0, 0, this._barWidth, this._barHeight);
@@ -125,7 +128,7 @@ export class LoadingScreen {
         });
         this._progressText = new PIXI.Text({ text: 'Loading 0%', style: textStyle });
         this._progressText.anchor.set(0.5);
-        this._progressText.x = screenWidth / 2;
+        this._progressText.x = gameWidth / 2; // Center based on game width
         this._progressText.y = barY + this._barHeight + 15;
         this._progressText.alpha = 0; // Initially hidden
         this._container.addChild(this._progressText);
@@ -176,7 +179,7 @@ export class LoadingScreen {
 
                 // --- Adjust Bar Width to Match Logo --- 
                 this._barWidth = this._logo.width; // Use scaled logo width
-                const barX = (this._renderer.width - this._barWidth) / 2; // Recalculate X for centering
+                const barX = (GAME_WIDTH - this._barWidth) / 2; // Center based on GAME_WIDTH
                 
                 // Apply new position and redraw background bar
                 if (this._progressBarBg) {
@@ -201,9 +204,9 @@ export class LoadingScreen {
                 }
             } else if (this._logo && this._renderer) {
                 this._logo.visible = false; // Hide logo element if texture failed
-                 // If logo fails, fall back to a default width (e.g., 60% of screen)
-                 this._barWidth = this._renderer.width * 0.6;
-                 const barX = (this._renderer.width - this._barWidth) / 2;
+                 // If logo fails, fall back to a default width relative to GAME_WIDTH
+                 this._barWidth = GAME_WIDTH * 0.6;
+                 const barX = (GAME_WIDTH - this._barWidth) / 2; // Center based on GAME_WIDTH
                 if (this._progressBarBg) {
                      this._progressBarBg.position.x = barX;
                      this._progressBarBg.clear().rect(0, 0, this._barWidth, this._barHeight).fill({ color: 0x333333 });
@@ -275,28 +278,28 @@ export class LoadingScreen {
         const clampedDisplayProgress = Math.max(0, Math.min(1, displayProgress)); // Clamp 0-1
         const percentage = Math.round(clampedDisplayProgress * 100);
 
-        // Don't recalculate _barWidth here, it's set in show() now.
-        // Recalculate barX based on current _barWidth in case of resize?
-        // For simplicity, let's assume no resize during loading screen for now.
-        // const barX = (this._renderer.width - this._barWidth) / 2; 
-        // this._progressBarBg.position.set(barX, this._progressBarBg.y);
-        // this._progressBarBg.clear().rect(0, 0, this._barWidth, this._barHeight).fill({ color: 0x333333 }); 
-        // this._progressBarFill.position.set(barX, this._progressBarFill.y);
-
-        // Ensure fill starts at the correct X position (set in show)
-        const barX = this._progressBarFill.position.x;
+        // Bar width is now set in show(), use GAME_WIDTH for centering X calculation
+        const barX = (GAME_WIDTH - this._barWidth) / 2; 
         
-        const targetWidth = this._barWidth * clampedDisplayProgress;
-
-        // Only clear and redraw the fill part
-        this._progressBarFill.clear().rect(0, 0, targetWidth, this._barHeight).fill({ color: 0xCCCCCC });
-
-        // Update text percentage
-        this._progressText.text = `${percentage}%`;
-        // Ensure text is centered over the bar
-         this._progressText.x = barX + this._barWidth / 2; 
-         // Ensure text Y position is correct
-         this._progressText.y = this._progressBarFill.y + this._barHeight + 15; 
+        // Update background position and redraw (in case bar width changed)
+        if (this._progressBarBg) { 
+             this._progressBarBg.position.set(barX, this._progressBarBg.y);
+             this._progressBarBg.clear().rect(0, 0, this._barWidth, this._barHeight).fill({ color: 0x333333 }); 
+        }
+       
+       // Update fill position and redraw
+       if (this._progressBarFill) { 
+             this._progressBarFill.position.set(barX, this._progressBarFill.y);
+             const targetWidth = this._barWidth * clampedDisplayProgress;
+             this._progressBarFill.clear().rect(0, 0, targetWidth, this._barHeight).fill({ color: 0xCCCCCC });
+       }
+        
+       // Update text position
+        if (this._progressText && this._progressBarFill) { 
+             this._progressText.text = `Loading ${percentage}%`;
+             this._progressText.x = barX + this._barWidth / 2; // Center over the logical bar
+             this._progressText.y = this._progressBarFill.y + this._barHeight + 15; 
+        }
     }
 
     /**
