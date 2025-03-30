@@ -118,13 +118,11 @@ class Button extends PIXI.Container {
     _isActive = false;
     _usingSVG = false;
 
-    // Store graphic states for efficient updates
-    _state = 'idle'; // 'idle', 'hover', 'down', 'active'
+    // Store graphic states for efficient updates - Remove hover/down states
+    _state = 'idle'; // 'idle', 'down', 'active'
     _colors = {
         idle: { bg: 0x000000, border: 0xFFFFFF, alpha: 0.7 },
-        hover: { bg: 0x000000, border: 0xAAAAAA, alpha: 0.8 },
-        down: { bg: 0x000000, border: 0xFFFFFF, alpha: 0.9 },
-        active: { bg: 0x111133, border: 0x8888FF, alpha: 0.75 } // Example active state
+        active: { bg: 0x111133, border: 0x8888FF, alpha: 0.75 } // Keep active state color
     };
     _radius = 0;
     _borderThickness = 2.5;
@@ -151,10 +149,13 @@ class Button extends PIXI.Container {
         this._radius = Math.min(this._width, this._height) / 2;
         const actualSize = this._radius * 2;
 
-        // Set position based on top-left, not center pivot
-        this.x = x;
-        this.y = y;
-        
+        // --- Add pivot for scaling --- 
+        this.pivot.set(this._radius, this._radius);
+        // Adjust position to account for pivot
+        this.x = x + this._radius;
+        this.y = y + this._radius;
+        // --------------------------
+
         /** @type {PIXI.EventMode} */
         this.eventMode = 'static';
         this.cursor = "pointer";
@@ -236,7 +237,8 @@ class Button extends PIXI.Container {
     _updateGraphics() {
         if (!this.bgGraphics) return;
 
-        const stateColors = this._isActive ? this._colors.active : this._colors[this._state];
+        // Use idle colors unless active
+        const stateColors = this._isActive ? this._colors.active : this._colors.idle;
         const bgColor = stateColors.bg;
         const borderColor = stateColors.border;
         const bgAlpha = stateColors.alpha;
@@ -264,29 +266,44 @@ class Button extends PIXI.Container {
     // Remove _drawShape and _drawIcon as graphics are now consolidated
 
     // --- Animation Logic (Keep if needed) ---
-    _animate(targetProps) {
+    // Refined animation method for scaling
+    _animateScale(targetScale) {
         if (this.currentTween) {
             this.currentTween.kill();
         }
-        this.currentTween = gsap.to(this, { ...targetProps, duration: 0.15, ease: "sine.out" });
+        this.currentTween = gsap.to(this.scale, { 
+            x: targetScale, 
+            y: targetScale, 
+            duration: 0.15, // Quick animation
+            ease: "sine.out" 
+        });
     }
 
     // --- Interaction Handlers --- 
     _onPointerDown(event) {
         if (!this.interactive) return;
         this._state = 'down';
-        this._updateGraphics();
-        // Optional: Animate scale down
-        // this._animate({ scaleX: 0.95, scaleY: 0.95 }); 
+        this._updateGraphics(); // Update colors only if needed (e.g., for active state)
+        this._animateScale(0.95); // Scale down when pressed
     }
 
     _onPointerUp(event) {
         if (!this.interactive) return;
         const previousState = this._state;
-        this._state = this._isActive ? 'active' : 'hover'; // Go to hover or active after click up
+        this._state = this._isActive ? 'active' : 'idle'; // Change to idle/active, not hover
         this._updateGraphics();
-        // Optional: Animate scale back
-        // this._animate({ scaleX: 1.0, scaleY: 1.0 });
+
+        // Determine target scale: hover scale if pointer is still over, else idle scale
+        const pointerPosition = event.global;
+        // Linter Fix: Check if pointer is within the button's bounds manually
+        const bounds = this.getBounds();
+        const isPointerOver = 
+            pointerPosition.x >= bounds.x && 
+            pointerPosition.x <= bounds.x + bounds.width &&
+            pointerPosition.y >= bounds.y &&
+            pointerPosition.y <= bounds.y + bounds.height;
+        const targetScale = isPointerOver ? 1.05 : 1.0;
+        this._animateScale(targetScale); 
 
         // Execute callback only if pointer was released *inside* after being pressed down *inside*
         if (previousState === 'down') {
@@ -307,18 +324,16 @@ class Button extends PIXI.Container {
         if (!this.interactive) return;
         this._state = this._isActive ? 'active' : 'idle'; // Return to idle or active state
         this._updateGraphics();
-        // Optional: Animate scale back if scale down was used
-        // this._animate({ scaleX: 1.0, scaleY: 1.0 });
+        this._animateScale(1.0); // Scale back to normal when released outside
     }
 
     _onPointerOver(event) {
         if (!this.interactive) return;
         // Only change to hover if not already pressed down
         if (this._state !== 'down') { 
-            this._state = this._isActive ? 'active' : 'hover'; // Go to hover or active
+            // Don't change _state for hover, just animate scale
             this._updateGraphics();
-             // Optional: Subtle scale up on hover
-            // this._animate({ scaleX: 1.02, scaleY: 1.02 });
+            this._animateScale(1.05); // Scale up on hover
         }
     }
 
@@ -326,10 +341,9 @@ class Button extends PIXI.Container {
         if (!this.interactive) return;
         // Return to idle or active state unless pressed down
         if (this._state !== 'down') { 
-            this._state = this._isActive ? 'active' : 'idle';
+            // Don't change _state for hover out, just animate scale
             this._updateGraphics();
-            // Optional: Animate scale back
-            // this._animate({ scaleX: 1.0, scaleY: 1.0 });
+            this._animateScale(1.0); // Scale back to normal on hover out
         }
     }
 
@@ -337,19 +351,14 @@ class Button extends PIXI.Container {
     setActiveState(isActive) {
         if (!this.bgGraphics) return; // Safety check
         
-        // If the active state isn't changing, no need to update
         if (this._isActive === isActive) return;
         
         this._isActive = isActive;
         
-        // Determine the correct visual state based on whether it's currently hovered/down or just idle
-        if (this._state === 'hover' || this._state === 'down') {
-            this._state = this._isActive ? 'active' : 'hover'; // Stay hover if deactivated while hovering
-        } else {
-            this._state = this._isActive ? 'active' : 'idle';
-        }
+        // Set state based only on active/idle (ignore hover/down for color)
+        this._state = this._isActive ? 'active' : 'idle';
         
-        // Force immediate visual update
+        // Force immediate visual update (mainly for color change)
         this._updateGraphics();
     }
 
