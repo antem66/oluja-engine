@@ -158,11 +158,12 @@ export class FreeSpinsPlugin {
                         Promise.resolve(); // Resolve immediately if tween is null
 
                     // Wait for both animations to complete
+                    this.logger?.debug(FreeSpinsPlugin.pluginName, 'Awaiting background and entry animations...');
                     await Promise.all([backgroundPromise, entryAnimationPromise]);
-                    
                     this.logger?.debug(FreeSpinsPlugin.pluginName, 'Background and entry animations COMPLETE.');
 
                     // Animations complete, show notification and trigger spin
+                    this.logger?.info(FreeSpinsPlugin.pluginName, 'Emitting notification:show event...');
                     this.eventBus?.emit('notification:show', {
                         message: `${spinsAwarded} FREE SPINS AWARDED!`,
                         duration: 3000,
@@ -175,9 +176,11 @@ export class FreeSpinsPlugin {
                                  this.logger?.warn(FreeSpinsPlugin.pluginName, 'Notification complete, but no longer in Free Spins state. First spin cancelled.');
                             }
                             // End transition AFTER spin is triggered (or attempt fails)
+                            this.logger?.debug(FreeSpinsPlugin.pluginName, 'Ending feature transition (in notification callback).');
                             updateState({ isFeatureTransitioning: false }); 
                         }
                     });
+                    this.logger?.info(FreeSpinsPlugin.pluginName, 'Emitted notification:show event.');
                 // --- END EDIT: End try block ---
                 } catch (animError) {
                      this.logger?.error(FreeSpinsPlugin.pluginName, 'Error during animation/notification sequence:', animError);

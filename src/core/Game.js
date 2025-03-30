@@ -29,7 +29,7 @@ import { Reel } from './Reel.js';
 // Removed handlers import - Button handlers are now internal to UIManager or called via SpinManager
 // import * as handlers from '../ui/ButtonHandlers.js';
 import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
-import { initNotifications } from '../ui/Notifications.js'; // init only
+import { initNotifications, showOverlayMessage } from '../ui/Notifications.js'; // init only
 import * as WinEvaluation from '../features/WinEvaluation.js'; // Import the module itself
 import { init as initPaylineGraphics } from '../features/PaylineGraphics.js'; // Import clearWinLines here
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
@@ -465,6 +465,18 @@ export class Game {
         }
         
         this.pluginSystem?.initializePlugins();
+
+        // --- Add Listener for Notifications ---
+        this.deps.eventBus?.on('notification:show', (eventData) => {
+            this.deps.logger?.debug('Game', 'Received notification:show event', eventData);
+            if (eventData && eventData.message && typeof eventData.duration === 'number') {
+                showOverlayMessage(eventData.message, eventData.duration, eventData.onComplete);
+            } else {
+                this.deps.logger?.error('Game', 'Invalid data received for notification:show event', eventData);
+            }
+        });
+        this.deps.logger?.info('Game', 'Subscribed to notification:show events.');
+        // --- End Listener ---
     }
 
     /**
