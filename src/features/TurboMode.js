@@ -52,7 +52,10 @@ export function applyTurboSettings(isTurbo) {
 
 // Optional: Add destroy function if needed later for cleanup
 export function destroy() {
+    logger?.info('TurboMode', 'Destroying...'); // Log start
+    // No listeners or timers currently to clean up
     logger?.info('TurboMode', 'Destroyed.');
+    // Nullify references
     logger = null;
     eventBus = null;
     featureManager = null;

@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import * as SETTINGS from '../config/gameSettings.js';
 // Import logger type for JSDoc
 import { Logger } from '../utils/Logger.js';
+import gsap from 'gsap';
 
 export class BackgroundManager {
     /** @type {PIXI.Sprite | null} */
@@ -99,10 +100,40 @@ export class BackgroundManager {
      * @param {number} duration - Duration of the transition in seconds.
      */
     changeBackground(targetColor, duration) {
-        this.logger?.info('BackgroundManager', `Placeholder: changeBackground called with color ${targetColor.toString(16)} and duration ${duration}s.`);
+        // this.logger?.info('BackgroundManager', `Placeholder: changeBackground called with color ${targetColor.toString(16)} and duration ${duration}s.`);
         // TODO: Implement tint animation using GSAP
-        // if (this.backgroundSprite) {
-        //     gsap.to(this.backgroundSprite, { pixi: { tint: targetColor }, duration: duration });
-        // }
+        if (this.backgroundSprite && typeof gsap !== 'undefined') {
+            this.logger?.info('BackgroundManager', `Initiating background tint to 0x${targetColor.toString(16)} over ${duration}s.`);
+            gsap.to(this.backgroundSprite, { 
+                pixi: { tint: targetColor }, 
+                duration: duration, 
+                ease: "power1.inOut" // Add a smooth ease
+            });
+        } else {
+            if (!this.backgroundSprite) {
+                this.logger?.warn('BackgroundManager', 'changeBackground called but backgroundSprite is null.');
+            }
+            if (typeof gsap === 'undefined') {
+                 this.logger?.error('BackgroundManager', 'GSAP is not defined. Cannot animate background tint.');
+            }
+        }
+    }
+
+    /**
+     * Cleans up resources used by the BackgroundManager.
+     */
+    destroy() {
+        this.logger?.info('BackgroundManager', 'Destroying...');
+        
+        // Destroy background sprite
+        if (this.backgroundSprite) {
+            this.backgroundSprite.destroy(); // No children expected
+            // this.backgroundSprite = null; // Optional based on linter
+        }
+        
+        // Nullify references
+        this.parentLayer = null;
+        this.logger = null;
+        this.backgroundSprite = null; // Linter might complain here too
     }
 }

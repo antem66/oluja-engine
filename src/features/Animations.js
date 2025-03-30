@@ -47,6 +47,8 @@ const symbolAnimations = new Map();
 
 /** @type {EventBus | null} */
 let eventBus = null;
+/** @type {Function | null} */ // Store unsubscribe function
+let _unsubscribeCoordination = null;
 
 /**
  * Registers a custom animation for a specific symbol type
@@ -91,8 +93,9 @@ export function initAnimations(dependencies) {
     logger.info("Animations", "Core animations registered with AnimationController.");
     
     // --- ADD Listener for Coordination Event --- 
-    if (eventBus) {
-        eventBus.on('win:coordinateAnimations', coordinateAndCompleteWinAnimations);
+    if (eventBus) { // Check stored eventBus
+        // eventBus.on('win:coordinateAnimations', coordinateAndCompleteWinAnimations); // OLD
+        _unsubscribeCoordination = eventBus.on('win:coordinateAnimations', coordinateAndCompleteWinAnimations); // Store unsubscribe
         logger.info("Animations", "Registered listener for win:coordinateAnimations.");
     } else {
         logger.error("Animations", "EventBus missing, cannot listen for win coordination event.");
@@ -523,6 +526,45 @@ export function updateParticles(delta) {
 }
 
 // TODO (Phase 2/3): Add destroy function to clean up intervals, containers?, particles?
+/**
+ * Cleans up resources used by the Animations module.
+ */
+export function destroy() {
+    logger?.info('Animations', 'Destroying...');
+    
+    // Clear intervals/timeouts
+    if (winOverlayAnimInterval) {
+        clearInterval(winOverlayAnimInterval);
+        winOverlayAnimInterval = null;
+    }
+    // Clear any other intervals/timeouts if added later
+    
+    // Destroy containers if this module owns them 
+    // (Currently assumes containers are passed in and managed externally)
+    // If Animations module created containers, destroy them here:
+    // if (assignedOverlayContainer) assignedOverlayContainer.destroy({children:true});
+    // if (particleContainer) particleContainer.destroy({children:true});
+    
+    // Clear particles array (and destroy any remaining particles)
+    particles.forEach(p => p.destroy());
+    particles.length = 0; // Efficient way to clear array
+    
+    // Clear animation registry
+    symbolAnimations.clear();
+    
+    // Unsubscribe from eventBus listener (win:coordinateAnimations)
+    if (_unsubscribeCoordination) {
+        _unsubscribeCoordination();
+        _unsubscribeCoordination = null;
+    }
+    
+    // Nullify references
+    logger = null;
+    animationController = null;
+    assignedOverlayContainer = null;
+    particleContainer = null;
+    eventBus = null; // Nullify eventBus added earlier
+}
 
 // --- NEW COORDINATOR FUNCTION --- 
 /**
@@ -532,70 +574,76 @@ export function updateParticles(delta) {
  * @param {object} eventData - Payload from 'win:coordinateAnimations' event.
  */
 async function coordinateAndCompleteWinAnimations(eventData) {
-    logger?.debug('Animations', 'Coordinating win animations...', eventData);
+    try {
+        logger?.debug('Animations', 'Coordinating win animations...', eventData);
 
-    if (!eventData || !animationController || !eventBus) {
-        logger?.error('Animations', 'Cannot coordinate animations: Missing data, controller, or eventBus.');
-        return;
-    }
-
-    const { totalWin, symbolsToAnimate, currentTotalBet } = eventData;
-    const animationPromises = [];
-
-    // 1. Trigger Symbol Animations (if any)
-    if (symbolsToAnimate && symbolsToAnimate.length > 0) {
-        animationPromises.push(animationController.playAnimation('symbolWin', { symbolsToAnimate }));
-    }
-
-    // 2. Trigger Big Win Text & Particles (if applicable)
-    if (totalWin > 0 && currentTotalBet > 0) {
-        const winMultiplier = totalWin / currentTotalBet;
-        // Reuse thresholds (consider moving to config)
-        const bigWinThreshold = 15;
-        const megaWinThreshold = 40;
-        const epicWinThreshold = 75;
-        let winLevel = null;
-        let particleCount = 0;
-
-        if (winMultiplier >= epicWinThreshold) {
-            winLevel = 'EPIC'; particleCount = 150;
-        } else if (winMultiplier >= megaWinThreshold) {
-            winLevel = 'MEGA'; particleCount = 100;
-        } else if (winMultiplier >= bigWinThreshold) {
-            winLevel = 'BIG'; particleCount = 50;
+        if (!eventData || !animationController || !eventBus) {
+            logger?.error('Animations', 'Cannot coordinate animations: Missing data, controller, or eventBus.');
+            return;
         }
 
-        if (winLevel) {
-            // Big Win Text returns a promise
-            animationPromises.push(animationController.playAnimation('bigWinText', { totalWin, currentTotalBet /* Pass original data */ }));
-            // Particles don't return a promise we need to wait for
-            animationController.playAnimation('particleBurst', { count: particleCount });
+        const { totalWin, symbolsToAnimate, currentTotalBet } = eventData;
+        const animationPromises = [];
+
+        // 1. Trigger Symbol Animations (if any)
+        if (symbolsToAnimate && symbolsToAnimate.length > 0) {
+            animationPromises.push(animationController.playAnimation('symbolWin', { symbolsToAnimate }));
         }
-    }
 
-    // 3. Trigger Win Rollup (if any win)
-    if (totalWin > 0) {
-        // UIManager.animateWin returns a promise
-        animationPromises.push(animationController.playAnimation('winRollup', { amount: totalWin }));
-    }
+        // 2. Trigger Big Win Text & Particles (if applicable)
+        if (totalWin > 0 && currentTotalBet > 0) {
+            const winMultiplier = totalWin / currentTotalBet;
+            // Reuse thresholds (consider moving to config)
+            const bigWinThreshold = 15;
+            const megaWinThreshold = 40;
+            const epicWinThreshold = 75;
+            let winLevel = null;
+            let particleCount = 0;
 
-    // 4. Wait for all critical animations to complete
-    if (animationPromises.length > 0) {
-        try {
+            if (winMultiplier >= epicWinThreshold) {
+                winLevel = 'EPIC'; particleCount = 150;
+            } else if (winMultiplier >= megaWinThreshold) {
+                winLevel = 'MEGA'; particleCount = 100;
+            } else if (winMultiplier >= bigWinThreshold) {
+                winLevel = 'BIG'; particleCount = 50;
+            }
+
+            if (winLevel) {
+                // Big Win Text returns a promise
+                animationPromises.push(animationController.playAnimation('bigWinText', { totalWin, currentTotalBet /* Pass original data */ }));
+                // Particles don't return a promise we need to wait for
+                animationController.playAnimation('particleBurst', { count: particleCount });
+            }
+        }
+
+        // 3. Trigger Win Rollup (if any win)
+        if (totalWin > 0) {
+            // UIManager.animateWin returns a promise
+            animationPromises.push(animationController.playAnimation('winRollup', { amount: totalWin }));
+        }
+
+        // 4. Wait for all critical animations to complete
+        if (animationPromises.length > 0) {
             logger?.debug('Animations', `Waiting for ${animationPromises.length} animation promises...`);
             await Promise.all(animationPromises);
             logger?.info('Animations', 'All coordinated win animations complete.');
-        } catch (error) {
-            logger?.error('Animations', 'Error occurred during coordinated win animations:', error);
-            // Decide how to handle errors - still emit complete?
+        } else {
+             logger?.debug('Animations', 'No win animations were triggered to wait for.');
         }
-    } else {
-         logger?.debug('Animations', 'No win animations were triggered to wait for.');
-    }
 
-    // 5. Emit completion event
-    logger?.info('Animations', '>>> EMITTING spin:sequenceComplete >>>');
-    eventBus.emit('spin:sequenceComplete');
-    logger?.info('Animations', '<<< EMITTED spin:sequenceComplete <<<');
+        // 5. Emit completion event (always emit if we reach here, even if animations had errors)
+        logger?.info('Animations', '>>> EMITTING spin:sequenceComplete >>>');
+        eventBus.emit('spin:sequenceComplete');
+        logger?.info('Animations', '<<< EMITTED spin:sequenceComplete <<<');
+        
+    } catch (error) {
+        logger?.error('Animations', 'Error in coordinateAndCompleteWinAnimations handler:', error);
+        // Attempt to emit completion even on error to potentially unblock the game flow?
+        // Or handle specific errors differently?
+        // For now, we'll log and let it potentially hang if the error is critical, 
+        // but at least it's logged.
+        // Consider emitting a specific error event here: 
+        // eventBus?.emit('system:error', { source: 'AnimationsCoordination', error });
+    }
 }
 // --- END COORDINATOR --- 

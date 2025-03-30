@@ -233,4 +233,37 @@ export class FreeSpinsUIManager {
         gsap.killTweensOf(this.freeSpinsGlow);
         this.freeSpinsGlow.alpha = 0;
     }
+    
+    /**
+     * Cleans up resources used by the FreeSpinsUIManager.
+     */
+    destroy() {
+        this.logger?.info('FreeSpinsUIManager', 'Destroying...');
+        
+        // Stop animations
+        this._stopGlowAnimation();
+        if (this.freeSpinsIndicator) {
+            gsap.killTweensOf(this.freeSpinsIndicator);
+        }
+        if (this.freeSpinsCountText?.scale) {
+             gsap.killTweensOf(this.freeSpinsCountText.scale);
+        }
+        
+        // Destroy PIXI objects
+        // Destroying the main container should handle children
+        if (this.freeSpinsIndicator) {
+            this.freeSpinsIndicator.destroy({ children: true });
+            // this.freeSpinsIndicator = null; // Optional
+        }
+        
+        // Nullify references
+        this.parentContainer = null;
+        this.logger = null;
+        this.eventBus = null; 
+        this.freeSpinsIndicator = null;
+        this.freeSpinsCountText = null;
+        this.freeSpinsTotalWinText = null;
+        this.freeSpinsGlow = null;
+        // TODO: Unsubscribe from any eventBus listeners if added later
+    }
 }

@@ -107,12 +107,17 @@ export class UIManager {
         this.eventBus = dependencies.eventBus;
         this.featureManager = dependencies.featureManager;
         this.animationController = dependencies.animationController; // Store the instance
+        
+        // Log instance creation FIRST
+        if (this.logger) {
+             this.logger.info('UIManager', 'Instance created.'); 
+        }
 
         if (!this.parentLayer || !this.logger || !this.eventBus || !this.featureManager || !this.animationController) {
             (this.logger || console).error("UIManager: Missing critical dependencies during construction (parentLayer, logger, eventBus, featureManager, animationController).");
             // TODO: Handle error - throw?
         }
-        this.logger?.info('UIManager', 'Instance created.');
+        // this.logger?.info('UIManager', 'Instance created.'); // MOVE Log message
     }
 
     /**
@@ -323,27 +328,77 @@ export class UIManager {
      * Cleans up event listeners and animation registrations.
      */
     destroy() {
-        this._listeners.forEach(unsubscribe => unsubscribe());
-        this._listeners = [];
-
-        // Unregister win animation
+        this.logger?.info('UIManager', 'Destroying...'); // Log start
+        
+        // 1. Kill GSAP Tweens
+        gsap.killTweensOf(this._winRollupValues);
+        gsap.killTweensOf(this._balanceRollupValues);
+        if (this.spinButton?.buttonIcon) {
+            gsap.killTweensOf(this.spinButton.buttonIcon);
+        }
+        this._winRollupTween = null; // Clear tween reference
+        
+        // 2. Unregister win animation (Already done)
         if (this._unregisterWinRollup) {
             this._unregisterWinRollup();
             this._unregisterWinRollup = null;
-            this.logger?.info('UIManager', 'Unregistered winRollup animation.');
+            this.logger?.debug('UIManager', 'Unregistered winRollup animation.');
         }
         
-        this.logger?.info('UIManager', 'Destroyed and unsubscribed from events.');
-        // Nullify dependencies
+        // 3. Unsubscribe Event Listeners (Already done)
+        this._listeners.forEach(unsubscribe => unsubscribe());
+        this._listeners = [];
+        this.logger?.debug('UIManager', 'Unsubscribed from EventBus events.');
+
+        // 4. Destroy PIXI Objects
+        // Destroying internalContainer should handle children automatically, 
+        // but explicitly destroying buttons might be safer if ButtonFactory 
+        // doesn't fully integrate with PIXI's destroy chain.
+        // Let's destroy buttons explicitly first.
+        const buttons = [
+            this.autoplayButton,
+            this.turboButton,
+            this.spinButton,
+            this.betDecreaseButton,
+            this.betIncreaseButton
+        ];
+        buttons.forEach(button => {
+            if (button && typeof button.destroy === 'function') {
+                // Assuming ButtonFactory's return object has a destroy method
+                button.destroy(); 
+            }
+        });
+        
+        // Now destroy the container and its remaining children (texts, panel)
+        if (this.internalContainer) {
+            this.internalContainer.destroy({ children: true });
+            // this.internalContainer = null; // Optional
+        }
+        this.logger?.debug('UIManager', 'Destroyed PIXI elements.');
+
+        // Nullify PIXI element references AFTER destroying container
+        this.balanceText = null;
+        this.winText = null;
+        this.betText = null;
+        this.winRollupText = null;
+        this.balanceLabel = null;
+        this.betLabel = null;
+        this.winLabel = null;
+        this.autoplayButton = null;
+        this.turboButton = null;
+        this.spinButton = null;
+        this.betDecreaseButton = null;
+        this.betIncreaseButton = null;
+        this.internalContainer = null; // Set to null here
+        
+        // 5. Nullify Dependencies (Already done)
         this.parentLayer = null;
         this.logger = null;
         this.eventBus = null;
         this.featureManager = null;
         this.animationController = null;
-        // Nullify elements?
-        this.internalContainer = null;
-        this.balanceText = null;
-        // ... nullify other elements ...
+        
+        this.logger?.info('UIManager', 'Destroy complete.');
     }
 
     // --- Event Handlers --- 
@@ -543,11 +598,11 @@ export class UIManager {
      */
     animateWin(data) {
         // --- Return a Promise --- 
-        return new Promise((resolve) => {
+        return new Promise((/** @type {(value?: void) => void} */ resolve) => {
             if (!data || typeof data.amount !== 'number') {
                 this.logger?.error("UIManager", "animateWin called with invalid data", data);
                 // return; // Resolve promise immediately on error
-                resolve();
+                resolve(); // Call without args
                 return;
             }
             const winAmount = data.amount;
@@ -577,7 +632,7 @@ export class UIManager {
                          this.logger?.debug('UIManager', 'Win rollup animation complete.');
                     }
                     this._winRollupTween = null; // Clear reference on completion
-                    resolve(); // Resolve the promise on completion
+                    resolve(); // Resolve the promise on completion - Call without args
                 }
             });
         }); // --- End Promise --- 

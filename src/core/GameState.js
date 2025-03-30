@@ -164,28 +164,32 @@ function unsubscribeListeners() {
  * @param {string} eventData.buttonName
  */
 function handleButtonClick(eventData) {
-    const buttonName = eventData.buttonName;
-    loggerInstance?.debug('GameState', `Handling button click: ${buttonName}`);
+    try {
+        const buttonName = eventData.buttonName;
+        loggerInstance?.debug('GameState', `Handling button click: ${buttonName}`);
 
-    switch (buttonName) {
-        case 'turbo':
-            _handleTurboToggle();
-            break;
-        case 'autoplay':
-            _handleAutoplayToggle();
-            break;
-        case 'betIncrease':
-            _handleBetChange(1);
-            break;
-        case 'betDecrease':
-            _handleBetChange(-1);
-            break;
-        case 'spin':
-            // SpinManager listens for this directly to initiate spin
-            loggerInstance?.debug('GameState', 'Spin button click detected, SpinManager should handle.');
-            break;
-        default:
-            loggerInstance?.warn('GameState', `Unhandled button click: ${buttonName}`);
+        switch (buttonName) {
+            case 'turbo':
+                _handleTurboToggle();
+                break;
+            case 'autoplay':
+                _handleAutoplayToggle();
+                break;
+            case 'betIncrease':
+                _handleBetChange(1);
+                break;
+            case 'betDecrease':
+                _handleBetChange(-1);
+                break;
+            case 'spin':
+                // SpinManager listens for this directly to initiate spin
+                loggerInstance?.debug('GameState', 'Spin button click detected, SpinManager should handle.');
+                break;
+            default:
+                loggerInstance?.warn('GameState', `Unhandled button click: ${buttonName}`);
+        }
+    } catch (error) {
+        loggerInstance?.error('GameState', 'Error in handleButtonClick handler:', error);
     }
 }
 
@@ -195,12 +199,16 @@ function handleButtonClick(eventData) {
  * @param {object} [eventData] - Optional data (e.g., { reason: 'balance' })
  */
 function _handleAutoplayStopRequest(eventData) {
-    const reason = eventData?.reason || 'unknown';
-    if (state.isAutoplaying) {
-        updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
-        loggerInstance?.info('GameState', `Autoplay stopped via request. Reason: ${reason}`);
-    } else {
-        loggerInstance?.debug('GameState', 'Received autoplay:requestStop, but autoplay is already inactive.');
+    try {
+        const reason = eventData?.reason || 'unknown';
+        if (state.isAutoplaying) {
+            updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+            loggerInstance?.info('GameState', `Autoplay stopped via request. Reason: ${reason}`);
+        } else {
+            loggerInstance?.debug('GameState', 'Received autoplay:requestStop, but autoplay is already inactive.');
+        }
+    } catch (error) {
+        loggerInstance?.error('GameState', 'Error in _handleAutoplayStopRequest handler:', error);
     }
 }
 // --- End Handler ---

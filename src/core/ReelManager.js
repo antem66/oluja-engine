@@ -187,4 +187,32 @@ export class ReelManager {
     }
 
     // TODO (Phase 2): Add method destroy() for cleanup (remove container, destroy reels, etc.)
+    /**
+     * Cleans up resources used by the ReelManager.
+     */
+    destroy() {
+        this.logger?.info('ReelManager', 'Destroying...');
+        
+        // 1. Destroy individual Reels
+        this.reels.forEach(reel => {
+            if (reel && typeof reel.destroy === 'function') {
+                reel.destroy();
+            }
+        });
+        this.reels = []; // Clear array
+        
+        // 2. Destroy the main reel container
+        // This also removes the mask implicitly if it was set
+        if (this.reelContainer) {
+            this.reelContainer.destroy({ children: true });
+            // No need to set to null if linter complains
+        }
+        
+        // 3. Nullify references
+        this.parentLayer = null;
+        this.appTicker = null;
+        this.logger = null;
+        // Explicitly set reelContainer to null if allowed by types/linter
+        this.reelContainer = null; 
+    }
 }

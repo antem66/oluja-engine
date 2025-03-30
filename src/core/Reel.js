@@ -337,4 +337,52 @@ export class Reel {
 
          return reelIsActive; // Restore returning the actual state activity
      }
+     
+    /**
+     * Cleans up resources used by the reel.
+     */
+    destroy() {
+        // 1. Kill GSAP Tween
+        if (this.stopTween) {
+            this.stopTween.kill();
+            this.stopTween = null;
+        }
+        
+        // 2. Destroy Symbols
+        if (this.symbols && this.container) {
+            this.symbols.forEach(symbol => {
+                if (symbol) {
+                    // Check parent just in case it was already removed elsewhere
+                    if (symbol.parent === this.container) {
+                         this.container.removeChild(symbol);
+                    }
+                    symbol.destroy({ children: true });
+                }
+            });
+            this.symbols = []; // Clear array
+        }
+        
+        // 3. Destroy Effects
+        if (this.shimmerContainer) {
+            // Check parent just in case
+            if (this.shimmerContainer.parent === this.container) {
+                this.container.removeChild(this.shimmerContainer);
+            }
+            this.shimmerContainer.destroy({ children: true });
+            this.shimmerContainer = null;
+            this.lightStreaks = [];
+        }
+        
+        // 4. Destroy Container (Removes filters implicitly)
+        if (this.container) {
+            this.container.destroy({ children: true });
+        }
+        
+        // 5. Nullify References
+        this.appTicker = null;
+        this.strip = null;
+        // this.motionBlur = null; // REMOVE null assignment
+        // this.colorMatrix = null; // REMOVE null assignment
+        // No need to nullify primitives like reelIndex, position, etc.
+    }
  }

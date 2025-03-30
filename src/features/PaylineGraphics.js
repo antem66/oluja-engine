@@ -17,6 +17,8 @@ let eventBus = null;
 let logger = null;
 /** @type {Function | null} */
 let _unsubscribeWinEvent = null;
+/** @type {Function | null} */ // Store unsubscribe for clear event
+let _unsubscribeClearEvent = null;
 let animationController = null;
 let reelManager = null;
 let uiManager = null;
@@ -41,7 +43,8 @@ export function init(dependencies) { // Renamed initPaylineGraphics
     _unsubscribeWinEvent = eventBus.on('win:validatedForAnimation', _drawLines); // Call renamed _drawLines
     
     // Listen for clear requests
-    eventBus?.on('paylines:clearRequest', _clearLines);
+    // eventBus?.on('paylines:clearRequest', _clearLines); // OLD
+    _unsubscribeClearEvent = eventBus?.on('paylines:clearRequest', _clearLines); // Store unsubscribe
     
     logger.info('PaylineGraphics', 'Initialized and subscribed to events.');
 }
@@ -50,12 +53,19 @@ export function init(dependencies) { // Renamed initPaylineGraphics
  * Cleans up event listeners.
  */
 export function destroy() {
+    logger?.info('PaylineGraphics', 'Destroying...'); // Add log
     if (_unsubscribeWinEvent) {
         _unsubscribeWinEvent();
         _unsubscribeWinEvent = null;
-        logger?.info('PaylineGraphics', 'Unsubscribed from win:validatedForAnimation.');
+        logger?.debug('PaylineGraphics', 'Unsubscribed from win:validatedForAnimation.'); // Use debug
     }
-    logger?.warn('PaylineGraphics', 'TODO: Implement unsubscription for paylines:clearRequest in destroy.');
+    // logger?.warn('PaylineGraphics', 'TODO: Implement unsubscription for paylines:clearRequest in destroy.');
+    // ^^^ Need to store the unsubscribe function for paylines:clearRequest too ^^^ 
+    if (_unsubscribeClearEvent) {
+        _unsubscribeClearEvent();
+        _unsubscribeClearEvent = null;
+        logger?.debug('PaylineGraphics', 'Unsubscribed from paylines:clearRequest.'); // Use debug
+    }
 
     _clearLines(); // Call renamed _clearLines
     winLineGraphics = null;
@@ -187,7 +197,7 @@ function _clearLines() { // Renamed clearWinLines and removed export
     }
     logger?.debug('PaylineGraphics', 'Clearing win lines: Killing animations and clearing graphics paths.');
     
-    // Kill fade animations targeting the graphics object itself
+    // Kill fade animations targeting the graphics object
     gsap.killTweensOf(winLineGraphics);
 
     // Explicitly clear drawn paths

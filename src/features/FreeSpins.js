@@ -33,6 +33,12 @@ let backgroundManager = null;
 /** @type {Array<Function>} */
 let listeners = []; // To store unsubscribe functions
 
+// Add variable to store timeout ID
+/** @type {ReturnType<typeof setTimeout> | null} */
+let firstSpinTimeout = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let nextSpinTimeout = null;
+
 // --- Module-Level State (Temporary - Should ideally be fully managed by GameState via events) ---
 // let freeSpinsRemaining = 0; // Read from GameState instead
 // let freeSpinsTotalWin = 0; // Read/Update via GameState events
@@ -92,12 +98,24 @@ export function initFreeSpins(dependencies) {
  */
 export function destroy() {
     listeners.forEach(unsubscribe => unsubscribe());
-    listeners = [];
+    listeners = []; // Clear listeners array
     if (specialAnimationsContainer) {
+        gsap.killTweensOf(specialAnimationsContainer); // Kill any GSAP animations
         specialAnimationsContainer.destroy({ children: true });
         specialAnimationsContainer = null;
     }
+    // TODO: Clear any running timeouts (e.g., from enterFreeSpins)
+    // Clear timeouts
+    if (firstSpinTimeout) {
+        clearTimeout(firstSpinTimeout);
+        firstSpinTimeout = null;
+    }
+    if (nextSpinTimeout) {
+        clearTimeout(nextSpinTimeout);
+        nextSpinTimeout = null;
+    }
     logger?.info('FreeSpins', 'Destroyed and unsubscribed.');
+    // Nullify dependencies
     logger = null;
     eventBus = null;
     featureManager = null;
@@ -113,66 +131,72 @@ export function destroy() {
  * @param {number} [eventData.spinsAwarded=FREE_SPINS_AWARDED] - Number of free spins.
  */
 export function enterFreeSpins(eventData = {}) { // Now expects eventData
-    const spinsAwarded = eventData.spinsAwarded ?? FREE_SPINS_AWARDED;
-    const isRetrigger = state.isInFreeSpins; // Still reading state temporarily
-    let message = "";
-    logger?.info('FreeSpins', `Entering/Retriggering with ${spinsAwarded} spins. Current state: isInFreeSpins=${isRetrigger}, remaining=${state.freeSpinsRemaining}`);
+    try {
+        const spinsAwarded = eventData.spinsAwarded ?? FREE_SPINS_AWARDED;
+        const isRetrigger = state.isInFreeSpins; // Still reading state temporarily
+        let message = "";
+        logger?.info('FreeSpins', `Entering/Retriggering with ${spinsAwarded} spins. Current state: isInFreeSpins=${isRetrigger}, remaining=${state.freeSpinsRemaining}`);
 
-    if (isRetrigger) {
-        const newRemaining = state.freeSpinsRemaining + spinsAwarded;
-        // Request state update via event
-        eventBus?.emit('state:update', {
-            freeSpinsRemaining: newRemaining
-        });
-        message = `${spinsAwarded} EXTRA FREE SPINS!`;
+        if (isRetrigger) {
+            const newRemaining = state.freeSpinsRemaining + spinsAwarded;
+            // Request state update via event
+            eventBus?.emit('state:update', {
+                freeSpinsRemaining: newRemaining
+            });
+            message = `${spinsAwarded} EXTRA FREE SPINS!`;
 
-        // Show retrigger message - Use eventBus to request notification
-        eventBus?.emit('notification:show', {
-            message: message,
-            duration: 2500,
-            // No callback needed here, UI updates based on state event
-        });
-        // No spin start here for retrigger
-
-    } else {
-        // Initial Entry
-        // Request state update via event
-        logger?.debug('FreeSpins', 'Requesting initial Free Spins state update.');
-        eventBus?.emit('state:update', {
-            isInFreeSpins: true,
-            freeSpinsRemaining: spinsAwarded,
-            totalFreeSpinsWin: 0 // Reset win on initial entry
-        });
-        message = `${spinsAwarded} FREE SPINS AWARDED!`;
-
-        // Request background change via BackgroundManager
-        backgroundManager?.changeBackground(freeSpinsBgColor, 1.5);
-
-        // Play entry animation via AnimationController or local function?
-        // For now, keep local function call, but it needs refactoring
-        playFreeSpinsEntryAnimation(() => {
-            // Callback after animation completes
-            // Request notification display
+            // Show retrigger message - Use eventBus to request notification
             eventBus?.emit('notification:show', {
                 message: message,
-                duration: 3000,
-                onComplete: () => { // Use onComplete to schedule first spin
-                    // UI updates (like FS counter) should happen automatically via UIManager listening to state:changed
-                    // Buttons should be disabled automatically via UIManager listening to state:changed
-                    
-                    // Start the first free spin automatically after the message
-                    // Add small delay before starting spin
-                    setTimeout(() => {
-                        if (spinManager && state.isInFreeSpins) { // Check state again before starting
-                            logger?.info('FreeSpins', 'Starting first free spin.');
-                            spinManager.startSpin();
-                        } else {
-                            logger?.warn('FreeSpins', 'Conditions changed, not starting first spin.');
-                        }
-                    }, 500); 
-                }
+                duration: 2500,
+                // No callback needed here, UI updates based on state event
             });
-        });
+            // No spin start here for retrigger
+
+        } else {
+            // Initial Entry
+            // Request state update via event
+            logger?.debug('FreeSpins', 'Requesting initial Free Spins state update.');
+            eventBus?.emit('state:update', {
+                isInFreeSpins: true,
+                freeSpinsRemaining: spinsAwarded,
+                totalFreeSpinsWin: 0 // Reset win on initial entry
+            });
+            message = `${spinsAwarded} FREE SPINS AWARDED!`;
+
+            // Request background change via BackgroundManager
+            backgroundManager?.changeBackground(freeSpinsBgColor, 1.5);
+
+            // Play entry animation via AnimationController or local function?
+            // For now, keep local function call, but it needs refactoring
+            playFreeSpinsEntryAnimation(() => {
+                // Callback after animation completes
+                // Request notification display
+                eventBus?.emit('notification:show', {
+                    message: message,
+                    duration: 3000,
+                    onComplete: () => { // Use onComplete to schedule first spin
+                        // UI updates (like FS counter) should happen automatically via UIManager listening to state:changed
+                        // Buttons should be disabled automatically via UIManager listening to state:changed
+                        
+                        // Start the first free spin automatically after the message
+                        // Add small delay before starting spin
+                        // Store the timeout ID
+                        firstSpinTimeout = setTimeout(() => {
+                            if (spinManager && state.isInFreeSpins) { // Check state again before starting
+                                logger?.info('FreeSpins', 'Starting first free spin.');
+                                spinManager.startSpin();
+                            } else {
+                                logger?.warn('FreeSpins', 'Conditions changed, not starting first spin.');
+                            }
+                            firstSpinTimeout = null; // Clear ID after execution
+                        }, 500); 
+                    }
+                });
+            });
+        }
+    } catch (error) {
+        logger?.error('FreeSpins', 'Error in enterFreeSpins handler:', error);
     }
 }
 
@@ -351,47 +375,53 @@ export function exitFreeSpins() {
  * Calculates win, updates state, and schedules next action (spin or exit).
  */
 export function handleFreeSpinEnd() { 
-    // Ensure we are actually in free spins mode before proceeding
-    if (!state.isInFreeSpins) {
-        logger?.debug('FreeSpins', 'handleFreeSpinEnd called but not in free spins mode. Ignoring.');
-        return;
-    }
-
-    logger?.debug('FreeSpins', 'Handling free spin end.');
-
-    // Get the win amount from the last regular spin (before multiplier)
-    // This assumes WinEvaluation/ResultHandler has updated state.lastNetWin appropriately
-    const lastSpinWin = state.lastNetWin || 0; 
-    const winMultiplier = getFreeSpinsMultiplier();
-    const effectiveWin = lastSpinWin * winMultiplier;
-    const newTotalWin = (state.totalFreeSpinsWin || 0) + effectiveWin;
-    const newRemainingSpins = (state.freeSpinsRemaining || 0) - 1;
-
-    // Request state update via eventBus
-    eventBus?.emit('state:update', {
-        totalFreeSpinsWin: newTotalWin,
-        freeSpinsRemaining: newRemainingSpins < 0 ? 0 : newRemainingSpins // Ensure not negative
-        // lastNetWin might be reset by ResultHandler/GameState, keep totalFreeSpinsWin separate
-    });
-
-    // Delay before next action (next spin or exit)
-    // TODO: Use AnimationController to manage delays/sequences?
-    const delay = (state.isTurboMode ? 200 : 800) * winAnimDelayMultiplier;
-
-    logger?.debug('FreeSpins', `Scheduling next action in ${delay}ms...`);
-
-    setTimeout(() => {
-        // Read updated remaining spins count AFTER state update
-        const remainingSpinsAfterUpdate = state.freeSpinsRemaining;
-
-        if (remainingSpinsAfterUpdate > 0) {
-            logger?.info('FreeSpins', `Starting next free spin. Remaining: ${remainingSpinsAfterUpdate}`);
-            startFreeSpin(); // Start the next free spin (which uses spinManager)
-        } else {
-            logger?.info('FreeSpins', 'No more free spins remaining. Exiting free spins mode.');
-            exitFreeSpins(); // Trigger the exit sequence
+    try {
+        // Ensure we are actually in free spins mode before proceeding
+        if (!state.isInFreeSpins) {
+            logger?.debug('FreeSpins', 'handleFreeSpinEnd called but not in free spins mode. Ignoring.');
+            return;
         }
-    }, delay);
+
+        logger?.debug('FreeSpins', 'Handling free spin end.');
+
+        // Get the win amount from the last regular spin (before multiplier)
+        // This assumes WinEvaluation/ResultHandler has updated state.lastNetWin appropriately
+        const lastSpinWin = state.lastNetWin || 0; 
+        const winMultiplier = getFreeSpinsMultiplier();
+        const effectiveWin = lastSpinWin * winMultiplier;
+        const newTotalWin = (state.totalFreeSpinsWin || 0) + effectiveWin;
+        const newRemainingSpins = (state.freeSpinsRemaining || 0) - 1;
+
+        // Request state update via eventBus
+        eventBus?.emit('state:update', {
+            totalFreeSpinsWin: newTotalWin,
+            freeSpinsRemaining: newRemainingSpins < 0 ? 0 : newRemainingSpins // Ensure not negative
+            // lastNetWin might be reset by ResultHandler/GameState, keep totalFreeSpinsWin separate
+        });
+
+        // Delay before next action (next spin or exit)
+        // TODO: Use AnimationController to manage delays/sequences?
+        const delay = (state.isTurboMode ? 200 : 800) * winAnimDelayMultiplier;
+
+        logger?.debug('FreeSpins', `Scheduling next action in ${delay}ms...`);
+
+        // Store the timeout ID
+        nextSpinTimeout = setTimeout(() => {
+            // Read updated remaining spins count AFTER state update
+            const remainingSpinsAfterUpdate = state.freeSpinsRemaining;
+
+            if (remainingSpinsAfterUpdate > 0) {
+                logger?.info('FreeSpins', `Starting next free spin. Remaining: ${remainingSpinsAfterUpdate}`);
+                startFreeSpin(); // Start the next free spin (which uses spinManager)
+            } else {
+                logger?.info('FreeSpins', 'No more free spins remaining. Exiting free spins mode.');
+                exitFreeSpins(); // Trigger the exit sequence
+            }
+            nextSpinTimeout = null; // Clear ID after execution
+        }, delay);
+    } catch (error) {
+        logger?.error('FreeSpins', 'Error in handleFreeSpinEnd handler:', error);
+    }
 }
 
 /**

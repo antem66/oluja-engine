@@ -70,11 +70,16 @@ export class ResultHandler {
      * Cleans up event listeners.
      */
     destroy() {
+        this.logger?.info('ResultHandler', 'Destroying...'); // Add log
         if (this._unsubscribeSpinResult) {
             this._unsubscribeSpinResult();
             this._unsubscribeSpinResult = null;
             this.logger?.info('ResultHandler', 'Unsubscribed from server:spinResultReceived.');
         }
+        // Nullify references
+        this.eventBus = null;
+        this.logger = null;
+        this.reelManager = null;
     }
 
     /**
@@ -84,44 +89,51 @@ export class ResultHandler {
      * @private
      */
     _handleSpinResultReceived(eventData) {
-        if (!eventData || !eventData.data) {
-            this.logger?.error('ResultHandler', 'Received spin result event with invalid data.', eventData);
-            return;
-        }
-
-        const { stopPositions } = eventData.data;
-
-        // Use local constant for reelManager after null check
-        const reelManager = this.reelManager;
-        if (!reelManager) {
-            this.logger?.error('ResultHandler', 'Cannot handle spin result - ReelManager is missing.');
-            return;
-        }
-        // Use local constant in length check
-        if (!Array.isArray(stopPositions) || stopPositions.length !== reelManager.reels.length) {
-             this.logger?.error('ResultHandler', 'Received invalid stopPositions data.', stopPositions);
-             return;
-        }
-
-        this.logger?.info('ResultHandler', 'Received spin result. Setting reel stop positions:', stopPositions);
-
-        // Instruct the ReelManager to set the final positions
-        stopPositions.forEach((position, index) => {
-            // Access reel via local reelManager constant
-            const reel = reelManager.reels[index];
-            if (reel) {
-                // Set the finalStopPosition property directly
-                reel.finalStopPosition = position;
-                 this.logger?.debug('ResultHandler', `Set stop position ${position} for reel ${index}`);
-            } else {
-                 this.logger?.warn('ResultHandler', `Reel not found at index ${index} when setting stop position.`);
+        try {
+            if (!eventData || !eventData.data) {
+                this.logger?.error('ResultHandler', 'Received spin result event with invalid data.', eventData);
+                return;
             }
-        });
 
-        // Optionally emit an event indicating stops have been set
-        this.eventBus?.emit('reels:stopsSet', { stopPositions });
+            const { stopPositions } = eventData.data;
 
-        // TODO: Trigger next steps? (e.g., win evaluation request, start visual reel stopping sequence)
-        // This might involve emitting another event like `spin:processResult` or `reels:startStoppingSequence`
+            // Use local constant for reelManager after null check
+            const reelManager = this.reelManager;
+            if (!reelManager) {
+                this.logger?.error('ResultHandler', 'Cannot handle spin result - ReelManager is missing.');
+                return;
+            }
+            // Use local constant in length check
+            if (!Array.isArray(stopPositions) || stopPositions.length !== reelManager.reels.length) {
+                 this.logger?.error('ResultHandler', 'Received invalid stopPositions data.', stopPositions);
+                 return;
+            }
+
+            this.logger?.info('ResultHandler', 'Received spin result. Setting reel stop positions:', stopPositions);
+
+            // Instruct the ReelManager to set the final positions
+            stopPositions.forEach((position, index) => {
+                // Access reel via local reelManager constant
+                const reel = reelManager.reels[index];
+                if (reel) {
+                    // Set the finalStopPosition property directly
+                    reel.finalStopPosition = position;
+                     this.logger?.debug('ResultHandler', `Set stop position ${position} for reel ${index}`);
+                } else {
+                     this.logger?.warn('ResultHandler', `Reel not found at index ${index} when setting stop position.`);
+                }
+            });
+
+            // Optionally emit an event indicating stops have been set
+            this.eventBus?.emit('reels:stopsSet', { stopPositions });
+
+            // TODO: Trigger next steps? (e.g., win evaluation request, start visual reel stopping sequence)
+            // This might involve emitting another event like `spin:processResult` or `reels:startStoppingSequence`
+            
+        } catch (error) {
+            this.logger?.error('ResultHandler', 'Error in _handleSpinResultReceived handler:', error);
+            // Optionally re-throw or emit a specific error event
+            // this.eventBus?.emit('system:error', { source: 'ResultHandler', error });
+        }
     }
 } 

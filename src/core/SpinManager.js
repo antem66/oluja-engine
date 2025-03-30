@@ -56,6 +56,8 @@ export class SpinManager {
     eventBus = null;
     /** @type {import('./ApiService.js').ApiService | null} */
     apiService = null;
+    /** @type {Function | null} */ // Store unsubscribe function
+    _unsubscribeSpinClick = null;
 
     /**
      * @param {import('./ReelManager.js').ReelManager} reelManagerInstance 
@@ -86,7 +88,7 @@ export class SpinManager {
 
         this.logger?.info('SpinManager', 'Initialized.');
         // Subscribe to spin requests from UI
-        this.eventBus?.on('ui:button:click', (event) => {
+        this._unsubscribeSpinClick = this.eventBus?.on('ui:button:click', (event) => {
             if (event.buttonName === 'spin') this.handleSpinRequest();
         });
         // TODO (Phase 2.2+): Subscribe to server:spinResultReceived
@@ -265,6 +267,11 @@ export class SpinManager {
 
     destroy() {
         this.logger?.info('SpinManager', 'Destroying...');
+        // Unsubscribe from eventBus listener (ui:button:click)
+        if (this._unsubscribeSpinClick) {
+            this._unsubscribeSpinClick();
+            this._unsubscribeSpinClick = null;
+        }
         this.reelManager = null;
         this.logger = null;
         this.eventBus = null;
