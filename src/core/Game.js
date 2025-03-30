@@ -336,6 +336,7 @@ export class Game {
             ...this.deps, // Spread the initial dependencies (logger, eventBus, apiService, featureManager, initialState)
             spinManager: this.spinManager,
             layerUI: this.layerUI, // Pass the UI layer container
+            uiManager: this.uiManager, // Add the UIManager instance itself
             // Provide access to the button factory (assuming UIManager exposes it or we import it directly)
             // Let's assume we need to import createButton for now if UIManager doesn't expose it.
             // If UIManager *does* expose it (e.g., this.uiManager.buttonFactory), use that instead.

@@ -295,10 +295,9 @@ function _handleBetChange(direction) {
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
-    // --- BEGIN ADD LOG --- 
-    // Log status of dependencies RIGHT AT THE START
-    console.log(`[GameState] updateState START. Has EventBus: ${!!eventBusInstance}, Has Logger: ${!!loggerInstance}`);
-    // --- END ADD LOG --- 
+    // --- BEGIN REMOVE LOG --- 
+    // REMOVED: console.log(`[GameState] updateState START. Has EventBus: ${!!eventBusInstance}, Has Logger: ${!!loggerInstance}`);
+    // --- END REMOVE LOG --- 
     
     console.log('[GameState] updateState CALLED with:', updates);
 
@@ -324,36 +323,28 @@ export function updateState(updates) {
 
     const changedProperties = {};
 
-    // --- BEGIN ADD LOG --- 
-    loggerInstance.info('GameState.updateState', '>>> Entering property comparison loop <<<');
-    // --- END ADD LOG --- 
-
     // Store old values and identify changes
     for (const key in updates) {
         if (Object.hasOwnProperty.call(updates, key) && Object.hasOwnProperty.call(state, key)) {
             const oldValue = state[key];
             // @ts-ignore - We know key exists in updates
             const newValue = updates[key];
-            // --- BEGIN EDIT LOG --- 
+            // --- BEGIN REMOVE LOG --- 
             // Simple log for ALL keys being checked
-            loggerInstance.info(`GameState.updateState Loop: key=${key}, old=${oldValue}, new=${newValue}, changed=${oldValue !== newValue}`);
-            // --- END EDIT LOG --- 
+            // REMOVED: loggerInstance.info(`GameState.updateState Loop: key=${key}, old=${oldValue}, new=${newValue}, changed=${oldValue !== newValue}`);
+            // --- END REMOVE LOG --- 
 
             if (oldValue !== newValue) {
                 // Store for event emission after state is updated
                 changedProperties[key] = { oldValue, newValue };
-                 // --- BEGIN EDIT LOG --- 
+                 // --- BEGIN REMOVE LOG --- 
                  // Simple log when a change is detected and added
-                 loggerInstance.info(`GameState.updateState Loop: Property ${key} ADDED to changedProperties`);
-                 // --- END EDIT LOG --- 
+                 // REMOVED: loggerInstance.info(`GameState.updateState Loop: Property ${key} ADDED to changedProperties`);
+                 // --- END REMOVE LOG --- 
                 loggerInstance.debug('GameState', `State changing: ${key} from ${JSON.stringify(oldValue)} to ${JSON.stringify(newValue)}`); // Keep this debug
             }
         }
     }
-
-    // --- BEGIN ADD LOG --- 
-    loggerInstance.info('GameState.updateState', '<<< Exited property comparison loop >>>', { numChanged: Object.keys(changedProperties).length });
-    // --- END ADD LOG --- 
 
     // Merge the updates into the state
     state = { ...state, ...updates };
@@ -384,9 +375,9 @@ export function updateState(updates) {
         }
          // --- END EDIT ---
     } else {
-        // --- BEGIN ADD LOG --- 
-        loggerInstance.warn('GameState.updateState', 'No changed properties detected, skipping event emission.');
-        // --- END ADD LOG --- 
+        // --- BEGIN REMOVE LOG --- 
+        // REMOVED: loggerInstance.warn('GameState.updateState', 'No changed properties detected, skipping event emission.');
+        // --- END REMOVE LOG --- 
     }
 }
 

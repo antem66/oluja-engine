@@ -14,6 +14,7 @@ import { winAnimDelayMultiplier } from '../config/animationSettings.js'; // Impo
 import { NUM_PAYLINES } from '../config/paylines.js';
 // TODO: Get game dimensions dynamically or from config service
 import { GAME_HEIGHT } from '../config/gameSettings.js';
+import { UIManager } from '../ui/UIManager.js'; // Import UIManager type for JSDoc
 
 export const AutoplayPlugin = {
     name: 'Autoplay',
@@ -25,16 +26,14 @@ export const AutoplayPlugin = {
     eventBus: null,
     /** @type {SpinManager | null} */
     spinManager: null,
+    /** @type {UIManager | null} */ // Add UIManager
+    uiManager: null,
     /** @type {Array<Function>} */
     listeners: [],
     /** @type {ReturnType<typeof setTimeout> | null} */
     nextSpinTimeout: null,
     /** @type {any | null} */ // TODO: Add proper type for ButtonFactory return
     autoplayButton: null,
-    /** @type {PIXI.Container | null} */
-    uiLayer: null,
-    /** @type {Function | null} */
-    buttonFactory: null,
      /** @type {object | null} */
     initialState: null,
     // Track current state locally, updated by event
@@ -49,21 +48,18 @@ export const AutoplayPlugin = {
      * @param {Logger} coreDependencies.logger
      * @param {EventBus} coreDependencies.eventBus
      * @param {SpinManager} coreDependencies.spinManager
-     * @param {PIXI.Container} coreDependencies.layerUI // Get the main UI layer
-     * @param {object} coreDependencies.factories // Assuming factories are nested
-     * @param {Function} coreDependencies.factories.createButton // The button creation function
+     * @param {UIManager} coreDependencies.uiManager // Get UIManager
      * @param {object} coreDependencies.initialState // The initial game state
      */
     init(coreDependencies) {
         this.logger = coreDependencies.logger;
         this.eventBus = coreDependencies.eventBus;
         this.spinManager = coreDependencies.spinManager;
-        this.uiLayer = coreDependencies.layerUI; // Store UI layer
-        this.buttonFactory = coreDependencies.factories?.createButton; // Store button factory
+        this.uiManager = coreDependencies.uiManager; // Store UIManager
         this.initialState = coreDependencies.initialState;
 
-        if (!this.logger || !this.eventBus || !this.spinManager || !this.uiLayer || !this.buttonFactory || !this.initialState) {
-            console.error("AutoplayPlugin: Missing core dependencies.");
+        if (!this.logger || !this.eventBus || !this.spinManager || !this.uiManager || !this.initialState) {
+            console.error("AutoplayPlugin: Missing core dependencies (logger, eventBus, spinManager, uiManager, initialState).");
             return;
         }
 
@@ -73,31 +69,24 @@ export const AutoplayPlugin = {
         this.isAutoplaying = this.initialState.isAutoplaying || false;
         this.autoplaySpinsRemaining = this.initialState.autoplaySpinsRemaining || 0;
 
-        // --- Create UI Button --- 
-        try {
-            // TODO: Get positioning dynamically or from layout manager
-            const panelHeight = 80;
-            const panelY = GAME_HEIGHT - panelHeight;
-            const panelCenterY = panelY + panelHeight / 2;
-            const btnSize = 40;
-            const sideMargin = 35;
-            const buttonSpacing = 20;
-            const turboX = sideMargin;
-            const autoplayX = turboX + btnSize + buttonSpacing;
-            const standardButtonY = panelCenterY - btnSize / 2;
-            
-            this.autoplayButton = this.buttonFactory(
-                "", autoplayX, standardButtonY, 
-                this._handleButtonClick.bind(this), // Attach internal handler
-                {}, this.uiLayer, btnSize, btnSize, true, 'autoplay' // Initial icon
+        // --- BEGIN EDIT: Get button from UIManager, remove creation --- 
+        // Get the button instance created by UIManager
+        this.autoplayButton = this.uiManager.getButton('autoplay');
+
+        if (!this.autoplayButton) {
+            this.logger.error('AutoplayPlugin', 'Could not find autoplay button from UIManager.');
+            // Maybe don't proceed if the button is essential?
+        } else {
+            // Set initial visual state using UIManager's method
+            this.uiManager.setButtonVisualState(
+                'autoplay', 
+                this.isAutoplaying, 
+                'autoplay-active', 
+                'autoplay'
             );
-            this.autoplayButton.name = `pluginAutoplayButton`;
-            this._updateButtonVisuals(this.isAutoplaying); // Set initial visual state
-             this.logger.debug('AutoplayPlugin', 'Autoplay button created.');
-        } catch (error) {
-            this.logger.error('AutoplayPlugin', 'Error creating UI button:', error);
-            // Proceed without button? Or halt?
         }
+        
+        // --- END EDIT ---
         
         // --- Subscribe to Events --- 
         const unsubscribeSpinEnd = this.eventBus.on('spin:sequenceComplete', this._handleSpinEndForAutoplay.bind(this));
@@ -124,64 +113,25 @@ export const AutoplayPlugin = {
             this.nextSpinTimeout = null;
         }
         
-        // Destroy UI Button
-        if (this.autoplayButton && typeof this.autoplayButton.destroy === 'function') {
-            // Make sure it's removed from parent first if destroy doesn't handle it
-            if (this.autoplayButton.parent) {
-                this.autoplayButton.parent.removeChild(this.autoplayButton);
-            }
-            this.autoplayButton.destroy();
-            this.logger?.debug('AutoplayPlugin', 'Autoplay button destroyed.');
+        // --- BEGIN EDIT: Remove button destruction logic --- 
+        // Button is managed by UIManager, plugin just removes its listener
+        if (this.autoplayButton && typeof this.autoplayButton.off === 'function') {
+            // REMOVED: this.autoplayButton.off('click', this._handleButtonClick.bind(this));
+            // this.logger?.debug('AutoplayPlugin', 'Removed click listener from autoplay button.'); // REMOVE log too
         }
+        // Nullify button reference, but don't destroy it
         this.autoplayButton = null;
+        // --- END EDIT ---
         
         // Nullify dependencies
         this.logger = null;
         this.eventBus = null;
         this.spinManager = null;
-        this.uiLayer = null;
-        this.buttonFactory = null;
+        this.uiManager = null; // Nullify uiManager
         this.initialState = null;
     },
 
     // --- Internal Methods --- 
-    _handleButtonClick() {
-        this.logger?.debug('AutoplayPlugin', 'Button clicked.');
-        // const newState = !this.isAutoplaying; // No need to track this locally for the click
-        
-        // --- BEGIN EDIT --- 
-        // Emit the standard UI button click event instead of state:update
-        this.logger?.info('AutoplayPlugin', 'Emitting ui:button:click for autoplay toggle.');
-        this.eventBus?.emit('ui:button:click', { buttonName: 'autoplay' });
-        // --- END EDIT ---
-        
-        /* REMOVED old state:update logic
-        if (newState) {
-             // Request to START autoplay
-             // TODO: Add checks (balance, state) before emitting?
-             // Read state directly for now, should ideally use state from event handler
-             if (!state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
-                 this.logger?.info('AutoplayPlugin', 'Requesting state update to START autoplay.');
-                 this.eventBus?.emit('state:update', {
-                     isAutoplaying: true,
-                     autoplaySpinsRemaining: state.autoplaySpinsDefault // Use default from GameState?
-                 });
-                 // Note: _handleStateChangeForAutoplay will trigger the first spin
-             } else {
-                 this.logger?.warn('AutoplayPlugin', 'Cannot start autoplay due to current game state.');
-                 // Optionally provide user feedback? (e.g., flash button red?)
-             }
-        } else {
-            // Request to STOP autoplay
-            this.logger?.info('AutoplayPlugin', 'Requesting state update to STOP autoplay.');
-            this.eventBus?.emit('state:update', {
-                isAutoplaying: false,
-                autoplaySpinsRemaining: 0
-            });
-        }
-        */
-    },
-
     _handleSpinEndForAutoplay() {
         try {
             if (this.nextSpinTimeout) { 
@@ -251,7 +201,6 @@ export const AutoplayPlugin = {
         try {
             const { newState, updatedProps } = eventData;
             let stateChanged = false;
-            this.logger?.debug('AutoplayPlugin._handleStateChange', 'Received state change:', { updatedProps, newState });
             
             // Update locally tracked state if relevant properties changed
             if (updatedProps.includes('isAutoplaying')) {
@@ -271,24 +220,10 @@ export const AutoplayPlugin = {
 
             // Trigger First Spin logic (if autoplay was just turned ON)
             if (updatedProps.includes('isAutoplaying') && newState.isAutoplaying) {
-                 this.logger?.debug('AutoplayPlugin.FirstSpinCheck', 'Autoplay just turned ON. Checking conditions...', {
-                     isSpinning: newState.isSpinning, 
-                     isFeatureTransitioning: newState.isFeatureTransitioning,
-                     isInFreeSpins: newState.isInFreeSpins,
-                     spinManagerPresent: !!this.spinManager
-                 });
                  if (!newState.isSpinning && !newState.isFeatureTransitioning && !newState.isInFreeSpins) {
                      this.logger?.info('AutoplayPlugin', 'Autoplay activated, scheduling first spin.');
                      if (this.spinManager) { 
-                         this.logger?.debug('AutoplayPlugin.FirstSpinCheck', 'Setting timeout for first spin...');
                          setTimeout(() => {
-                             this.logger?.debug('AutoplayPlugin.FirstSpinCheck', 'Inside first spin timeout. Checking conditions again...', {
-                                 isAutoplayingLocal: this.isAutoplaying,
-                                 isSpinningGlobal: state.isSpinning,
-                                 isFeatureTransitioningGlobal: state.isFeatureTransitioning,
-                                 isInFreeSpinsGlobal: state.isInFreeSpins,
-                                 spinManagerPresent: !!this.spinManager
-                             });
                              if (this.spinManager && this.isAutoplaying && !state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
                                  this.logger?.debug('AutoplayPlugin', 'Timeout executed, starting first spin.');
                                  this.spinManager.startSpin(); 
@@ -299,8 +234,6 @@ export const AutoplayPlugin = {
                      } else {
                          this.logger?.error('AutoplayPlugin', 'Cannot schedule first spin, SpinManager is missing.');
                      }
-                 } else {
-                     this.logger?.debug('AutoplayPlugin.FirstSpinCheck', 'Conditions not met to schedule first spin immediately.');
                  }
             }
 
@@ -327,19 +260,16 @@ export const AutoplayPlugin = {
              
              // --- Update Button Visuals --- 
              if (stateChanged && this.autoplayButton) {
-                this._updateButtonVisuals(this.isAutoplaying);
+                this.uiManager?.setButtonVisualState(
+                    'autoplay', 
+                    this.isAutoplaying, 
+                    'autoplay-active', 
+                    'autoplay'
+                );
              }
 
         } catch (error) {
              this.logger?.error('AutoplayPlugin', 'Error in _handleStateChangeForAutoplay handler:', error);
         }
     },
-    
-    // --- New method for UI update ---
-    _updateButtonVisuals(isActive) {
-        if (!this.autoplayButton) return;
-        this.logger?.debug('AutoplayPlugin', `Updating button visuals, isActive: ${isActive}`);
-        this.autoplayButton.updateIcon(isActive ? 'autoplay-active' : 'autoplay');
-        this.autoplayButton.setActiveState(isActive);
-    }
 };

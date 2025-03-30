@@ -167,7 +167,7 @@ export class UIManager {
         this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState);
         
         // Set initial state visually using initialState
-        this.updateAutoplayButtonState(initialState);
+        // this.updateAutoplayButtonState(initialState);
         this.updateTurboButtonState(initialState);
         this.setButtonsEnabled(initialState);
 
@@ -217,11 +217,9 @@ export class UIManager {
 
         // Left Buttons
         const turboX = sideMargin;
-        // Pass button name directly, remove handlers.toggleTurbo
         createAndStore('turbo', turboX, standardButtonY, btnSize, 'turbo'); 
 
         const autoplayX = turboX + btnSize + buttonSpacing;
-        // Pass button name directly, remove handlers.toggleAutoplay
         createAndStore('autoplay', autoplayX, standardButtonY, btnSize, 'autoplay');
 
         // Right Buttons (Spin) - Already emits event
@@ -406,7 +404,7 @@ export class UIManager {
         this.featureManager = null;
         this.animationController = null;
         
-        // --- BEGIN EDIT (Use local const for logger check) ---
+        // --- BEGIN EDIT (Re-apply logger fix) ---
         const loggerRef = this.logger; // Store reference
         if (loggerRef) { // Check the reference
             loggerRef.info('UIManager', 'Destroy complete.'); // Use the reference
@@ -456,7 +454,6 @@ export class UIManager {
         // Pass newState to *other* update methods
         this.updateOtherDisplays(newState); // Rename original updateDisplays
         this.setButtonsEnabled(newState); 
-        this.updateAutoplayButtonState(newState);
         this.updateTurboButtonState(newState);
         
         // Handle spin button animation based on state change
@@ -587,14 +584,6 @@ export class UIManager {
         gsap.to(iconElement, { angle: 0, duration: 0.2, ease: "power1.out" });
     }
 
-    updateAutoplayButtonState(currentState) { // Accept state
-        if (!this.autoplayButton || !this.featureManager) return;
-        // TODO: Check feature flag featureManager.isEnabled('autoplay')
-        const isAutoplaying = currentState.isAutoplaying; // Use passed state
-        this.autoplayButton.updateIcon(isAutoplaying ? 'autoplay-active' : 'autoplay');
-        this.autoplayButton.setActiveState(isAutoplaying);
-    }
-
     updateTurboButtonState(currentState) { // Accept state
         if (!this.turboButton || !this.featureManager) return;
         // TODO: Check feature flag featureManager.isEnabled('turboMode')
@@ -687,5 +676,43 @@ export class UIManager {
                  this.logger?.debug('UIManager', 'Balance rollup complete.');
             }
         });
+    }
+
+    /**
+     * Retrieves a button instance managed by the UIManager.
+     * @param {string} buttonName - The name used when creating the button (e.g., 'spin', 'autoplay').
+     * @returns {ReturnType<typeof createButton> | null} The button instance or null if not found.
+     */
+    getButton(buttonName) {
+        const buttonPropertyName = `${buttonName}Button`;
+        if (this.hasOwnProperty(buttonPropertyName)) {
+            // @ts-ignore - We know the property should exist based on the name convention
+            return this[buttonPropertyName]; 
+        }
+        this.logger?.warn('UIManager', `getButton called for unknown button: ${buttonName}`);
+        return null;
+    }
+    
+    /**
+     * Sets the visual state (icon and active state) for a managed button.
+     * @param {string} buttonName - The name of the button (e.g., 'autoplay', 'turbo').
+     * @param {boolean} isActive - Whether the button should be in its active state.
+     * @param {string} activeIcon - The icon alias to use when active.
+     * @param {string} inactiveIcon - The icon alias to use when inactive.
+     */
+    setButtonVisualState(buttonName, isActive, activeIcon, inactiveIcon) {
+        const button = this.getButton(buttonName);
+        if (!button) {
+            this.logger?.warn('UIManager', `setButtonVisualState called for unknown button: ${buttonName}`);
+            return;
+        }
+
+        // Check if updateIcon and setActiveState methods exist on the button object
+        if (typeof button.updateIcon === 'function' && typeof button.setActiveState === 'function') {
+            button.updateIcon(isActive ? activeIcon : inactiveIcon);
+            button.setActiveState(isActive);
+        } else {
+            this.logger?.error('UIManager', `Button \"${buttonName}\" does not support visual state updates (missing methods).`);
+        }
     }
 }
