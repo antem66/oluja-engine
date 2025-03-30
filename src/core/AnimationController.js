@@ -16,11 +16,6 @@
  * - destroy(): Cleans up listeners (TODO).
  */
 
-import { EventBus } from '../utils/EventBus.js';
-import { Logger } from '../utils/Logger.js';
-// Import GSAP for potential future timeline management within the controller
-import { gsap } from 'gsap';
-import { WIN_ROLLUP_DURATION } from '../config/animationSettings.js';
 
 // Define Big Win thresholds (adjust as needed)
 const BIG_WIN_THRESHOLD_MULTIPLIER = 5;

@@ -396,50 +396,54 @@ export class UIManager {
 
     /** @private */
     _handleStateChange(eventData) {
-        if (!eventData || !eventData.newState) {
-            this.logger?.warn('UIManager', 'Received game:stateChanged event without newState.');
+        if (!eventData || !eventData.newState || !eventData.updatedProps) {
+            this.logger?.warn("UIManager", "_handleStateChange received invalid event data.", eventData);
             return;
         }
-        const newState = eventData.newState;
-        this.logger?.debug('UIManager', 'Handling game:stateChanged', { newState });
-        
-        // --- Trigger Balance Animation --- 
-        const balanceChanged = newState.balance !== this._lastKnownBalance;
-        // Animate if change is significant (adjust tolerance if needed)
-        const tolerance = 0.001; 
-        if (balanceChanged && Math.abs(newState.balance - this._lastKnownBalance) > tolerance) {
-            this.logger?.debug('UIManager', 'Balance change detected, triggering animation.');
-            // Set the starting point for the animation object
-            this._balanceRollupValues.currentValue = this._lastKnownBalance;
-            this.animationController?.playAnimation('balanceRollup', { amount: newState.balance });
-            // Update last known immediately to prevent re-triggering on same state update
-            this._lastKnownBalance = newState.balance;
-        } else {
-            // If balance didn't change significantly, update text directly
-            if (this.balanceText) { 
-                 this.balanceText.text = this._formatMoney(newState.balance, newState.currentCurrency);
-            }
+
+        const { newState, updatedProps } = eventData;
+        this.logger?.debug('UIManager', '_handleStateChange triggered', { updatedProps, newState });
+
+        let needsDisplayUpdate = false;
+        let needsButtonUpdate = false;
+
+        // --- BEGIN EDIT: Spin/Stop Button Icon Swap Logic ---
+        if (updatedProps.includes('isSpinning')) {
+            needsButtonUpdate = true; 
+            const targetIcon = newState.isSpinning ? 'stop' : 'spin';
+            const buttonName = 'spin'; 
+            this.logger?.debug('UIManager', `Spinning state changed to ${newState.isSpinning}. Transitioning button "${buttonName}" to icon "${targetIcon}".`);
+            this._transitionButtonIcon(buttonName, targetIcon, 0.2); 
+        }
+        // --- END EDIT ---
+
+        // --- BEGIN EDIT: Correct property name check for bet updates ---
+        if (updatedProps.includes('currentTotalBet') || updatedProps.includes('win')) { // Changed 'bet' to 'currentTotalBet'
+            needsDisplayUpdate = true;
+        }
+        // --- END EDIT ---
+
+        // Check properties that affect button enabled/disabled states or visual cues
+        const buttonRelevantProps = ['canSpin', 'isAutoplayActive', 'isTurboMode', 'freeSpinsRemaining'];
+         if (updatedProps.some(prop => buttonRelevantProps.includes(prop))) { 
+             needsButtonUpdate = true;
+         }
+
+        // Update displays if relevant state changed
+        if (needsDisplayUpdate) {
+            this.updateOtherDisplays(newState);
         }
 
-        // Pass newState to *other* update methods
-        this.updateOtherDisplays(newState); // Rename original updateDisplays
-        this.setButtonsEnabled(newState); 
-        
-        // Handle spin button animation based on state change
-        // --- BEGIN EDIT: Early Stop - Update Spin Button Visuals ---
-        if (eventData.updatedProps?.includes('isSpinning')) {
-            if (newState.isSpinning) { 
-                this.animateSpinButtonRotation();
-                this.setButtonVisualState('spin', true, 'btn_stop', 'btn_spin');
-                this.logger?.debug('UIManager', 'Spin started, changing button to Stop icon.');
-            } else {
-                // Optional: Stop animation immediately if needed
-                this.stopSpinButtonRotation(); 
-                this.setButtonVisualState('spin', false, 'btn_stop', 'btn_spin');
-                this.logger?.debug('UIManager', 'Spin ended, reverting button to Play icon.');
+        // Update button states if relevant state changed
+        if (needsButtonUpdate) {
+            this.setButtonsEnabled(newState); // This handles enable/disable and potentially active states
+            if (updatedProps.includes('isAutoplayActive')) {
+                 this.setButtonVisualState('autoplay', newState.isAutoplayActive, 'autoplayStop', 'autoplay');
+            }
+            if (updatedProps.includes('isTurboMode')) {
+                 this.setButtonVisualState('turbo', newState.isTurboMode, 'turboActive', 'turbo');
             }
         }
-        // --- END EDIT: Early Stop - Update Spin Button Visuals ---
     }
 
     _handleInterruptAnimations() {
@@ -733,5 +737,62 @@ export class UIManager {
         } else {
             this.logger?.error('UIManager', `Button "${buttonName}\" does not support visual state updates (missing methods).`);
         }
+    }
+
+    /**
+     * Animates the transition between icons for a specified button.
+     * @param {string} buttonName The name of the button (e.g., 'spin').
+     * @param {string} targetIconAlias The asset alias of the target icon (e.g., 'btn_stop').
+     * @param {number} [duration=0.3] The duration of the transition in seconds.
+     * @private
+     */
+    _transitionButtonIcon(buttonName, targetIconAlias, duration = 0.3) {
+        const button = this.getButton(buttonName);
+        const icon = button?.buttonIcon instanceof PIXI.Sprite ? button.buttonIcon : null;
+
+        if (!button || !icon) {
+            this.logger?.warn('UIManager', `Cannot transition icon for button \"${buttonName}\" - button or icon sprite not found.`);
+            if (typeof button?.updateIcon === 'function') {
+                button.updateIcon(targetIconAlias);
+            }
+            return;
+        }
+
+        gsap.killTweensOf(icon);
+
+        // --- BEGIN REVISED ANIMATION LOGIC with Rotation ---
+        const halfDuration = duration / 2;
+        const startAngle = icon.angle; // Capture the starting angle
+
+        // 1. Fade out and Rotate (first 180 degrees)
+        gsap.to(icon, { 
+            alpha: 0, 
+            angle: startAngle + 180, // Rotate during fade-out
+            duration: halfDuration, 
+            ease: 'power1.in', 
+            overwrite: true,
+            onComplete: () => {
+                // 2. Update the icon texture
+                button.updateIcon(targetIconAlias);
+                
+                // 3. Set the new icon's state (invisible and at the end angle of the first rotation)
+                const newStartAngle = startAngle + 180;
+                gsap.set(icon, { alpha: 0, angle: newStartAngle }); 
+                
+                // 4. Fade in and Rotate (remaining 180 degrees)
+                gsap.to(icon, { 
+                    alpha: 1, 
+                    angle: newStartAngle + 180, // Complete the 360 rotation
+                    duration: halfDuration, 
+                    ease: 'power1.out',
+                    overwrite: true,
+                    // Optional: Ensure final angle is clean (modulo 360)
+                    onComplete: () => {
+                        gsap.set(icon, { angle: (startAngle + 360) % 360 });
+                    }
+                });
+            }
+        });
+        // --- END REVISED ANIMATION LOGIC with Rotation ---
     }
 }
