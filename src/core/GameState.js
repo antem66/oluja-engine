@@ -285,20 +285,7 @@ function _handleBetChange(direction) {
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
-    // Log entry point
     console.log('[GameState] updateState CALLED with:', updates);
-
-    // --- ADD isAutoplaying LOG ---
-    if (updates && typeof updates.isAutoplaying === 'boolean') {
-        const oldValue = state.isAutoplaying;
-        const newValue = updates.isAutoplaying;
-        if (oldValue !== newValue) {
-            console.info(`[GameState] >>> isAutoplaying CHANGING from ${oldValue} to ${newValue} <<<`, updates);
-            // Add a stack trace to see who called updateState
-            console.trace('[GameState] Stack trace for isAutoplaying change:'); 
-        }
-    }
-    // --- END LOGGING ---
 
     // --- ADD lastTotalWin LOG --- 
     if (updates && typeof updates.lastTotalWin === 'number') { // Check if lastTotalWin is present

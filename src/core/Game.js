@@ -501,15 +501,16 @@ export class Game {
             const conditionMet = this.wasSpinning && !anyReelMoving;
             // Use console.log directly to bypass Logger issues - REMOVE
             // console.log('Game.update EvalCondition:', { wasSpinning: this.wasSpinning, anyReelMoving, conditionMet });
-            // --- ADD LOGGING --- 
-            if (this.wasSpinning && !anyReelMoving) { 
-                this.deps.logger?.info('Game.update SpinEnd Check:', { 
-                    wasSpinning: this.wasSpinning, 
-                    anyReelMoving: anyReelMoving, 
-                    conditionMet: conditionMet 
-                });
-            }
-            // --- END LOGGING ---
+            // --- REMOVE LOGGING --- 
+            // Log only on the frame the condition *should* be met or just failed when spinning
+            // if (this.wasSpinning && !anyReelMoving) { 
+            //     this.deps.logger?.info('Game.update SpinEnd Check:', { 
+            //         wasSpinning: this.wasSpinning, 
+            //         anyReelMoving: anyReelMoving, 
+            //         conditionMet: conditionMet 
+            //     });
+            // }
+            // --- END LOGGING REMOVAL ---
 
             if (conditionMet) {
                  logger?.info('Game.update', '>>> Spin End IF Block ENTERED <<<'); 
