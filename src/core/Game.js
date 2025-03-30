@@ -599,10 +599,25 @@ export class Game {
         this.uiManager?.destroy();
         this.animationController?.destroy();
         this.spinManager?.destroy(); // Assuming SpinManager might have destroy later
-        // this.reelManager?.destroy(); // Commented out - Method doesn't exist
-        // this.backgroundManager?.destroy(); // Commented out - Method doesn't exist
-        // this.freeSpinsUIManager?.destroy(); // Commented out - Method doesn't exist
+        this.reelManager?.destroy(); // Uncommented
+        this.backgroundManager?.destroy(); // Uncommented
+        this.freeSpinsUIManager?.destroy(); // Uncommented
         // TODO: Call destroy on TurboMode, Autoplay, FreeSpins if they implement it
+        // Call destroy on feature modules
+        // Assuming they are exported functions for now
+        // Need to import them first
+        // import { destroy as destroyTurbo } from '../features/TurboMode.js';
+        // destroyTurbo?.(); // Example call
+        // import { destroy as destroyAutoplay } from '../features/Autoplay.js';
+        // destroyAutoplay?.(); 
+        // import { destroy as destroyFreeSpins } from '../features/FreeSpins.js';
+        // destroyFreeSpins?.();
+        // import { destroy as destroyPaylineGraphics } from '../features/PaylineGraphics.js';
+        // destroyPaylineGraphics?.();
+        // import { destroy as destroyWinEvaluation } from '../features/WinEvaluation.js';
+        // destroyWinEvaluation?.();
+        // import { destroy as destroyAnimations } from '../features/Animations.js';
+        // destroyAnimations?.();
 
         // Stop ticker
         app?.ticker?.stop(); // Use module-level app
