@@ -306,11 +306,17 @@ export class Game {
     }
 
     _createManagers() {
-        const { logger, eventBus, apiService, featureManager } = this.deps;
+        this.deps.logger?.info('Game', 'Creating managers...'); 
+        const { logger, eventBus, apiService, featureManager, initialState } = this.deps;
+        // Assume 'app' is the PIXI.Application instance available in this scope (e.g., from _setupPixiApp)
+        // If not, this needs adjustment based on where 'app' is defined.
+        // For now, assuming 'app' is in scope.
+
         if (!logger || !eventBus || !apiService || !featureManager) {
             console.error("Game Init Error: Core dependencies missing in Game instance.");
             return;
         }
+        // Use app.ticker directly if 'app' is in scope
         if (!this.layerBackground || !this.layerReels || !app?.ticker || !this.layerLogo || !this.fsIndicatorContainer || !this.layerUI) {
             console.error("Game Init Error: Required layers or ticker not available for manager creation.");
             return;
@@ -319,23 +325,15 @@ export class Game {
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
         this.reelManager = new ReelManager(
             this.layerReels, 
-            this.app.ticker,
+            app.ticker, // Use app.ticker if 'app' is in scope
             logger,
-            eventBus
+            eventBus // Inject EventBus
         );
         
+        // Corrected AnimationController instantiation
         this.animationController = new AnimationController({
-            eventBus: this.deps.eventBus,
-            logger,
-            featureManager,
-            apiService,
-            reelManager: this.reelManager,
-            uiManager: this.uiManager,
-            app: this.app,
-            spinManager: this.spinManager,
-            animationController: this.animationController,
-            backgroundManager: this.backgroundManager,
-            initialState: this.initialState,
+            eventBus: eventBus, 
+            logger: logger    
         });
         this.animationController.init();
         
@@ -348,10 +346,16 @@ export class Game {
         this.resultHandler.init();
 
         this.freeSpinsUIManager = new FreeSpinsUIManager(this.fsIndicatorContainer, logger, eventBus);
+        // Pass 'this' (Game instance) as the first argument to LogoManager
         new LogoManager(this, this.layerLogo, logger, eventBus);
 
         const pluginDependencies = {
-            ...this.deps,
+            // Pass specific dependencies, not the whole `this.deps`
+            logger,
+            eventBus,
+            apiService,
+            featureManager,
+            initialState,
             spinManager: this.spinManager,
             layerUI: this.layerUI,
             uiManager: this.uiManager,
@@ -369,8 +373,10 @@ export class Game {
         this.pluginSystem.registerPlugin(TurboPlugin);
         this.pluginSystem.registerPlugin(FreeSpinsPlugin);
 
+        // Keep backgroundSprite assignment
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
+        // Keep global exposure for debugging
         if (typeof window !== 'undefined') {
             // @ts-ignore
             window.gameApp = this;
@@ -389,13 +395,16 @@ export class Game {
             // @ts-ignore
             window.gameApp.animationController = this.animationController;
         }
+        // Use logger from dependencies
         logger.info('Game', 'Core managers created and dependencies injected.');
 
         // --- Initialize ApiService --- 
-        if (this.deps.apiService) {
-            this.deps.apiService.init(); // Call init here
+        if (apiService) { // Use destructured apiService
+            apiService.init(); // Call init here
+             // Use logger from dependencies
             logger.info('Game', 'ApiService initialized.');
         } else {
+            // Use logger from dependencies
             logger.error('Game', 'ApiService instance missing, cannot initialize.');
         }
     }

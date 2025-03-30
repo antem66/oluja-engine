@@ -359,8 +359,55 @@ export class Reel {
      * @private
      */
     _handleEarlyStopRequest() {
-        // Implementation will be added in the next step (Task 3.3)
-        console.log(`[Reel ${this.reelIndex}] Received spin:requestEarlyStop`);
+        console.log(`[Reel ${this.reelIndex}] Received spin:requestEarlyStop. Current state: ${this.state}`);
+
+        // Only act if the reel is actively spinning or accelerating
+        if (this.state === 'accelerating' || this.state === 'spinning') {
+            console.log(`[Reel ${this.reelIndex}] Applying early stop.`);
+
+            // Kill any existing stop tween just in case (highly unlikely but safe)
+            if (this.stopTween) {
+                this.stopTween.kill();
+                this.stopTween = null;
+            }
+
+            // --- Immediately transition to the stop tween --- 
+            this.state = 'stopping'; // Use 'stopping' state consistent with natural stop
+            this.spinSpeed = 0; // Stop increasing speed
+
+            // Determine correct stop duration based on turbo mode
+            // Note: Assumes EARLY_STOP_DURATION is base, needs turbo variant? For now, use base.
+            // If a turbo early stop duration is needed, add it to animationSettings.js
+            const earlyStopDurationSecs = EARLY_STOP_DURATION / 1000;
+
+            // Recreate the GSAP tween using early duration
+            this.stopTween = gsap.to(this, {
+                position: this.finalStopPosition, // Target the predetermined final position
+                duration: earlyStopDurationSecs, // Use the configured early stop duration
+                ease: 'quad.out', // Same easing as natural stop
+                onUpdate: () => {
+                    // Reuse the SAME onUpdate logic as the natural stop tween
+                    this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length; // Wrap position
+                    this.alignReelSymbols();
+                    // Gradually reduce spin effects based on tween progress
+                    const progress = this.stopTween ? this.stopTween.progress() : 1;
+                    this.updateSpinEffects(1 - progress);
+                },
+                onComplete: () => {
+                    // Reuse the SAME onComplete logic as the natural stop tween
+                    console.info(`%c[Reel ${this.reelIndex}] EARLY Stop Tween ON_COMPLETE FIRING! Setting state to stopped.`, 'color: orange; font-weight: bold;');
+                    this.position = this.finalStopPosition; 
+                    this.state = 'stopped';
+                    this.spinSpeed = 0;
+                    this.updateSpinEffects(0); 
+                    // Align symbols one last time after state switch if needed
+                    this.alignReelSymbols(); 
+                    this.stopTween = null;
+                }
+            });
+        } else {
+            console.log(`[Reel ${this.reelIndex}] Ignoring early stop request (state is ${this.state}).`);
+        }
     }
 
     /**

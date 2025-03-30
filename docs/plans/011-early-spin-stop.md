@@ -60,11 +60,11 @@ Currently, the spin button likely becomes disabled once a spin is initiated. The
 
 *   [x] **Task 3.1:** Add Config Setting:
     *   In `src/config/animationSettings.js`, add a new setting, e.g., `EARLY_STOP_DURATION: 0.1` (adjust value as needed).
-*   [ ] **Task 3.2:** Modify `Reel.js` Constructor:
+*   [x] **Task 3.2:** Modify `Reel.js` Constructor:
     *   Inject the `eventBus` dependency if not already present.
     *   Subscribe to the `spin:requestEarlyStop` event, calling a new method like `this._handleEarlyStopRequest`. Store the unsubscribe function.
     *   Update `destroy()` to call the unsubscribe function.
-*   [ ] **Task 3.3:** Implement `Reel.js#_handleEarlyStopRequest()`:
+*   [x] **Task 3.3:** Implement `Reel.js#_handleEarlyStopRequest()`:
     *   Check the current `this.state`.
     *   If `this.state === 'accelerating' || this.state === 'spinning'`:
         *   Log the early stop request.
