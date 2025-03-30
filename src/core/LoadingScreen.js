@@ -27,7 +27,7 @@ export class LoadingScreen {
     _barHeight = 5;
     /** @type {number | null} */ // Allow number or null
     _fullyVisibleStartTime = null; // Track when the screen becomes fully visible
-    _minimumDisplayTimeMs = 5000; // Minimum time in milliseconds
+    _minimumDisplayTimeMs = 3000; // Minimum time in milliseconds (Changed from 5000)
     _logoProgressBarGap = 30; // Configurable gap between logo bottom and bar top
 
     // --- Properties for smoothed progress ---
@@ -37,6 +37,8 @@ export class LoadingScreen {
     _visualTween = null; // Stores the smoothing tween
     _hideRequested = false; // Flag to track if hide() has been called
     _hideScheduled = false; // Flag to prevent multiple hide schedules
+    /** @type {Function | null} */
+    _resolveHidePromise = null; // Stores the resolve function for the hide() promise
     // --- End progress properties ---
 
     /**
@@ -65,6 +67,7 @@ export class LoadingScreen {
         this._visualTween = null;
         this._hideRequested = false;
         this._hideScheduled = false;
+        this._resolveHidePromise = null; // Ensure reset on construction
 
         this._createElements();
     }
@@ -231,8 +234,8 @@ export class LoadingScreen {
                     ease: 'power1.out', 
                     onComplete: () => {
                         this._fullyVisibleStartTime = performance.now(); 
-                        // Start the timed 0-100% animation
-                        this._startTimedVisualAnimation(); 
+                        console.log(`LoadingScreen fully visible at: ${this._fullyVisibleStartTime}`);
+                        // Don't start timed animation here, updateProgress handles visuals
                         resolve();
                     }
                 }
@@ -309,121 +312,153 @@ export class LoadingScreen {
 
     /**
      * Called by AssetLoader to report actual loading progress.
-     * Updates actual progress and the visual smoothing tween.
-     * If loading completes, triggers the hide scheduling logic if hide was requested.
+     * Updates actual progress and visually smoothes the bar up to 90%.
+     * Triggers final animation sequence if loading completes and hide is requested.
      * @param {number} progress - The actual loading progress (0 to 1).
      */
     updateProgress(progress) {
-        // Removed console.log from previous debug step
         const newActualProgress = Math.max(0, Math.min(1, progress));
-        
-        // Only update if progress has changed significantly (optional optimization)
-        // if (Math.abs(newActualProgress - this._actualProgress) < 0.001 && newActualProgress < 1) return;
-
         this._actualProgress = newActualProgress;
 
-        // Start/update the smoothing tween
+        // Target visual progress up to 90% initially
+        const targetVisualProgress = Math.min(0.9, this._actualProgress); 
+
+        // Start/update the smoothing tween towards the capped target
         this._visualTween = gsap.to(this._visualProgressProxy, {
-            value: this._actualProgress,
-            duration: 0.5, // Smoothing duration
+            value: targetVisualProgress, 
+            duration: 0.5, // Standard smoothing duration
             ease: 'power1.out',
             overwrite: 'auto', 
             onUpdate: this._updateVisualBarAndText.bind(this),
             onComplete: () => {
-                 this._visualTween = null;
-                 // Ensure final visual state matches actual if tween finishes
+                 // Clear tween reference only if it reached its target without being overwritten
+                 if (this._visualProgressProxy.value >= targetVisualProgress) { 
+                    this._visualTween = null;
+                 }
+                 // Ensure bar reflects the capped progress if tween completes early
                  this._updateVisualBarAndText(); 
             }
         });
 
-        // If loading is now complete *and* hide was requested previously,
-        // schedule the hide operation (respecting minimum display time).
-        if (this._actualProgress >= 1 && this._hideRequested) {
-            this._scheduleHide();
+        // Check if loading is complete *and* hide has been requested
+        if (this._actualProgress >= 1 && this._hideRequested && !this._hideScheduled) {
+             // Pass the stored promise resolution function, ONLY if it exists
+             if (typeof this._resolveHidePromise === 'function') {
+                 this._scheduleFinalAnimationAndHide(this._resolveHidePromise); 
+                 this._resolveHidePromise = null; // Clear after use
+             } else {
+                  console.warn("LoadingScreen: updateProgress wanted to schedule hide, but resolveHidePromise was null.");
+             }
         }
     }
 
     /**
      * Initiates the hide sequence.
-     * Sets the hide requested flag and checks if hiding can be scheduled immediately.
+     * Sets the hide requested flag and triggers the final animation/hide schedule if loading is already complete.
+     * Returns a promise that resolves when the screen is fully hidden.
+     * @returns {Promise<void>}
      */
     hide() {
-        console.log("LoadingScreen hide() called."); // Debug log
-        if (!this._isVisible || this._hideRequested) {
-            // Don't process if already hidden, not visible, or hide already requested
-            return; 
-        }
-        
-        this._hideRequested = true;
+        console.log("LoadingScreen hide() called."); 
+        return new Promise((resolve) => {
+             if (!this._isVisible || this._hideRequested) {
+                console.log("LoadingScreen hide() aborted: not visible or hide already requested.");
+                resolve();
+                return; 
+            }
+            
+            this._hideRequested = true;
+            this._resolveHidePromise = resolve; // Store for later
 
-        // Check if loading is already complete
-        if (this._actualProgress >= 1) {
-            this._scheduleHide();
-        }
-        // If loading is not complete, updateProgress will call _scheduleHide when it reaches 100%
+            // If loading is already complete when hide is called, trigger final sequence
+            if (this._actualProgress >= 1 && !this._hideScheduled) {
+                 // Pass the stored promise resolution function, ONLY if it exists
+                 if (typeof this._resolveHidePromise === 'function') {
+                     this._scheduleFinalAnimationAndHide(this._resolveHidePromise); 
+                     this._resolveHidePromise = null; // Clear after use
+                 } else {
+                      console.warn("LoadingScreen: hide wanted to schedule hide, but resolveHidePromise was null.");
+                 }
+            } 
+            // Else: updateProgress will trigger the final sequence when loading completes
+        });
     }
 
     /**
-     * Calculates remaining time and schedules the actual fade-out.
+     * Schedules the final 90%-100% animation and the subsequent fade-out.
+     * @param {Function} resolve - The resolve function of the main hide() promise.
      * @private
      */
-    _scheduleHide() {
-        // Prevent multiple schedules if called rapidly
+    _scheduleFinalAnimationAndHide(resolve) {
         if (this._hideScheduled) return;
         this._hideScheduled = true;
         
-        console.log("LoadingScreen _scheduleHide() called."); // Debug log
+        console.log("LoadingScreen _scheduleFinalAnimationAndHide() called.");
 
-        // Ensure visual tween completes to 100% before hiding
-        this._killVisualTween(); // Stop any current tween
+        this._killVisualTween(); // Stop the potentially running 0-90% tween
+
+        const now = performance.now();
+        const elapsedMs = this._fullyVisibleStartTime ? now - this._fullyVisibleStartTime : 0;
+        const remainingMs = Math.max(0, this._minimumDisplayTimeMs - elapsedMs);
+        
+        // Duration for the final 90%-100% animation
+        // Ensure a minimum duration for visual effect, even if remainingMs is tiny
+        const finalAnimationDuration = Math.max(0.15, remainingMs / 1000); 
+
+        console.log(`Final animation duration: ${finalAnimationDuration}s`);
+
+        // Animate the visual proxy from its current value (should be ~0.9) to 1.0
         this._visualTween = gsap.to(this._visualProgressProxy, {
             value: 1,
-            duration: this._visualProgressProxy.value < 0.99 ? 0.15 : 0, // Quick snap if not already 1
-            ease: 'power1.out',
+            duration: finalAnimationDuration,
+            ease: 'power1.out', // Can use 'none' for linear final fill
             onUpdate: this._updateVisualBarAndText.bind(this),
             onComplete: () => {
                 this._visualTween = null;
+                // Ensure visual state is exactly 1 after animation
                 this._visualProgressProxy.value = 1;
-                this._updateVisualBarAndText(); // Final visual update to 100%
+                this._updateVisualBarAndText();
 
-                // Now calculate the delay based on minimum display time
-                const now = performance.now();
-                const elapsedMs = this._fullyVisibleStartTime ? now - this._fullyVisibleStartTime : this._minimumDisplayTimeMs;
-                const remainingMs = Math.max(0, this._minimumDisplayTimeMs - elapsedMs);
-                const delaySeconds = remainingMs / 1000;
-                console.log(`LoadingScreen scheduling hide with delay: ${delaySeconds}s`); // Debug log
-
-                gsap.delayedCall(delaySeconds, this._executeHide.bind(this));
+                console.log(`Final animation complete at: ${performance.now()}`);
+                // Fade out immediately after final animation completes
+                this._executeHide(resolve); 
             }
         });
     }
     
     /**
      * Performs the actual fade-out animation and cleanup.
+     * @param {Function} resolve - The resolve function of the main hide() promise.
      * @private
      */
-    _executeHide() {
-         console.log("LoadingScreen _executeHide() called."); // Debug log
-        if (!this._container) return; // Safety check
+    _executeHide(resolve) { // Accept resolve function
+         console.log(`LoadingScreen _executeHide called at: ${performance.now()}`);
+        if (!this._container) { 
+            console.warn("LoadingScreen: _executeHide called but container is null.");
+            resolve(); // Resolve promise even if container is gone
+            return; 
+        }
 
-        this._killVisualTween(); // Ensure visual tween is stopped
+        this._killVisualTween(); 
 
         gsap.to(this._container, {
             alpha: 0,
             duration: 0.5,
             ease: 'power1.in',
             onComplete: () => {
+                console.log("LoadingScreen fade-out complete."); // Log completion
                 if (this._container) {
                     this._container.visible = false;
                 }
                 this._isVisible = false;
                 this._fullyVisibleStartTime = null; 
-                // Reset state for potential reuse
+                // Reset state 
                 this._actualProgress = 0; 
                 this._visualProgressProxy.value = 0;
                 this._hideRequested = false;
                 this._hideScheduled = false;
-                // Optional: Resolve a promise if hide() returned one
+                
+                resolve(); // Resolve the main hide() promise here
             }
         });
     }
@@ -452,6 +487,7 @@ export class LoadingScreen {
         this._visualTween = null;
         this._hideRequested = false;
         this._hideScheduled = false;
+        this._resolveHidePromise = null; // Ensure reset on destroy
         console.log("LoadingScreen destroyed.");
     }
 
