@@ -25,10 +25,10 @@ export function initNotifications(container) {
 }
 
 /**
- * Flashes a PixiJS display object (like Text) with a specific color.
- * @param {PIXI.Container} element - The Pixi element to flash (Container is a common base).
+ * Flashes a PixiJS display object (like Text or Sprite) with a specific color using GSAP.
+ * @param {PIXI.Sprite | PIXI.Text | PIXI.Container} element - The Pixi element to flash.
  * @param {number} [flashColor=0xff0000] - The color to flash (hex).
- * @param {number} [baseDuration=150] - Base duration of each flash phase (ms).
+ * @param {number} [baseDuration=150] - Base duration of each flash phase (ms). Note: GSAP uses seconds.
  * @param {number} [flashes=2] - Number of full on/off cycles.
  */
 export function flashElement(
@@ -37,33 +37,32 @@ export function flashElement(
   baseDuration = 150,
   flashes = 2
 ) {
-  if (flashElementInterval !== null) clearInterval(flashElementInterval);
-  if (!element?.parent) return; // Don't flash if element isn't on stage
+    // Kill any previous flash tween on the same element
+    gsap.killTweensOf(element, "tint"); 
 
-  const originalTint = element.tint ?? 0xffffff;
-  let count = 0;
-  element.visible = true; // Ensure it's visible
+    if (!element?.parent) return; // Don't flash if element isn't on stage
 
-  const duration = baseDuration * winAnimDelayMultiplier; // Adjust duration based on turbo
+    const originalTint = element.tint ?? 0xffffff;
+    element.visible = true; // Ensure it's visible
 
-  function doFlash() {
-    if (!element?.parent) { // Stop if element is removed
-        if (flashElementInterval !== null) clearInterval(flashElementInterval);
-        return;
-    }
-    if (count >= flashes * 2) { // Completed all flashes
-        if (flashElementInterval !== null) clearInterval(flashElementInterval);
-        element.tint = originalTint; // Restore original tint
-        return;
-    }
-    // Alternate between flash color and original tint
-    element.tint = count % 2 === 0 ? flashColor : originalTint;
-    count++;
-  }
+    // GSAP uses seconds
+    const durationSeconds = (baseDuration / 1000) * winAnimDelayMultiplier;
 
-  doFlash(); // Start immediately
-  // Assign return value directly
-  flashElementInterval = setInterval(doFlash, duration);
+    // Use gsap.to for a simple repeating tween
+    gsap.to(element, {
+        tint: flashColor, // Target flash color
+        duration: durationSeconds, 
+        repeat: flashes * 2 -1, // Repeat for total on/off cycles minus the initial set
+        yoyo: true, // Go back to the original tint automatically
+        ease: "none", // No easing needed for simple flash
+        onComplete: () => {
+            // Ensure the tint is restored correctly at the very end
+            // (sometimes yoyo might leave it on the flash color)
+            element.tint = originalTint;
+            // Optional: log completion
+            // console.log("Flash complete for:", element);
+        }
+    });
 }
 
 /**
