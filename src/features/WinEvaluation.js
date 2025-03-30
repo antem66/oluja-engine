@@ -217,9 +217,9 @@ function getResultsGrid() {
                      column.push(null);
                  }
             } else {
-                 for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
-                    const symbolIndexOnStrip = (finalLogicalPosition + rowIndex + reel.strip.length) % reel.strip.length;
-                    column.push(reel.strip[symbolIndexOnStrip]);
+            for (let rowIndex = 0; rowIndex < SYMBOLS_PER_REEL_VISIBLE; rowIndex++) {
+                const symbolIndexOnStrip = (finalLogicalPosition + rowIndex + reel.strip.length) % reel.strip.length;
+                column.push(reel.strip[symbolIndexOnStrip]);
                 }
             }
         } else {

@@ -31,7 +31,7 @@ import { NUM_PAYLINES } from '../config/paylines.js';
 import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 // Import TurboMode function needed when state changes
-import { applyTurboSettings } from '../features/TurboMode.js'; 
+import { applyTurboSettings } from '../features/TurboMode.js';
 
 // --- Module-level Dependency Instances ---
 /** @type {EventBus | null} */
@@ -108,7 +108,7 @@ export function initGameState(dependencies) {
         targetStoppingReelIndex: -1,
         isAutoplaying: false,
         autoplaySpinsRemaining: 0,
-        autoplaySpinsDefault: AUTOPLAY_SPINS_DEFAULT, 
+        autoplaySpinsDefault: AUTOPLAY_SPINS_DEFAULT,
         isTurboMode: false,
         isInFreeSpins: false,
         freeSpinsRemaining: 0,
@@ -122,7 +122,7 @@ export function initGameState(dependencies) {
     // Subscribe to UI button clicks
     if (eventBusInstance) {
         // Clean up previous listener if re-initializing
-        unsubscribeListeners(); 
+        unsubscribeListeners();
         const unsubscribeClick = eventBusInstance.on('ui:button:click', handleButtonClick);
         listeners.push(unsubscribeClick);
         loggerInstance.info('GameState', 'Subscribed to ui:button:click events.');
@@ -131,7 +131,7 @@ export function initGameState(dependencies) {
     }
 
     loggerInstance.info('GameState', 'Initialized and dependencies set.', { initialState: state });
-    
+
     // Return the initial state
     return initialState;
 }
@@ -202,15 +202,15 @@ function _handleAutoplayToggle() {
     } else {
         // Start autoplay only if conditions met
         if (!state.isSpinning && !state.isTransitioning && !state.isInFreeSpins) {
-            updateState({ 
-                isAutoplaying: true, 
-                autoplaySpinsRemaining: state.autoplaySpinsDefault 
+            updateState({
+                isAutoplaying: true,
+                autoplaySpinsRemaining: state.autoplaySpinsDefault
             });
             loggerInstance?.info('GameState', `Autoplay toggled ON - ${state.autoplaySpinsRemaining} spins`);
             // Note: Autoplay module should listen for state:changed:isAutoplaying 
             //       and trigger the first spin if needed.
         } else {
-             loggerInstance?.warn('GameState', 'Cannot start autoplay due to current game state.');
+            loggerInstance?.warn('GameState', 'Cannot start autoplay due to current game state.');
         }
     }
 }
@@ -226,14 +226,14 @@ function _handleBetChange(direction) {
     if (currentLevelIndex === -1) {
         const foundIndex = BET_PER_LINE_LEVELS.findIndex(lvl => lvl >= state.currentBetPerLine);
         if (foundIndex === -1) {
-             currentLevelIndex = BET_PER_LINE_LEVELS.length - 1;
+            currentLevelIndex = BET_PER_LINE_LEVELS.length - 1;
         } else if (foundIndex > 0 && BET_PER_LINE_LEVELS[foundIndex] > state.currentBetPerLine) {
             currentLevelIndex = foundIndex - 1;
         } else {
-             currentLevelIndex = foundIndex; // Assign the found index
+            currentLevelIndex = foundIndex; // Assign the found index
         }
     }
-    
+
     // Ensure currentLevelIndex is valid before proceeding
     if (currentLevelIndex < 0 || currentLevelIndex >= BET_PER_LINE_LEVELS.length) {
         loggerInstance?.error('GameState', `_handleBetChange calculated invalid index: ${currentLevelIndex}`);
@@ -246,14 +246,14 @@ function _handleBetChange(direction) {
 
     if (newLevelIndex !== currentLevelIndex) {
         const newBetPerLine = BET_PER_LINE_LEVELS[newLevelIndex];
-        const numPaylines = NUM_PAYLINES || 15; 
-        updateState({ 
+        const numPaylines = NUM_PAYLINES || 15;
+        updateState({
             currentBetPerLine: newBetPerLine,
             currentTotalBet: newBetPerLine * numPaylines
         });
         loggerInstance?.info('GameState', `Bet changed to ${newBetPerLine.toFixed(2)} per line. Total: ${state.currentTotalBet.toFixed(2)}`);
     } else {
-         loggerInstance?.debug('GameState', `Bet change requested but already at min/max limit.`);
+        loggerInstance?.debug('GameState', `Bet change requested but already at min/max limit.`);
     }
 }
 
@@ -299,10 +299,10 @@ export function updateState(updates) {
         const payload = { property: key, oldValue, newValue };
         eventBusInstance.emit(eventName, payload);
     }
-    
+
     // Also emit a general state change event if any properties changed
     if (Object.keys(changedProperties).length > 0) {
-        eventBusInstance.emit('game:stateChanged', { 
+        eventBusInstance.emit('game:stateChanged', {
             updatedProps: Object.keys(changedProperties),
             newState: state // Pass the full new state
         });

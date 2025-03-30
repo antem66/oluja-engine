@@ -45,13 +45,18 @@ export function initAutoplay(dependencies) {
     featureManager = dependencies.featureManager;
     spinManager = dependencies.spinManager;
 
-    // Listen ONLY for state changes
+    // Subscribe to the event indicating a spin sequence has fully completed
+    // TODO: Determine the correct event: 'spin:complete', 'reels:stopped', or 'animation:completed'? Using 'reels:stopped' for now.
+    const unsubscribeSpinEnd = eventBus.on('reels:stopped', handleSpinEndForAutoplay);
+    listeners.push(unsubscribeSpinEnd);
+    
+    // Listen for state changes to potentially cancel autoplay mid-spin
     const unsubscribeState = eventBus.on('game:stateChanged', handleStateChangeForAutoplay);
     listeners.push(unsubscribeState);
 
     // TODO: Listen for server errors? 'server:error'?
 
-    logger.info('Autoplay', 'Initialized and subscribed to game:stateChanged.');
+    logger.info('Autoplay', 'Initialized and subscribed to events.');
 }
 
 /**
@@ -72,155 +77,100 @@ export function destroy() {
 }
 
 /**
- * Listens for relevant state changes to manage autoplay.
- * - Starts the FIRST autoplay spin when isAutoplaying becomes true.
- * - Starts the NEXT autoplay spin when isSpinning becomes false.
- * - Stops autoplay if conditions require it (FS, external toggle off).
+ * Handles the 'reels:stopped' event to potentially trigger the next autoplay spin.
+ * @private
+ */
+function handleSpinEndForAutoplay() {
+    if (nextSpinTimeout) { // Clear any pending timeout from previous calls
+         clearTimeout(nextSpinTimeout);
+         nextSpinTimeout = null;
+    }
+    
+    // Check conditions *after* the spin has ended
+    if (!state.isAutoplaying) {
+        logger?.debug('Autoplay', 'Spin ended, but autoplay is not active.');
+        return;
+    }
+
+    if (state.isInFreeSpins || state.isTransitioning) {
+        logger?.info('Autoplay', 'Spin ended, stopping autoplay due to FS/Transition state.');
+        // Request state change - UIManager will handle button updates
+        eventBus?.emit('autoplay:requestStop'); 
+        return;
+    }
+
+    if (state.autoplaySpinsRemaining > 0) {
+        const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES; // Still need to read state for this
+        if (state.balance < currentTotalBet) {
+            logger?.info('Autoplay', 'Spin ended, stopping autoplay due to low balance.');
+            eventBus?.emit('autoplay:requestStop', { reason: 'balance' }); // Emit stop request
+            // Potentially notify user via event -> Notifications module?
+            return;
+        }
+
+        // Decrement spins *before* scheduling the next one
+        // TODO: This state update should ideally happen via an event/handler too.
+        // For now, let's assume something else handles decrementing based on spin start/end.
+        // updateState({ autoplaySpinsRemaining: state.autoplaySpinsRemaining - 1 });
+
+        const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
+        logger?.debug('Autoplay', `Spin ended, scheduling next autoplay spin in ${delay}ms.`);
+
+        nextSpinTimeout = setTimeout(() => {
+            // Final check before spinning
+            if (!spinManager || !state.isAutoplaying || state.isInFreeSpins || state.isTransitioning) {
+                logger?.debug('Autoplay', 'Next spin cancelled (timeout check).');
+                eventBus?.emit('autoplay:requestStop'); // Ensure stopped if conditions changed during delay
+                return;
+            }
+            logger?.info('Autoplay', 'Triggering next spin via SpinManager.');
+            spinManager.startSpin(); // Use SpinManager to start the spin
+            nextSpinTimeout = null; // Clear timeout reference
+        }, delay);
+
+    } else {
+        logger?.info('Autoplay', 'Spin ended, autoplay finished naturally.');
+        eventBus?.emit('autoplay:requestStop', { reason: 'completed' }); // Emit stop request
+    }
+}
+
+/**
+ * Listens for relevant state changes to cancel autoplay immediately if needed.
  * @param {object} eventData - Data from the 'game:stateChanged' event.
  * @private
  */
 function handleStateChangeForAutoplay(eventData) {
+    if (!state.isAutoplaying) return; // Only care if autoplay is active
+
     const { newState, updatedProps } = eventData;
-    logger?.debug('Autoplay', 'handleStateChangeForAutoplay received', { updatedProps, newState });
+    let shouldStop = false;
 
-    // --- Logic to START FIRST spin --- 
-    if (updatedProps.includes('isAutoplaying') && newState.isAutoplaying) {
-        // Check if we just transitioned TO autoplaying=true
-        // This condition is sufficient, _startFirstAutoplaySpin does further checks
-        logger?.info('Autoplay', 'Autoplay activated, attempting first spin.');
-        _startFirstAutoplaySpin();
-        return; // Don't process other logic on the same event
+    // Check if specific relevant properties changed *to* a stopping condition
+    if (updatedProps.includes('isAutoplaying') && !newState.isAutoplaying) {
+        shouldStop = true; // Explicitly stopped by user/another system
+        logger?.info('Autoplay', 'Detected external stop (isAutoplaying changed to false).');
+    } else if (updatedProps.includes('isInFreeSpins') && newState.isInFreeSpins) {
+        shouldStop = true;
+        logger?.info('Autoplay', 'Detected FS start, stopping autoplay.');
+    } else if (updatedProps.includes('isTransitioning') && newState.isTransitioning) {
+        shouldStop = true;
+        logger?.info('Autoplay', 'Detected transition start, stopping autoplay.');
     }
+    // Add other conditions like server error flag if needed
 
-    // --- Logic to START NEXT spin --- 
-    if (updatedProps.includes('isSpinning') && !newState.isSpinning && newState.isAutoplaying) {
-        // Check if spin just finished AND we are still in autoplay
-        logger?.info('Autoplay', 'Spin finished while autoplay active, attempting to schedule next spin.');
-        _scheduleNextAutoplaySpin();
-        return; // Don't process stop logic if we just scheduled
-    }
-
-    // --- Logic to STOP autoplay --- 
-    // Only check for stopping conditions if autoplay WAS active before this state change
-    // We access the module-level `state` here assuming it reflects the state *before* this event.
-    // This might be slightly racy, but simpler than tracking previous state explicitly.
-    if (state.isAutoplaying) {
-        let shouldStop = false;
-        if (updatedProps.includes('isAutoplaying') && !newState.isAutoplaying) {
-            shouldStop = true; // Explicitly stopped by user/another system
-            logger?.info('Autoplay', 'Detected external stop command (isAutoplaying changed to false).');
-        } else if (updatedProps.includes('isInFreeSpins') && newState.isInFreeSpins) {
-            shouldStop = true;
-            logger?.info('Autoplay', 'Detected FS start, stopping autoplay.');
+    if (shouldStop) {
+        if (nextSpinTimeout) {
+            clearTimeout(nextSpinTimeout);
+            nextSpinTimeout = null;
+            logger?.debug('Autoplay', 'Cancelled pending next spin due to state change.');
         }
-        // No need to check for isTransitioning here, as scheduling is tied to isSpinning=false
-
-        if (shouldStop) {
-            if (nextSpinTimeout) {
-                clearTimeout(nextSpinTimeout);
-                nextSpinTimeout = null;
-                logger?.debug('Autoplay', 'Cancelled pending next spin due to stop condition.');
-            }
-            // Autoplay is already stopped in state, UIManager handles visuals.
-            // We might still need to emit autoplay:requestStop if the stop wasn't initiated by it directly?
-            // For now, assume the source of the state change handles the full stop sequence.
-        }
+        // Ensure state is fully updated (UIManager handles button visuals based on state)
+        // If the state change didn't already set isAutoplaying to false, we might need to emit here,
+        // but ideally the source of the state change (e.g., user click) handles it.
+        // eventBus?.emit('autoplay:requestStop'); // Avoid redundant emissions if possible
     }
 }
 
-/**
- * Schedules the next autoplay spin after a delay.
- * Includes checks for remaining spins and balance.
- * @private
- */
-function _scheduleNextAutoplaySpin() {
-    logger?.debug('Autoplay', 'Entering _scheduleNextAutoplaySpin');
-    if (nextSpinTimeout) { // Clear potentially conflicting timeout
-        logger?.debug('Autoplay', 'Clearing existing schedule timeout.');
-        clearTimeout(nextSpinTimeout);
-        nextSpinTimeout = null;
-    }
-
-    if (state.autoplaySpinsRemaining > 0) {
-        const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES;
-        if (state.balance < currentTotalBet) {
-            logger?.info('Autoplay', 'Stopping autoplay: Low balance before scheduling next spin.');
-            eventBus?.emit('autoplay:requestStop', { reason: 'balance' });
-            return;
-        }
-
-        // Decrement spins via state update event
-        const newRemaining = Math.max(0, state.autoplaySpinsRemaining - 1);
-        logger?.debug('Autoplay', `Emitting state update for spins remaining: ${newRemaining}`);
-        eventBus?.emit('state:update', { autoplaySpinsRemaining: newRemaining });
-
-        if (newRemaining <= 0) {
-            logger?.info('Autoplay', 'Autoplay finished naturally (scheduled 0 spins remaining).');
-            // Autoplay will stop automatically in GameState/UIManager based on state
-            return;
-        }
-
-        const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
-        logger?.debug('Autoplay', `Scheduling next autoplay spin in ${delay}ms. Remaining: ${newRemaining}`);
-
-        nextSpinTimeout = setTimeout(() => {
-            logger?.debug('Autoplay', 'setTimeout callback executing for next spin.');
-            // Perform final checks inside timeout
-            if (!spinManager || !state.isAutoplaying || state.isInFreeSpins || state.isSpinning) {
-                logger?.warn('Autoplay', 'Next spin cancelled (timeout check failed).', {
-                    spinManagerExists: !!spinManager,
-                    isAutoplaying: state.isAutoplaying,
-                    isInFreeSpins: state.isInFreeSpins,
-                    isSpinning: state.isSpinning
-                });
-                if (state.isAutoplaying) {
-                    eventBus?.emit('autoplay:requestStop');
-                }
-            } else {
-                logger?.info('Autoplay', 'Triggering next spin via SpinManager.');
-                spinManager.startSpin();
-                nextSpinTimeout = null;
-            }
-        }, delay);
-
-    } else {
-        // This case should ideally not be reached if state updates correctly
-        logger?.info('Autoplay', 'Autoplay schedule check found 0 spins remaining initially.');
-        eventBus?.emit('autoplay:requestStop', { reason: 'completed' });
-    }
-}
-
-/**
- * Checks conditions and starts the first autoplay spin.
- * @private
- */
-function _startFirstAutoplaySpin() {
-    if (!spinManager || !state.isAutoplaying || state.isInFreeSpins || state.isTransitioning || state.isSpinning) {
-        logger?.warn('Autoplay', 'Conditions not met for starting first spin.', {
-            spinManager: !!spinManager,
-            isAutoplaying: state.isAutoplaying,
-            isInFreeSpins: state.isInFreeSpins,
-            isTransitioning: state.isTransitioning,
-            isSpinning: state.isSpinning
-        });
-        // If conditions changed rapidly, ensure autoplay is stopped if needed
-        if (state.isAutoplaying && (state.isInFreeSpins || state.isTransitioning || state.isSpinning)) {
-            eventBus?.emit('autoplay:requestStop');
-        }
-        return;
-    }
-
-    // Check balance before starting
-    const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES;
-    if (state.balance < currentTotalBet) {
-        logger?.info('Autoplay', 'Stopping autoplay immediately due to low balance before first spin.');
-        eventBus?.emit('autoplay:requestStop', { reason: 'balance' });
-        return;
-    }
-
-    logger?.info('Autoplay', 'Triggering first spin via SpinManager.');
-    spinManager.startSpin();
-}
 
 // Removed handleAutoplayNextSpin export
 // Removed old direct call logic
