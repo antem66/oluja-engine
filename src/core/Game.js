@@ -440,7 +440,8 @@ export class Game {
                 eventBus: eventBus,
                 animationController: this.animationController,
                 overlayContainer: this.winAnnouncementsContainer,
-                particleContainer: this.layerParticles
+                particleContainer: this.layerParticles,
+                reelManager: this.reelManager
             });
         } else {
             logger.error('Game', 'Cannot initialize Animations: Missing required layers.');

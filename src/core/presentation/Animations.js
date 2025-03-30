@@ -45,6 +45,9 @@ let winOverlayAnimInterval = null;
 const particles = [];
 const symbolAnimations = new Map();
 
+/** @type {import('../../core/ReelManager.js').ReelManager | null} */
+let reelManager = null;
+
 /** @type {EventBus | null} */
 let eventBus = null;
 /** @type {Function | null} */ // Store unsubscribe function
@@ -69,10 +72,11 @@ export function registerSymbolAnimation(symbolId, animationFn) {
  * @param {PIXI.Container} dependencies.overlayContainer 
  * @param {PIXI.Container} dependencies.particleContainer
  * @param {EventBus} dependencies.eventBus
+ * @param {import('../../core/ReelManager.js').ReelManager} dependencies.reelManager
  */
 export function initAnimations(dependencies) {
-    if (!dependencies || !dependencies.logger || !dependencies.animationController || !dependencies.overlayContainer || !dependencies.particleContainer || !dependencies.eventBus) {
-        console.error("Animations Init Error: Missing dependencies (logger, eventBus, animationController, overlayContainer, particleContainer).");
+    if (!dependencies || !dependencies.logger || !dependencies.animationController || !dependencies.overlayContainer || !dependencies.particleContainer || !dependencies.eventBus || !dependencies.reelManager) {
+        console.error("Animations Init Error: Missing dependencies (logger, eventBus, animationController, overlayContainer, particleContainer, reelManager).");
         return;
     }
     logger = dependencies.logger;
@@ -80,6 +84,7 @@ export function initAnimations(dependencies) {
     assignedOverlayContainer = dependencies.overlayContainer;
     particleContainer = dependencies.particleContainer;
     eventBus = dependencies.eventBus;
+    reelManager = dependencies.reelManager;
     
     logger.info("Animations", "Initialized and dependencies stored.");
 
@@ -168,22 +173,27 @@ function setupDefaultSymbolAnimations() {
  * Animates the scale of winning symbols with a bounce effect.
  * Triggered via AnimationController.playAnimation('symbolWin', { symbols: [...] })
  * @param {object} data - Data payload from AnimationController.
- * @param {Array<import('../../core/Symbol.js').SymbolSprite>} data.symbolsToAnimate - Array of SymbolSprite instances to animate.
+ * @param {Array<{reelIndex: number, rowIndex: number, symbolId: string}>} data.symbolIdentifiers - Array of identifier objects for winning symbols.
  * @returns {Promise<void>} A promise that resolves when all symbol animations complete.
  */
 export function animateWinningSymbols(data) {
-    logger?.debug('Animations', 'animateWinningSymbols execution started.', data);
+    logger?.info('Animations', '--- animateWinningSymbols START ---', data);
     
     // --- Return Promise --- 
     return new Promise((resolveAll) => {
-        if (!data || !data.symbolsToAnimate || data.symbolsToAnimate.length === 0) {
-            logger?.debug('Animations', 'animateWinningSymbols called with no symbols.');
+        if (!reelManager) {
+             logger?.error('Animations', 'Cannot animate symbols - ReelManager is missing.');
+             resolveAll();
+             return;
+        }
+        if (!data || !data.symbolIdentifiers || data.symbolIdentifiers.length === 0) {
+            logger?.debug('Animations', 'animateWinningSymbols called with no symbol identifiers.');
             // return; // Resolve immediately if no symbols
             resolveAll();
             return;
         }
-        const symbolsToAnimate = data.symbolsToAnimate;
-        logger?.debug('Animations', `Animating ${symbolsToAnimate.length} winning symbols...`);
+        const symbolIdentifiers = data.symbolIdentifiers;
+        logger?.info('Animations', `Received ${symbolIdentifiers.length} symbol identifiers:`, JSON.stringify(symbolIdentifiers));
 
         const baseDuration = 0.35;
         const duration = baseDuration * winAnimDelayMultiplier;
@@ -195,7 +205,18 @@ export function animateWinningSymbols(data) {
         const seenSymbols = new Set();
         const symbolPromises = []; // Array to hold promises for each symbol animation
         
-        symbolsToAnimate.forEach((symbol, index) => {
+        symbolIdentifiers.forEach((identifier, index) => {
+            // Find the actual SymbolSprite using ReelManager
+            const reel = reelManager?.reels?.[identifier.reelIndex];
+            const symbol = reel?.symbols?.[identifier.rowIndex + 1]; // +1 for buffer symbol
+
+            logger?.debug('Animations', `Loop ${index}: Identifier:`, identifier, ` --- Found Symbol:`, symbol ? `Sprite(ID: ${symbol.symbolId})` : 'NOT FOUND');
+            
+            if (!symbol) {
+                logger?.warn('Animations', `Could not find symbol sprite for identifier:`, identifier);
+                return; // Skip if symbol not found
+            }
+
             if (!symbol?.scale || symbol.isAnimating || seenSymbols.has(symbol)) return;
             
             seenSymbols.add(symbol);
@@ -294,7 +315,10 @@ export function animateWinningSymbols(data) {
         });
 
         // Resolve the main promise when all individual symbol promises resolve
-        Promise.all(symbolPromises).then(() => resolveAll());
+        Promise.all(symbolPromises).then(() => {
+            logger?.info('Animations', '--- animateWinningSymbols END (All Promises Resolved) ---');
+            resolveAll()
+        });
         
     }); // --- End Main Promise --- 
 }

@@ -276,41 +276,58 @@ Feature: Enhanced Free Spins: Implement FS retriggers and a simple win multiplie
 
 UI Refinement: Implement basic interactive Paytable screen showing symbol payouts.
 
-Phase 3: Advanced Features & Polish (Estimated Time: TBD)
+Phase 3: Testing & Verification (COMPLETED)
 
-Objective: Introduce more complex gameplay mechanics and significantly elevate the visual/audio polish ("juice").
-
-Key Tasks:
-
-Feature: Cascading Reels OR Advanced Wilds: Implement one major modern mechanic (requires significant logic changes).
-
-Feature: Pick-Me Bonus: Design and implement a simple pick-bonus game screen and logic.
-
-VFX Enhancement: Integrate pixi-particles for advanced win/feature effects. Explore simple shaders for background effects or transitions.
-
-Audio Deep Dive: Add sounds for specific symbol wins, feature nuances, richer ambient sounds. Implement volume controls.
-
-Transition Polish: Refine all screen/state transitions (base->FS, FS->bonus, etc.) to be seamless and visually interesting.
-
-Mobile Optimization & Responsiveness: Test thoroughly on mobile. Implement layout adjustments if needed.
-
-Phase 4: Productionization & Iteration (Ongoing)
-
-Objective: Prepare the engine for production game development, ensure robustness, and enable easy iteration.
+Objective: Ensure core features refactored in Phase 1 & 2 function correctly with mock logic.
 
 Key Tasks:
 
-Optimization: Profile performance across devices. Optimize rendering, code execution, and memory usage.
+Task 3.1: Test Normal Spins - DONE
+*   Verify reel spin/stop.
+*   Verify win display (mock logic).
+*   Verify balance updates (deduction on spin, increase on win).
+*   Check for console errors.
 
-Testing: Implement unit/integration tests for core systems. Establish QA process.
+Task 3.2: Test Autoplay - DONE
+*   Verify auto-start/stop.
+*   Verify spin counter decrement.
+*   Verify manual stop.
+*   Check for console errors.
 
-Tooling: Develop or integrate tools for easier game configuration (reel strips, payouts, features).
+Task 3.3: Test Turbo Mode - DONE
+*   Verify visual toggle state.
+*   Verify increased spin/stop speed.
+*   Verify toggle off restores normal speed.
+*   Check for console errors.
 
-Documentation: Thoroughly document the engine architecture, modules, and configuration process.
+Task 3.4: Test Free Spins - DONE
+*   Trigger via Debug Panel.
+*   Verify background/UI changes.
+*   Verify automatic spin execution.
+*   Verify win accumulation (mock).
+*   Verify return to base game.
+*   Check for console errors.
 
-Meta Features: Implement localization framework, responsible gaming hooks, advanced autoplay options.
+Phase 4: Prepare for Server Integration (Current)
 
-Iteration: Continuously refine features, add polish, and incorporate feedback.
+Objective: Refactor client-side modules to remove mock result generation and prepare them to consume data provided by a server (via ApiService events).
+
+Key Tasks:
+
+Task 4.1: Refactor ResultHandler.js
+*   Remove mock win calculation logic within `_processSpinResult`.
+*   Modify `_processSpinResult` (or create a new handler) to accept spin result data (total win, winning lines, symbols to animate, feature triggers) as an argument (simulating data from a server event).
+*   Ensure presentation events (`paylines:show`, `win:validatedForAnimation`, `win:evaluationComplete`) are still emitted, but based on the *received* data, not calculated data.
+
+Phase 5: Server Integration & API Service Implementation
+
+Objective: Implement full server communication and API service for the slot engine.
+
+Key Tasks:
+
+Task 5.1: Implement API communication for spin initiation and result reception.
+Task 5.2: Develop a dedicated API service for handling game-related requests and responses.
+Task 5.3: Ensure seamless integration with existing client-side logic and data flow.
 
 6. Progress Tracking & Management
 

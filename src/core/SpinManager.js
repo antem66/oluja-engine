@@ -58,6 +58,10 @@ export class SpinManager {
     apiService = null;
     /** @type {Function | null} */ // Store unsubscribe function
     _unsubscribeSpinClick = null;
+    /** @type {Function | null} */ // Store unsubscribe function
+    _unsubscribeSpinResult = null;
+    /** @type {object | null} */ // Store the latest received spin result data temporarily
+    _lastSpinResultData = null;
 
     /**
      * @param {import('./ReelManager.js').ReelManager} reelManagerInstance 
@@ -91,7 +95,8 @@ export class SpinManager {
         this._unsubscribeSpinClick = this.eventBus?.on('ui:button:click', (event) => {
             if (event.buttonName === 'spin') this.handleSpinRequest();
         });
-        // TODO (Phase 2.2+): Subscribe to server:spinResultReceived
+        // Subscribe to the authoritative spin result from the server (or ApiService mock)
+        this._unsubscribeSpinResult = this.eventBus?.on('server:spinResultReceived', this._handleSpinResultReceived.bind(this));
     }
 
     /**
@@ -99,20 +104,22 @@ export class SpinManager {
      */
     handleSpinRequest() {
         // TODO (Phase 2): Add checks (balance, state) before proceeding
+        // TODO: Refactor Feature Flags
         this.logger?.info('SpinManager', 'Spin requested.');
-        // In Phase 2, this would call apiService.requestSpin()
-        // For now, we call the old startSpin logic directly.
-        this.startSpin();
+        
+        // 1. Start the visual spinning immediately
+        this.startVisualSpin(); 
+
+        // 2. Request the actual spin result from the ApiService (which will use mock for now)
+        this.apiService?.requestSpin({ totalBet: state.currentTotalBet });
     }
 
     /**
-     * Starts the spinning process for all reels visually.
-     * --- ROLE CHANGE in Phase 2 --- 
-     * This logic (stop generation) moves to ApiService mock.
-     * This method will primarily be triggered AFTER receiving server response.
+     * Initiates the visual spinning of reels and handles initial state updates (e.g., deduct bet).
+     * Does NOT determine stop positions or schedule stops.
      */
-    startSpin() {
-        this.logger?.info('SpinManager', 'startSpin() called.');
+    startVisualSpin() {
+        this.logger?.info('SpinManager', 'startVisualSpin() called.');
 
         // --- MODIFIED CHECK: Allow spins during FS, but not during transitions or other spins ---
         if (state.isSpinning || state.isFeatureTransitioning) { 
@@ -177,33 +184,11 @@ export class SpinManager {
         this.eventBus?.emit('spin:started');
 
         const isTurbo = state.isTurboMode;
-        const startTime = performance.now();
-        let winPattern = null;
         const currentReels = this.reelManager.reels;
-
-        if (state.isDebugMode && state.forceWin) {
-            this.logger?.info("SpinManager", "Debug mode active: Forcing a win pattern (Mock)");
-            winPattern = this._generateRandomWinPattern();
-            this.logger?.debug("SpinManager", "Generated win pattern:", winPattern);
-        }
 
         currentReels.forEach((reel, i) => {
             reel.startSpinning(isTurbo);
-
-            let stopIndex;
-            if (state.isDebugMode && state.forceWin && winPattern?.positions) {
-                stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]);
-            } else {
-                stopIndex = Math.floor(Math.random() * (reel.strip?.length || 1));
-            }
-            // Set final stop position (In Phase 2, this comes from server response)
-            reel.finalStopPosition = stopIndex;
-
-            const currentBaseDuration = isTurbo ? turboBaseSpinDuration : baseSpinDuration;
-            const currentStagger = isTurbo ? turboReelStopStagger : REEL_STOP_STAGGER;
-            const targetStopTime = startTime + currentBaseDuration + i * currentStagger;
-
-            reel.scheduleStop(targetStopTime);
+            // Stop scheduling is now handled in _handleSpinResultReceived
         });
 
         this.eventBus?.emit('state:update', { targetStoppingReelIndex: -1 });
@@ -238,49 +223,57 @@ export class SpinManager {
         this.logger?.info('SpinManager', '<<< EMITTED reels:stopped <<<');
         // --- END EMIT ---
 
-        // Emit event to request win evaluation
+        // Emit event to request win evaluation, passing the result data received from server/mock
         this.logger?.info("SpinManager", ">>> EMITTING spin:evaluateRequest >>>");
-        this.eventBus?.emit('spin:evaluateRequest');
+        this.eventBus?.emit('spin:evaluateRequest', { spinResultData: this._lastSpinResultData /* This needs to exist */ }); 
         this.logger?.info("SpinManager", "<<< EMITTED spin:evaluateRequest <<<");
     }
 
-    // --- Debug Helper Methods (Keep for now, move to ApiService later) --- 
-    _generateRandomWinPattern() {
-        const highValueSymbols = ["FACE1", "FACE2", "FACE3", "KNIFE", "CUP", "PATCH"];
-        const winSymbol = highValueSymbols[Math.floor(Math.random() * highValueSymbols.length)];
-        const rowIndex = 1; // Force middle row for simplicity
-        const winLength = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5 reels
-        const positions = [];
-
-        if (!REEL_STRIPS || REEL_STRIPS.length !== SETTINGS.NUM_REELS) {
-            // TODO: Use Logger
-            console.error("Debug - REEL_STRIPS is invalid or doesn't match NUM_REELS.");
-            return null;
+    /**
+     * Handles the received spin result from the server (or ApiService mock).
+     * Sets the final stop positions and schedules the visual reel stops.
+     * @param {object} eventData 
+     * @param {object} eventData.data - The spin result payload from server/mock.
+     * @param {number[]} eventData.data.stopPositions - Array of stop indices.
+     * @private
+     */
+    _handleSpinResultReceived(eventData) {
+        this.logger?.info('SpinManager', 'Received server:spinResultReceived', eventData);
+        if (!eventData || !eventData.data || !Array.isArray(eventData.data.stopPositions)) {
+            this.logger?.error('SpinManager', 'Invalid data received for server:spinResultReceived', eventData);
+            // TODO: Handle error state - maybe force reels to stop randomly or show error?
+            return;
         }
 
-        for (let i = 0; i < SETTINGS.NUM_REELS; i++) {
-            if (i < winLength) {
-                positions.push(rowIndex);
+        const stopPositions = eventData.data.stopPositions;
+        if (!this.reelManager || stopPositions.length !== this.reelManager.reels.length) {
+            this.logger?.error('SpinManager', 'Stop positions length mismatch or ReelManager missing.');
+            return;
+        }
+
+        const isTurbo = state.isTurboMode;
+        const startTime = performance.now(); // Use current time as base for scheduling stops
+
+        this.reelManager.reels.forEach((reel, i) => {
+            const stopIndex = stopPositions[i];
+            if (typeof stopIndex !== 'number') {
+                this.logger?.warn('SpinManager', `Invalid stop index ${stopIndex} for reel ${i}, using random.`);
+                reel.finalStopPosition = Math.floor(Math.random() * (reel.strip?.length || 1));
             } else {
-                positions.push(Math.floor(Math.random() * SETTINGS.SYMBOLS_PER_REEL_VISIBLE));
+                 reel.finalStopPosition = stopIndex;
             }
-        }
-        return { symbol: winSymbol, positions: positions };
-    }
+            
+            // Calculate stop times based on the received result time
+            const currentBaseDuration = isTurbo ? turboBaseSpinDuration : baseSpinDuration;
+            const currentStagger = isTurbo ? turboReelStopStagger : REEL_STOP_STAGGER;
+            const targetStopTime = startTime + currentBaseDuration + i * currentStagger;
 
-    _findStopIndexForSymbol(reel, targetSymbol, targetPosition) {
-        const symbols = reel.strip;
-        if (!symbols) return Math.floor(Math.random() * (reel.strip?.length || 1));
+            reel.scheduleStop(targetStopTime);
+            this.logger?.debug('SpinManager', `Reel ${i} scheduled to stop at index ${reel.finalStopPosition} around time ${targetStopTime.toFixed(0)}`);
+        });
 
-        for (let i = 0; i < symbols.length; i++) {
-            if (symbols[i] === targetSymbol) {
-                let stopIndex = (i - targetPosition + symbols.length) % symbols.length;
-                return stopIndex;
-            }
-        }
-        // TODO: Use Logger
-        console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
-        return Math.floor(Math.random() * symbols.length);
+        // Store the received data in _lastSpinResultData
+        this._lastSpinResultData = eventData.data;
     }
 
     destroy() {
@@ -289,6 +282,11 @@ export class SpinManager {
         if (this._unsubscribeSpinClick) {
             this._unsubscribeSpinClick();
             this._unsubscribeSpinClick = null;
+        }
+        // Unsubscribe from server result
+        if (this._unsubscribeSpinResult) {
+            this._unsubscribeSpinResult();
+            this._unsubscribeSpinResult = null;
         }
         this.reelManager = null;
         this.logger = null;

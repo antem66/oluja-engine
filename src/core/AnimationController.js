@@ -227,7 +227,7 @@ export class AnimationController {
      * @param {object} eventData - Payload from 'win:validatedForAnimation' event.
      * @param {number} eventData.totalWin
      * @param {object[]} eventData.winningLines
-     * @param {Array<import('../core/Symbol.js').SymbolSprite>} eventData.symbolsToAnimate
+     * @param {Array<{reelIndex: number, rowIndex: number, symbolId: string}>} eventData.symbolIdentifiers
      * @param {number} eventData.currentTotalBet
      * @private
      */
@@ -240,53 +240,49 @@ export class AnimationController {
             return;
         }
 
-        const { totalWin, winningLines, symbolsToAnimate, currentTotalBet } = eventData;
+        const { totalWin, winningLines, symbolIdentifiers, currentTotalBet } = eventData;
 
-        // --- EMIT COORDINATION EVENT --- 
-        // Instead of calling playAnimation directly here, emit an event
-        // for Animations.js (or another coordinator) to handle.
-        this.logger?.debug('AnimationController', 'Emitting win:coordinateAnimations');
-        this.eventBus?.emit('win:coordinateAnimations', eventData);
-        // --- END EMIT --- 
+        // --- Trigger Core Animations --- 
+        const animationPromises = [];
 
-        // --- REMOVE OLD playAnimation calls --- 
-        // // Track promises for all animations triggered by this win
-        // const allWinPromises = [];
+        // 1. Symbol Animations
+        if (symbolIdentifiers && symbolIdentifiers.length > 0) {
+            this.logger?.debug('AnimationController', 'Triggering symbolWin animation.');
+            animationPromises.push(this.playAnimation('symbolWin', { symbolIdentifiers }));
+        }
 
-        // // Play Symbol Animations
-        // if (symbolsToAnimate && symbolsToAnimate.length > 0) {
-        //     this.logger?.debug('AnimationController', 'Calling playAnimation for symbolWin.');
-        //     this.playAnimation('symbolWin', { symbolsToAnimate }); 
-        // }
+        // 2. Win Rollup (handled by UIManager via registration)
+        if (totalWin > 0) {
+             this.logger?.debug('AnimationController', 'Triggering winRollup animation.');
+             animationPromises.push(this.playAnimation('winRollup', { amount: totalWin }));
+        }
 
-        // // Play Big Win / Particle Effects
-        // if (totalWin > 0 && currentTotalBet > 0) {
-        //     const winMultiplier = totalWin / currentTotalBet;
-        //     let winLevel = null;
+        // 3. Big Win Text/Effects (Check thresholds)
+        const winMultiplier = currentTotalBet > 0 ? totalWin / currentTotalBet : 0;
+        if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
+             this.logger?.debug('AnimationController', 'Triggering megaWin animation sequence.');
+             // Example sequence: Could involve text, particles, screen effects
+             animationPromises.push(this.playAnimation('megaWinText', { amount: totalWin })); // Assuming 'megaWinText' is registered
+             animationPromises.push(this.playAnimation('particleBurst', { intensity: 'high' }));
+        } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
+             this.logger?.debug('AnimationController', 'Triggering bigWin animation sequence.');
+             animationPromises.push(this.playAnimation('bigWinText', { amount: totalWin })); // Assuming 'bigWinText' is registered
+             animationPromises.push(this.playAnimation('particleBurst', { intensity: 'medium' }));
+        }
 
-        //     // Determine win level (check highest first)
-        //     if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
-        //         winLevel = 'MEGA';
-        //     } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
-        //         winLevel = 'BIG';
-        //     }
+        // TODO: Add logic for other win levels or standard win effects?
 
-        //     if (winLevel) {
-        //         this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
-        //         this.playAnimation('bigWinText', { totalWin, winLevel });
-        //         this.playAnimation('winParticles', { winLevel }); 
-        //     }
-        // }
-
-        // // Play Win Rollup Animation
-        // if (totalWin > 0) {
-        //     this.logger?.debug('AnimationController', 'Calling playAnimation for winRollup.');
-        //     this.playAnimation('winRollup', { amount: totalWin }); 
-        // }
-        // --- END REMOVAL ---
-        
-        // --- IMPORTANT --- 
-        // This handler now only validates and emits the coordination event.
+        // Wait for all triggered core animations to complete
+        try {
+             await Promise.all(animationPromises);
+             this.logger?.debug('AnimationController', 'All core win animations completed.');
+             // Emit event to signal sequence completion (for Autoplay, FreeSpins logic etc.)
+             this.eventBus?.emit('win:sequenceComplete');
+        } catch (error) {
+             this.logger?.error('AnimationController', 'Error during win animation sequence:', error);
+             // Ensure sequence complete is still emitted even on error?
+             this.eventBus?.emit('win:sequenceComplete'); 
+        }
     }
 }
 

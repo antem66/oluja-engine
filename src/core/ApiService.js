@@ -84,18 +84,20 @@ export class ApiService {
         this.logger.debug('ApiService', `Requesting spin... Mock API: ${useMock}`, betInfo);
 
         if (useMock) {
-            try {
-                // Simulate async delay
-                await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100)); 
-                const mockResult = this._generateMockSpinResult();
-                this.logger.debug('ApiService', 'Generated Mock Spin Result:', mockResult);
-                // Use injected eventBus
-                this.eventBus?.emit('server:spinResultReceived', { data: mockResult });
-            } catch (error) {
-                this.logger.error('ApiService', 'Error generating mock spin result:', error);
-                // Use injected eventBus
-                this.eventBus?.emit('server:error', { type: 'MockGenerationError', message: 'Failed to generate mock result', details: error });
-            }
+            // Simulate async delay
+            await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100)); 
+
+            // Generate the mock result based on current state (e.g., bet)
+            // In a real scenario, betInfo would be sent to the server
+            const mockResultData = this._generateMockSpinResultData(state.currentBetPerLine); 
+
+            if (mockResultData) {
+                this.logger.debug('ApiService', 'Generated Mock Spin Result Data:', mockResultData);
+                this.eventBus?.emit('server:spinResultReceived', { data: mockResultData });
+            } else {
+                // Handle error case where mock generation failed
+                 this.eventBus?.emit('server:error', { type: 'MockGenerationError', message: 'Failed to generate mock result data' });
+            }        
         } else {
             // --- TODO (Future Task 5.8): Implement actual backend API call --- 
             this.logger.warn('ApiService', 'Real API call not implemented yet!');
@@ -137,23 +139,41 @@ export class ApiService {
      *       using temporary direct imports for now.
      * @returns {object} - Mock spin result matching expected server payload structure.
      */
-    _generateMockSpinResult() {
+    _generateMockSpinResultData(currentBetPerLine) {
+        this.logger?.debug('ApiService', '_generateMockSpinResultData called');
         // Use injected featureManager
         const forceWin = this.featureManager?.isEnabled('debugForceWin') ?? false;
         const stopPositions = [];
-        const finalSymbolGrid = [];
+        const mockSymbolGrid = []; // Need grid temporarily for win calculation
+        const symbolsToAnimate = new Set(); // Use a Set to avoid duplicates
 
-        // 1. Determine Stop Positions (Random or Forced)
+        // 1. Determine Stop Positions (Random or Forced based on debug flag)
         // Basic random stop generation (similar to old client logic)
         for (let i = 0; i < NUM_REELS; i++) {
             const strip = REEL_STRIPS[i];
             if (!strip) {
                 throw new Error(`Reel strip not found for reel index ${i}`);
             }
-            // TODO: Incorporate forced win logic here if needed for debug.forceWin
-            // This requires more complex logic to guarantee a win based on PAYTABLE/PAYLINES
-            // For now, just random stops.
-            const stopIndex = Math.floor(Math.random() * strip.length);
+
+            let stopIndex;
+            if (forceWin && i < 3) { // Force first 3 reels to match for a simple win
+                // Find the first occurrence of a high-value symbol (e.g., FACE1) on strip[i]
+                // and set stopIndex to show it on the middle row (index 1)
+                const targetSymbol = 'FACE1'; // Or pick randomly from high-value symbols
+                const symbolIndexOnStrip = strip.indexOf(targetSymbol);
+                if (symbolIndexOnStrip !== -1) {
+                    // Calculate stop index to place targetSymbol at visible row 1
+                    stopIndex = (symbolIndexOnStrip - 1 + strip.length) % strip.length;
+                    this.logger?.debug('ApiService', `Forcing win: Reel ${i} stop index for ${targetSymbol} at row 1 is ${stopIndex}`);
+                } else {
+                    this.logger?.warn('ApiService', `Could not find ${targetSymbol} on reel ${i} for forced win, using random.`);
+                    stopIndex = Math.floor(Math.random() * strip.length); // Fallback
+                }
+            } else {
+                 // Not forcing win or for reels beyond the forced match
+                 stopIndex = Math.floor(Math.random() * strip.length);
+            }
+            
             stopPositions.push(stopIndex);
 
             // Build the visible symbol grid based on stops
@@ -162,7 +182,7 @@ export class ApiService {
                 const symbolIndex = (stopIndex + j + strip.length) % strip.length;
                 column.push(strip[symbolIndex]);
             }
-            finalSymbolGrid.push(column);
+            mockSymbolGrid.push(column);
         }
         
         // 2. Calculate Wins Based on Stops (Client-side calculation for the mock)
@@ -171,12 +191,12 @@ export class ApiService {
 
         // Simplified win calculation based on the generated grid (from WinEvaluation logic)
         PAYLINES.forEach((linePath, lineIndex) => {
-            const firstSymbolId = finalSymbolGrid[0]?.[linePath[0]];
+            const firstSymbolId = mockSymbolGrid[0]?.[linePath[0]];
             if (!firstSymbolId || !PAYTABLE[firstSymbolId]) return;
 
             let matchCount = 1;
             for (let reelIdx = 1; reelIdx < NUM_REELS; reelIdx++) {
-                const symbolId = finalSymbolGrid[reelIdx]?.[linePath[reelIdx]];
+                const symbolId = mockSymbolGrid[reelIdx]?.[linePath[reelIdx]];
                 if (symbolId === firstSymbolId) {
                     matchCount++;
                 } else {
@@ -188,42 +208,50 @@ export class ApiService {
             const expectedPayout = payoutInfo ? payoutInfo[matchCount] : undefined;
 
             if (matchCount >= 3 && expectedPayout !== undefined) {
-                const lineWin = expectedPayout * state.currentBetPerLine; // Using imported state temporarily
+                const lineWin = expectedPayout * currentBetPerLine; // Use passed bet
                 calculatedTotalWin += lineWin;
                 calculatedWinningLines.push({
                     lineIndex: lineIndex,
                     symbolId: firstSymbolId,
                     count: matchCount,
                     winAmount: lineWin,
-                    // TODO: Add winning symbol positions/indices if needed by front-end?
                 });
+
+                // Add winning symbols to the set
+                for (let reelIdx = 0; reelIdx < matchCount; reelIdx++) {
+                    const symbolId = mockSymbolGrid[reelIdx]?.[linePath[reelIdx]];
+                    // We need a way to identify the actual PIXI.Sprite instance later.
+                    // For now, let's store reel/row info. Presentation layer will map this.
+                    // TODO: Refine this identification method. Store PIXI object IDs? Pass sprites directly?
+                    symbolsToAnimate.add({ reelIndex: reelIdx, rowIndex: linePath[reelIdx], symbolId: symbolId });
+                }
             }
         });
         
-        // 3. Simulate Balance Update (Should eventually come directly from server)
-        // This is a simplification for the mock.
-        const finalBalance = state.balance - state.currentTotalBet + calculatedTotalWin;
-        // Emit balance update event immediately after calculation for mock
-        this.eventBus?.emit('server:balanceUpdated', { newBalance: finalBalance });
+        // 3. Calculate Mock New Balance (Server *would* send this)
+        // Note: Accessing state here is still needed for the STARTING balance in the mock calculation.
+        // A real server wouldn't need client state.
+        const mockNewBalance = state.balance - currentBetPerLine * PAYLINES.length + calculatedTotalWin;
 
         // 4. Simulate Feature Triggers (e.g., Free Spins)
         let scatterCount = 0;
-        finalSymbolGrid.forEach(col => col.forEach(symId => {
+        mockSymbolGrid.forEach(col => col.forEach(symId => {
             if (symId === SCATTER_SYMBOL_ID) scatterCount++;
         }));
-        const featureTriggers = [];
-        if (scatterCount >= 3) { // Assuming 3+ scatters trigger free spins
-             featureTriggers.push({ type: 'FreeSpins', count: 10 }); // Example trigger
+        // Structure matches proposed API
+        const featuresTriggered = {
+             freeSpinsAwarded: scatterCount >= 3 ? 10 : 0 // Example: award 10 if 3+ scatters
         }
 
-        // 5. Construct Payload (matching Task 1.8 definition)
+        // 5. Construct Payload (matching proposed API structure)
         return {
             stopPositions: stopPositions, // Array of stop indices [reel0, reel1, ...]
-            finalSymbolGrid: finalSymbolGrid, // Optional: Grid for easier validation? Or derive on client?
             winningLines: calculatedWinningLines, // Array of { lineIndex, symbolId, count, winAmount }
             totalWin: calculatedTotalWin,
-            finalBalance: finalBalance,
-            featureTriggers: featureTriggers, // Array of { type, ...data }
+            newBalance: mockNewBalance, // The calculated balance AFTER this spin
+            scatterCount: scatterCount, // Include scatter count
+            symbolsToAnimate: Array.from(symbolsToAnimate), // Convert Set to Array for payload
+            featuresTriggered: featuresTriggered, // Object with triggered features
         };
     }
 }
