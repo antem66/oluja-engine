@@ -78,7 +78,8 @@ export class AppInitializer {
             throw new Error(`Canvas container #${this._canvasContainerId} not found.`);
         }
 
-        this._app = new PIXI.Application();
+        this._app = new PIXI.Application()
+        globalThis.__PIXI_APP__ = this._app;
         // TODO: Configure app dimensions, background color, resolution etc. from gameSettings
         // Example: await this._app.init({ background: '#1099bb', resizeTo: canvasContainer });
         // Need to await init() for v8
