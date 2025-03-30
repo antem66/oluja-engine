@@ -13,14 +13,24 @@
 import { Logger } from '../utils/Logger.js';
 import { EventBus } from '../utils/EventBus.js';
 
-// Define a basic plugin interface structure (for documentation/guidance)
+// Define plugin interfaces
 /**
- * @typedef {object} IPlugin
- * @property {string} name - Unique name for the plugin.
- * @property {string} [version] - Optional version string.
- * @property {Function} init - Initialization function, receives core dependencies.
+ * Describes the static properties expected on a Plugin Class Constructor.
+ * @typedef {object} IPluginStatics
+ * @property {string} pluginName - Unique name for the plugin.
+ * @property {string} [pluginVersion] - Optional version string.
+ */
+
+/**
+ * Describes the instance methods expected on a Plugin Instance.
+ * @typedef {object} IPluginInstance
+ * @property {Function} init - Initialization function.
  * @property {Function} [destroy] - Optional cleanup function.
- * // Add other potential lifecycle hooks as needed (e.g., onGameReady, onSpinStart)
+ */
+
+/**
+ * Represents the Plugin Class Constructor type, combining statics and constructor signature.
+ * @typedef {IPluginStatics & { new(dependencies: object): IPluginInstance }} PluginClassConstructor
  */
 
 export class PluginSystem {
@@ -28,115 +38,138 @@ export class PluginSystem {
     logger = null;
     /** @type {import('../utils/EventBus.js').EventBus | null} */
     eventBus = null;
-    /** @type {Map<string, IPlugin>} */
-    plugins = new Map();
+
+    // Store constructors and active instances separately
+    /** @type {Map<string, PluginClassConstructor>} */
+    registeredPluginConstructors = new Map();
+    /** @type {Map<string, IPluginInstance>} */
+    activePluginInstances = new Map();
+
     /** @type {object | null} */
     coreDependencies = null; // To store dependencies to pass to plugins
 
     /**
-     * @param {object} dependencies
-     * @param {import('../utils/Logger.js').Logger} dependencies.logger
-     * @param {import('../utils/EventBus.js').EventBus} dependencies.eventBus
-     * // Add other core dependencies needed by plugins here
+     * @param {object} dependencies - Core dependencies from Game.js
      */
     constructor(dependencies) {
         this.logger = dependencies.logger;
         this.eventBus = dependencies.eventBus;
-        // Store all dependencies for potential use by plugins
         this.coreDependencies = dependencies;
 
         if (!this.logger || !this.eventBus) {
             console.error("PluginSystem: Logger and EventBus are required dependencies.");
-            // Handle error appropriately
         }
         this.logger?.info('PluginSystem', 'Instance created.');
     }
 
     /**
-     * Registers a plugin instance with the system.
-     * @param {IPlugin} pluginInstance - An instance of a class/object conforming to IPlugin.
+     * Registers a plugin class constructor with the system.
+     * The class MUST have a static `pluginName` property.
+     * @param {PluginClassConstructor} PluginClass - The plugin class constructor.
      */
-    registerPlugin(pluginInstance) {
-        if (!pluginInstance || typeof pluginInstance !== 'object' || !pluginInstance.name) {
-            this.logger?.error('PluginSystem', 'Failed to register plugin: Invalid instance or missing/empty name.', pluginInstance);
+    registerPlugin(PluginClass) {
+        if (!PluginClass || typeof PluginClass !== 'function') {
+            this.logger?.error('PluginSystem', 'Failed to register plugin: Invalid class provided.', { constructor: PluginClass });
             return;
         }
 
-        const pluginName = pluginInstance.name;
-        if (this.plugins.has(pluginName)) {
-            this.logger?.warn('PluginSystem', `Plugin \"${pluginName}\" already registered. Overwriting.`);
+        // @ts-ignore - Accessing static properties
+        const pluginName = PluginClass.pluginName;
+        // @ts-ignore - Accessing static properties
+        const pluginVersion = PluginClass.pluginVersion;
+
+        if (!pluginName || typeof pluginName !== 'string') {
+            this.logger?.error('PluginSystem', 'Failed to register plugin: Class is missing static \'pluginName\' string property.', { constructor: PluginClass });
+            return;
         }
 
-        // Basic validation of required methods (can be expanded)
-        if (typeof pluginInstance.init !== 'function') {
-             this.logger?.warn('PluginSystem', `Plugin \"${pluginName}\" registered without an init method.`);
-             // Decide if this is an error or just a warning
+        if (this.registeredPluginConstructors.has(pluginName)) {
+            this.logger?.warn('PluginSystem', `Plugin class \"${pluginName}\" already registered. Overwriting.`);
         }
-         if (typeof pluginInstance.destroy !== 'function') {
-             this.logger?.warn('PluginSystem', `Plugin \"${pluginName}\" registered without a destroy method.`);
-         }
 
-        this.plugins.set(pluginName, pluginInstance);
-        this.logger?.info('PluginSystem', `Plugin \"${pluginName}\" registered successfully${pluginInstance.version ? ' (v' + pluginInstance.version + ')' : ''}.`);
+        this.registeredPluginConstructors.set(pluginName, PluginClass);
+        this.logger?.info('PluginSystem', `Plugin class \"${pluginName}\" registered successfully${pluginVersion ? ' (v' + pluginVersion + ')' : ''}.`);
     }
 
     /**
-     * Unregisters a plugin by its name.
+     * Unregisters a plugin class by its name.
+     * Also destroys the active instance if it exists.
      * @param {string} pluginName - The name of the plugin to unregister.
      */
     unregisterPlugin(pluginName) {
-        const plugin = this.plugins.get(pluginName);
-        if (plugin) {
-            // Attempt to destroy before unregistering
-            if (typeof plugin.destroy === 'function') {
+        const constructorExists = this.registeredPluginConstructors.has(pluginName);
+        const instance = this.activePluginInstances.get(pluginName);
+
+        // Destroy instance first if it exists
+        if (instance) {
+            if (typeof instance.destroy === 'function') {
                 try {
-                    plugin.destroy();
-                    this.logger?.info('PluginSystem', `Plugin \"${pluginName}\" destroy method called.`);
+                    instance.destroy();
+                    this.logger?.info('PluginSystem', `Active plugin instance \"${pluginName}\" destroy method called.`);
                 } catch (error) {
-                     this.logger?.error('PluginSystem', `Error destroying plugin \"${pluginName}\":`, error);
+                    this.logger?.error('PluginSystem', `Error destroying active plugin instance \"${pluginName}\":`, error);
                 }
             }
-            this.plugins.delete(pluginName);
-            this.logger?.info('PluginSystem', `Plugin \"${pluginName}\" unregistered.`);
-        } else {
+            this.activePluginInstances.delete(pluginName);
+            this.logger?.info('PluginSystem', `Active plugin instance \"${pluginName}\" removed.`);
+        }
+
+        // Then remove the constructor registration
+        if (constructorExists) {
+            this.registeredPluginConstructors.delete(pluginName);
+            this.logger?.info('PluginSystem', `Plugin class \"${pluginName}\" unregistered.`);
+        } else if (!instance) {
             this.logger?.warn('PluginSystem', `Attempted to unregister non-existent plugin \"${pluginName}\".`);
         }
     }
 
     /**
-     * Calls the init method on all registered plugins, passing core dependencies.
+     * Instantiates and calls the init method on all registered plugin classes.
      */
     initializePlugins() {
         if (!this.coreDependencies) {
             this.logger?.error('PluginSystem', 'Cannot initialize plugins: Core dependencies missing for PluginSystem itself.');
             return;
         }
-        this.logger?.info('PluginSystem', `Initializing ${this.plugins.size} registered plugins...`);
+        this.logger?.info('PluginSystem', `Initializing ${this.registeredPluginConstructors.size} registered plugin classes...`);
 
-        this.plugins.forEach((plugin, name) => {
-            if (typeof plugin.init === 'function') {
-                try {
-                    this.logger?.debug('PluginSystem', `Initializing plugin \"${name}\"...`);
-                    plugin.init(this.coreDependencies);
-                } catch (error) {
-                    this.logger?.error('PluginSystem', `Error initializing plugin \"${name}\":`, error);
-                    // Optionally unregister problematic plugins?
+        this.registeredPluginConstructors.forEach((PluginClass, name) => {
+            if (this.activePluginInstances.has(name)) {
+                this.logger?.warn('PluginSystem', `Plugin \"${name}\" instance already exists. Skipping initialization.`);
+                return;
+            }
+
+            try {
+                this.logger?.debug('PluginSystem', `Instantiating and initializing plugin \"${name}\"...`);
+                // Instantiate using the stored constructor and core dependencies
+                const instance = new PluginClass(this.coreDependencies);
+
+                // Call init on the new instance
+                if (typeof instance.init === 'function') {
+                    instance.init();
+                } else {
+                    this.logger?.warn('PluginSystem', `Plugin \"${name}\" instance created but lacks an init() method.`);
                 }
+                // Store the active instance
+                this.activePluginInstances.set(name, instance);
+
+            } catch (error) {
+                this.logger?.error('PluginSystem', `Error instantiating or initializing plugin \"${name}\":`, error);
             }
         });
         this.logger?.info('PluginSystem', 'Plugin initialization complete.');
     }
 
     /**
-     * Calls the destroy method on all registered plugins.
+     * Calls the destroy method on all active plugin instances.
      */
     destroyPlugins() {
-        this.logger?.info('PluginSystem', `Destroying ${this.plugins.size} registered plugins...`);
+        this.logger?.info('PluginSystem', `Destroying ${this.activePluginInstances.size} active plugin instances...`);
 
-        this.plugins.forEach((plugin, name) => {
-             if (typeof plugin.destroy === 'function') {
+        this.activePluginInstances.forEach((instance, name) => {
+             if (typeof instance.destroy === 'function') {
                  try {
-                     plugin.destroy();
+                     instance.destroy();
                      this.logger?.debug('PluginSystem', `Plugin \"${name}\" destroy method called.`);
                  } catch (error) {
                       this.logger?.error('PluginSystem', `Error destroying plugin \"${name}\":`, error);
@@ -144,8 +177,9 @@ export class PluginSystem {
              }
         });
 
-        // Clear the map after destroying
-        this.plugins.clear();
+        // Clear the maps after destroying
+        this.activePluginInstances.clear();
+        this.registeredPluginConstructors.clear();
         this.logger?.info('PluginSystem', 'All plugins destroyed and system cleaned up.');
 
         // Nullify core dependencies reference
@@ -153,8 +187,4 @@ export class PluginSystem {
         this.logger = null;
         this.eventBus = null;
     }
-
-    // --- Add methods for other lifecycle hooks if needed ---
-    // e.g., broadcastEvent(eventName, payload) to specific plugins
-    // e.g., executeHook(hookName, ...args)
 }

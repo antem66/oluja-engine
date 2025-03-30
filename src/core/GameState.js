@@ -29,9 +29,8 @@ import { AUTOPLAY_SPINS_DEFAULT, BET_PER_LINE_LEVELS, NUM_REELS, DEFAULT_CURRENC
 import { NUM_PAYLINES } from '../config/paylines.js';
 // Import types for dependencies
 import { EventBus } from '../utils/EventBus.js';
+import { FeatureManager } from '../utils/FeatureManager.js';
 import { Logger } from '../utils/Logger.js';
-// Import TurboMode function needed when state changes
-import { applyTurboSettings } from '../features/TurboMode.js';
 
 // --- Module-level Dependency Instances ---
 /** @type {EventBus | null} */
@@ -121,22 +120,34 @@ export function initGameState(dependencies) {
     // Assign to the exported state variable
     state = { ...initialState };
 
-    // Subscribe to UI button clicks
+    // --- BEGIN EDIT: Remove obsolete button listener registration --- 
+    /*
+    // Subscribe to events (Example: UI button clicks)
     if (eventBusInstance) {
-        // Clean up previous listener if re-initializing
-        unsubscribeListeners();
-        const unsubscribeClick = eventBusInstance.on('ui:button:click', handleButtonClick);
-        listeners.push(unsubscribeClick);
-        // --- Add Listener for Autoplay Stop Request ---
+        const unsubscribeButtonClick = eventBusInstance.on('ui:button:click', handleButtonClick);
+        activeListeners.push(unsubscribeButtonClick);
+        // Subscribe to specific stop request
+        const unsubscribeAutoplayStop = eventBusInstance.on('autoplay:requestStop', _handleAutoplayStopRequest);
+        activeListeners.push(unsubscribeAutoplayStop);
+        loggerInstance?.info('GameState', 'Subscribed to ui:button:click and autoplay:requestStop events.');
+    } else {
+        loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to events.');
+    }
+    */
+    // --- END EDIT ---
+
+    // --- Keep only autoplay stop listener ---
+    if (eventBusInstance) {
+        // Subscribe to specific stop request from AutoplayPlugin (if needed)
         const unsubscribeAutoplayStop = eventBusInstance.on('autoplay:requestStop', _handleAutoplayStopRequest);
         listeners.push(unsubscribeAutoplayStop);
-        // --- End Listener ---
-        loggerInstance.info('GameState', 'Subscribed to ui:button:click and autoplay:requestStop events.');
+        loggerInstance?.info('GameState', 'Subscribed to autoplay:requestStop event.');
     } else {
-        loggerInstance.error('GameState', 'EventBus not available, cannot subscribe to events.');
+        loggerInstance?.error('GameState', 'EventBus instance not provided during init, cannot subscribe to autoplay:requestStop.');
     }
+    // --- END REPLACEMENT ---
 
-    loggerInstance.info('GameState', 'Initialized and dependencies set.', { initialState: state });
+    loggerInstance?.info('GameState', 'Initialized and dependencies set.', { initialState: state });
 
     // Return the initial state
     return initialState;
@@ -169,24 +180,14 @@ function handleButtonClick(eventData) {
         loggerInstance?.debug('GameState', `Handling button click: ${buttonName}`);
 
         switch (buttonName) {
-            case 'turbo':
-                _handleTurboToggle();
-                break;
-            case 'autoplay':
-                _handleAutoplayToggle();
-                break;
             case 'betIncrease':
                 _handleBetChange(1);
                 break;
             case 'betDecrease':
                 _handleBetChange(-1);
                 break;
-            case 'spin':
-                // SpinManager listens for this directly to initiate spin
-                loggerInstance?.debug('GameState', 'Spin button click detected, SpinManager should handle.');
-                break;
             default:
-                loggerInstance?.warn('GameState', `Unhandled button click: ${buttonName}`);
+                loggerInstance?.warn('GameState', `Unhandled button click in GameState: ${buttonName}`);
         }
     } catch (error) {
         loggerInstance?.error('GameState', 'Error in handleButtonClick handler:', error);
@@ -220,7 +221,7 @@ function _handleTurboToggle() {
     updateState({ isTurboMode: newState });
     // Apply turbo settings immediately after state change
     // This assumes applyTurboSettings handles reading the new state
-    applyTurboSettings(newState);
+    // applyTurboSettings(newState);
     loggerInstance?.info('GameState', `Turbo mode toggled ${newState ? 'ON' : 'OFF'}`);
 }
 

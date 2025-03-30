@@ -427,7 +427,6 @@ export class UIManager {
         // Pass newState to *other* update methods
         this.updateOtherDisplays(newState); // Rename original updateDisplays
         this.setButtonsEnabled(newState); 
-        this.updateTurboButtonState(newState);
         
         // Handle spin button animation based on state change
         if (newState.isSpinning) { 
@@ -571,19 +570,6 @@ export class UIManager {
         // --- END EDIT ---
         gsap.killTweensOf(iconElement);
         gsap.to(iconElement, { angle: 0, duration: 0.2, ease: "power1.out" });
-    }
-
-    updateTurboButtonState(currentState) { // Accept state
-        // --- BEGIN EDIT (Add checks for button from map) ---
-        const turboButtonRef = this.buttons.get('turbo');
-        if (!turboButtonRef || !this.featureManager) return;
-        // --- END EDIT ---
-        // TODO: Check feature flag featureManager.isEnabled('turboMode')
-        const isTurbo = currentState.isTurboMode; // Use passed state
-        // --- BEGIN EDIT (Use ref) ---
-        turboButtonRef.updateIcon(isTurbo ? 'turbo-active' : 'turbo');
-        turboButtonRef.setActiveState(isTurbo);
-        // --- END EDIT ---
     }
 
     /**

@@ -33,7 +33,6 @@ import { initNotifications } from '../ui/Notifications.js'; // init only
 import * as WinEvaluation from '../features/WinEvaluation.js'; // Import the module itself
 import { init as initPaylineGraphics } from '../features/PaylineGraphics.js'; // Import clearWinLines here
 import { initFreeSpins, handleFreeSpinEnd } from '../features/FreeSpins.js';
-import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
 import { UIManager } from '../ui/UIManager.js'; // Import UIManager class
 import { LogoManager } from '../ui/LogoManager.js'; // Corrected path
@@ -52,6 +51,7 @@ import { ResultHandler } from './ResultHandler.js'; // Import ResultHandler
 import { AnimationController } from './AnimationController.js'; // Import new controller
 import { PluginSystem } from './PluginSystem.js'; // <-- Import PluginSystem
 import { AutoplayPlugin } from '../plugins/AutoplayPlugin.js'; // <-- Import the new plugin
+import { TurboPlugin } from '../plugins/TurboPlugin.js';
 
 /**
  * @typedef {object} GameDependencies
@@ -355,6 +355,7 @@ export class Game {
         // --- END EDIT ---
         // Register plugins here
         this.pluginSystem.registerPlugin(AutoplayPlugin); 
+        this.pluginSystem.registerPlugin(TurboPlugin);
 
         this.backgroundSprite = this.backgroundManager ? this.backgroundManager.backgroundSprite : null;
 
@@ -464,7 +465,9 @@ export class Game {
         }
 
         // Initialize Feature Modules using full moduleDeps
-        initTurboMode({ ...moduleDeps });
+        // --- BEGIN EDIT: Remove initTurboMode call ---
+        // initTurboMode({ ...moduleDeps });
+        // --- END EDIT ---
         initFreeSpins({
             ...moduleDeps,
             effectsLayer: this.layerFullScreenEffects
@@ -485,7 +488,6 @@ export class Game {
         // Initial UI updates and state settings are now handled by UIManager listening to events
         // updateDisplays(); // REMOVED
         // setButtonsEnabled(true); // REMOVED
-        applyTurboSettings(state.isTurboMode); // Keep this? Turbo logic might need initial application
 
         // Start game loop
         if (app?.ticker) {

@@ -7,7 +7,6 @@ import { NUM_PAYLINES } from '../config/paylines.js'; // Corrected import
 // These represent dependencies that need to be resolved once other modules are created.
 import { state } from '../core/GameState.js'; // Keep temporarily for state checks
 import { flashElement } from './Notifications.js'; // Assuming Notifications handles flashing
-import { applyTurboSettings as applyTurbo } from '../features/TurboMode.js'; // Assuming TurboMode handles applying settings
 // Removed problematic imports
 
 // Import types

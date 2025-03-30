@@ -14,262 +14,243 @@ import { winAnimDelayMultiplier } from '../config/animationSettings.js'; // Impo
 import { NUM_PAYLINES } from '../config/paylines.js';
 // TODO: Get game dimensions dynamically or from config service
 import { GAME_HEIGHT } from '../config/gameSettings.js';
-import { UIManager } from '../ui/UIManager.js'; // Import UIManager type for JSDoc
+/** @typedef {import('../ui/UIManager.js').UIManager} UIManager */ // Import UIManager type for JSDoc
 
-export const AutoplayPlugin = {
-    name: 'Autoplay',
-    version: '1.0.0',
+export class AutoplayPlugin {
+    // --- BEGIN ADD STATIC NAME ---
+    static pluginName = 'Autoplay';
+    // --- END ADD STATIC NAME ---
 
+    // --- BEGIN LINTER FIX: Remove TS syntax ---
     /** @type {Logger | null} */
-    logger: null,
+    logger = null;
     /** @type {EventBus | null} */
-    eventBus: null,
+    eventBus = null;
     /** @type {SpinManager | null} */
-    spinManager: null,
+    spinManager = null;
     /** @type {UIManager | null} */ // Add UIManager
-    uiManager: null,
+    uiManager = null;
     /** @type {Array<Function>} */
-    listeners: [],
+    _listeners = [];
     /** @type {ReturnType<typeof setTimeout> | null} */
-    nextSpinTimeout: null,
+    _nextSpinTimeout = null;
     /** @type {any | null} */ // TODO: Add proper type for ButtonFactory return
-    autoplayButton: null,
+    _autoplayButton = null;
      /** @type {object | null} */
-    initialState: null,
+    _initialState = null;
     // Track current state locally, updated by event
     /** @type {boolean} */
-    isAutoplaying: false,
+    _isAutoplaying = false;
     /** @type {number} */
-    autoplaySpinsRemaining: 0,
+    _autoplaySpinsRemaining = 0;
+    // --- END LINTER FIX ---
 
     /**
-     * Initializes the plugin, storing dependencies and setting up listeners.
-     * @param {object} coreDependencies - Core dependencies injected by PluginSystem.
-     * @param {Logger} coreDependencies.logger
-     * @param {EventBus} coreDependencies.eventBus
-     * @param {SpinManager} coreDependencies.spinManager
-     * @param {UIManager} coreDependencies.uiManager // Get UIManager
-     * @param {object} coreDependencies.initialState // The initial game state
+     * @param {object} dependencies
+     * @param {Logger} dependencies.logger
+     * @param {EventBus} dependencies.eventBus
+     * @param {SpinManager} dependencies.spinManager
+     * @param {UIManager} dependencies.uiManager // Add UIManager
+     * @param {object} dependencies.initialState // The initial game state
      */
-    init(coreDependencies) {
-        this.logger = coreDependencies.logger;
-        this.eventBus = coreDependencies.eventBus;
-        this.spinManager = coreDependencies.spinManager;
-        this.uiManager = coreDependencies.uiManager; // Store UIManager
-        this.initialState = coreDependencies.initialState;
+    // --- BEGIN LINTER FIX: Remove TS syntax from constructor ---
+    constructor(dependencies) {
+    // --- END LINTER FIX ---
+        this.logger = dependencies.logger;
+        this.eventBus = dependencies.eventBus;
+        this.spinManager = dependencies.spinManager;
+        this.uiManager = dependencies.uiManager; // Store UIManager
+        this._initialState = dependencies.initialState; // Store initial state
 
-        if (!this.logger || !this.eventBus || !this.spinManager || !this.uiManager || !this.initialState) {
-            console.error("AutoplayPlugin: Missing core dependencies (logger, eventBus, spinManager, uiManager, initialState).");
+        if (!this.logger || !this.eventBus || !this.spinManager || !this.uiManager) {
+            console.error("AutoplayPlugin: Missing core dependencies.");
             return;
         }
 
-        this.logger.info(`AutoplayPlugin v${this.version}`, 'Initializing...');
-        
-        // Initialize local state tracking
-        this.isAutoplaying = this.initialState.isAutoplaying || false;
-        this.autoplaySpinsRemaining = this.initialState.autoplaySpinsRemaining || 0;
+        // Initialize local state from initial game state
+        this._isAutoplaying = this._initialState?.isAutoplaying ?? false;
+        this._autoplaySpinsRemaining = this._initialState?.autoplaySpinsRemaining ?? 0;
 
-        // --- BEGIN EDIT: Get button from UIManager, remove creation --- 
-        // Get the button instance created by UIManager
-        this.autoplayButton = this.uiManager.getButton('autoplay');
+        this.logger?.info(AutoplayPlugin.pluginName, 'Constructed.'); // Use static name for logging
+        // Note: init() will be called by PluginSystem later
+    }
 
-        if (!this.autoplayButton) {
-            this.logger.error('AutoplayPlugin', 'Could not find autoplay button from UIManager.');
-            // Maybe don't proceed if the button is essential?
-        } else {
-            // Set initial visual state using UIManager's method
-            this.uiManager.setButtonVisualState(
-                'autoplay', 
-                this.isAutoplaying, 
-                'autoplay-active', 
-                'autoplay'
-            );
-        }
-        
-        // --- END EDIT ---
-        
-        // --- Subscribe to Events --- 
-        const unsubscribeSpinEnd = this.eventBus.on('spin:sequenceComplete', this._handleSpinEndForAutoplay.bind(this));
-        this.listeners.push(unsubscribeSpinEnd);
-        
+    init() {
+        this.logger?.info(AutoplayPlugin.pluginName, 'Initializing...');
+        this._subscribeToEvents();
+        // Set initial button state AFTER subscribing, as subscribe might trigger UI update
+        this._updateButtonState(this._isAutoplaying);
+        this.logger?.info(AutoplayPlugin.pluginName, 'Initialization complete.');
+    }
+
+    _subscribeToEvents() {
+        if (!this.eventBus) return;
+
+        const unsubscribeClick = this.eventBus.on('ui:button:click', (event) => {
+            if (event.buttonName === 'autoplay') {
+                this._handleAutoplayButtonClick();
+            }
+        });
+
         const unsubscribeState = this.eventBus.on('game:stateChanged', this._handleStateChangeForAutoplay.bind(this));
-        this.listeners.push(unsubscribeState);
-        
-        this.logger.info('AutoplayPlugin', 'Initialization complete, subscribed to events.');
-    },
+        const unsubscribeReelsStopped = this.eventBus.on('reels:stopped', this._handleReelsStopped.bind(this));
+
+        this._listeners.push(unsubscribeClick, unsubscribeState, unsubscribeReelsStopped);
+        this.logger?.debug(AutoplayPlugin.pluginName, 'Subscribed to events.');
+    }
+
+    _handleAutoplayButtonClick() {
+        this.logger?.info(AutoplayPlugin.pluginName, 'Autoplay button clicked');
+        if (this._isAutoplaying) {
+            this.stopAutoplay('manual');
+        } else {
+            // TODO: Get spin count from config or UI element
+            const spinsToStart = 10;
+            this.startAutoplay(spinsToStart);
+        }
+    }
 
     /**
-     * Cleans up listeners, timeouts, and any created UI elements.
+     * @param {{ newState: object, updatedProps: string[] }} eventData 
      */
-    destroy() {
-        this.logger?.info('AutoplayPlugin', 'Destroying...');
-        
-        // Unsubscribe listeners
-        this.listeners.forEach(unsubscribe => unsubscribe());
-        this.listeners = [];
-        // Clear timeout
-        if (this.nextSpinTimeout) {
-            clearTimeout(this.nextSpinTimeout);
-            this.nextSpinTimeout = null;
-        }
-        
-        // --- BEGIN EDIT: Remove button destruction logic --- 
-        // Button is managed by UIManager, plugin just removes its listener
-        if (this.autoplayButton && typeof this.autoplayButton.off === 'function') {
-            // REMOVED: this.autoplayButton.off('click', this._handleButtonClick.bind(this));
-            // this.logger?.debug('AutoplayPlugin', 'Removed click listener from autoplay button.'); // REMOVE log too
-        }
-        // Nullify button reference, but don't destroy it
-        this.autoplayButton = null;
-        // --- END EDIT ---
-        
-        // Nullify dependencies
-        this.logger = null;
-        this.eventBus = null;
-        this.spinManager = null;
-        this.uiManager = null; // Nullify uiManager
-        this.initialState = null;
-    },
-
-    // --- Internal Methods --- 
-    _handleSpinEndForAutoplay() {
-        try {
-            if (this.nextSpinTimeout) { 
-                 clearTimeout(this.nextSpinTimeout);
-                 this.nextSpinTimeout = null;
-            }
-            
-            // Use locally tracked state
-            if (!this.isAutoplaying) {
-                this.logger?.debug('AutoplayPlugin', 'Spin sequence complete, but autoplay is not active (local state).');
-                return;
-            }
-            
-            // Read global state directly (TEMP - should use local state or event payload)
-            if (state.isInFreeSpins) {
-                this.logger?.info('AutoplayPlugin', 'Spin sequence complete, stopping autoplay because Free Spins are active.');
-                this.eventBus?.emit('state:update', { isAutoplaying: false, autoplaySpinsRemaining: 0 }); 
-                return;
-            }
-            
-            // Use locally tracked state
-            if (this.autoplaySpinsRemaining > 0) {
-                // Read global state for bet/balance check (TEMP)
-                const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES; 
-                if (state.balance < currentTotalBet) {
-                    this.logger?.info('AutoplayPlugin', 'Spin sequence complete, stopping autoplay due to low balance.');
-                    this.eventBus?.emit('state:update', { isAutoplaying: false, autoplaySpinsRemaining: 0 }); 
-                    // TODO: Emit user notification event?
-                    return;
-                }
-
-                // Decrement local count first
-                this.autoplaySpinsRemaining--;
-                this.logger?.debug('AutoplayPlugin', `Locally decremented spins remaining to: ${this.autoplaySpinsRemaining}`);
-                // Request state update for remaining spins 
-                // NOTE: This might cause race conditions if GameState also decrements.
-                // Ideally, only one system updates the authoritative state.
-                // For now, let the plugin update it.
-                this.eventBus?.emit('state:update', { autoplaySpinsRemaining: this.autoplaySpinsRemaining });
-                
-                const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier; // Read global state (TEMP)
-                this.logger?.debug('AutoplayPlugin', `Scheduling next autoplay spin in ${delay}ms.`);
-
-                this.nextSpinTimeout = setTimeout(() => {
-                    if (!this.spinManager || !this.isAutoplaying || state.isInFreeSpins) { // Use local + global state (TEMP)
-                        this.logger?.debug('AutoplayPlugin', 'Next spin cancelled (timeout check).');
-                        if(this.isAutoplaying) { // Only emit stop if we thought we were active
-                            this.eventBus?.emit('state:update', { isAutoplaying: false, autoplaySpinsRemaining: 0 }); 
-                        }
-                        return;
-                    }
-                    this.logger?.info('AutoplayPlugin', 'Triggering next spin via SpinManager.');
-                    this.spinManager.startSpin(); 
-                    this.nextSpinTimeout = null;
-                }, delay);
-
-            } else {
-                this.logger?.info('AutoplayPlugin', 'Autoplay finished naturally.');
-                this.eventBus?.emit('state:update', { isAutoplaying: false, autoplaySpinsRemaining: 0 }); 
-            }
-        } catch (error) {
-            this.logger?.error('AutoplayPlugin', 'Error in _handleSpinEndForAutoplay handler:', error);
-        }
-    },
-
+    // --- BEGIN LINTER FIX: Remove TS syntax from handler param ---
     _handleStateChangeForAutoplay(eventData) {
+    // --- END LINTER FIX ---
         try {
+            // --- BEGIN ADD LOG ---
+            this.logger?.debug(AutoplayPlugin.pluginName, 'Received game:stateChanged', { 
+                updatedProps: eventData.updatedProps, 
+                newState_isAutoplaying: eventData.newState?.isAutoplaying,
+                newState_spinsRemaining: eventData.newState?.autoplaySpinsRemaining
+            });
+            // --- END ADD LOG ---
             const { newState, updatedProps } = eventData;
-            let stateChanged = false;
-            
-            // Update locally tracked state if relevant properties changed
+            // Update local tracking state if relevant properties changed
             if (updatedProps.includes('isAutoplaying')) {
-                if (this.isAutoplaying !== newState.isAutoplaying) {
-                    this.isAutoplaying = newState.isAutoplaying;
-                    this.logger?.debug('AutoplayPlugin', `Local isAutoplaying updated to: ${this.isAutoplaying}`);
-                    stateChanged = true;
+                const changed = this._isAutoplaying !== newState.isAutoplaying;
+                this._isAutoplaying = newState.isAutoplaying;
+                if (changed) {
+                     this.logger?.debug(AutoplayPlugin.pluginName, `Local isAutoplaying updated to: ${this._isAutoplaying}`);
+                     // --- BEGIN ADD LOG ---
+                     this.logger?.debug(AutoplayPlugin.pluginName, `Calling _updateButtonState with: ${this._isAutoplaying}`);
+                     // --- END ADD LOG ---
+                     this._updateButtonState(this._isAutoplaying);
+                     // If autoplay was turned OFF externally, clear timeout
+                     if (!this._isAutoplaying && this._nextSpinTimeout) {
+                         clearTimeout(this._nextSpinTimeout);
+                         this._nextSpinTimeout = null;
+                         this.logger?.info(AutoplayPlugin.pluginName, 'Autoplay cancelled externally, cleared timeout.');
+                     }
                 }
             }
             if (updatedProps.includes('autoplaySpinsRemaining')) {
-                 if (this.autoplaySpinsRemaining !== newState.autoplaySpinsRemaining) {
-                    this.autoplaySpinsRemaining = newState.autoplaySpinsRemaining;
-                    this.logger?.debug('AutoplayPlugin', `Local autoplaySpinsRemaining updated to: ${this.autoplaySpinsRemaining}`);
-                    // No need to set stateChanged = true here, only visual/flow changes needed
-                 }
+                 const changed = this._autoplaySpinsRemaining !== newState.autoplaySpinsRemaining;
+                 this._autoplaySpinsRemaining = newState.autoplaySpinsRemaining;
+                  if (changed) {
+                     this.logger?.debug(AutoplayPlugin.pluginName, `Local spins remaining updated to: ${this._autoplaySpinsRemaining}`);
+                     // Optional: Update a specific UI display if one exists for spins remaining
+                     // this._updateSpinsRemainingDisplay(this._autoplaySpinsRemaining);
+                  }
             }
-
-            // Trigger First Spin logic (if autoplay was just turned ON)
-            if (updatedProps.includes('isAutoplaying') && newState.isAutoplaying) {
-                 if (!newState.isSpinning && !newState.isFeatureTransitioning && !newState.isInFreeSpins) {
-                     this.logger?.info('AutoplayPlugin', 'Autoplay activated, scheduling first spin.');
-                     if (this.spinManager) { 
-                         setTimeout(() => {
-                             if (this.spinManager && this.isAutoplaying && !state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
-                                 this.logger?.debug('AutoplayPlugin', 'Timeout executed, starting first spin.');
-                                 this.spinManager.startSpin(); 
-                             } else {
-                                 this.logger?.debug('AutoplayPlugin', 'First spin cancelled (state changed during initial delay or spin manager missing).');
-                             }
-                         }, 50); 
-                     } else {
-                         this.logger?.error('AutoplayPlugin', 'Cannot schedule first spin, SpinManager is missing.');
-                     }
-                 }
-            }
-
-            // --- Stop Autoplay check --- 
-            let shouldStop = false;
-             if (this.isAutoplaying) { // Check local state
-                if (updatedProps.includes('isAutoplaying') && !newState.isAutoplaying) { 
-                    // Already handled by updating local state
-                } else if (updatedProps.includes('isInFreeSpins') && newState.isInFreeSpins) {
-                    shouldStop = true;
-                    this.logger?.info('AutoplayPlugin', 'Detected FS start, stopping autoplay.');
-                } // Add other conditions (balance? server error?)
-             }
-            
-             if (shouldStop) {
-                if (this.nextSpinTimeout) {
-                    clearTimeout(this.nextSpinTimeout);
-                    this.nextSpinTimeout = null;
-                    this.logger?.debug('AutoplayPlugin', 'Cancelled pending next spin due to state change (FS entry).');
-                }
-                // Request state update to ensure stopped
-                this.eventBus?.emit('state:update', { isAutoplaying: false, autoplaySpinsRemaining: 0 });
-             }
-             
-             // --- Update Button Visuals --- 
-             if (stateChanged && this.autoplayButton) {
-                this.uiManager?.setButtonVisualState(
-                    'autoplay', 
-                    this.isAutoplaying, 
-                    'autoplay-active', 
-                    'autoplay'
-                );
-             }
-
         } catch (error) {
-             this.logger?.error('AutoplayPlugin', 'Error in _handleStateChangeForAutoplay handler:', error);
+            this.logger?.error(AutoplayPlugin.pluginName, 'Error processing state change:', error);
         }
-    },
-};
+    }
+
+    _handleReelsStopped() {
+        if (this._isAutoplaying) {
+            this.logger?.debug(AutoplayPlugin.pluginName, 'Reels stopped during autoplay.');
+            // Check if spins remain BEFORE decrementing in GameState
+            if (this._autoplaySpinsRemaining > 0) {
+                this.logger?.info(AutoplayPlugin.pluginName, `Autoplay spins remaining: ${this._autoplaySpinsRemaining -1}`);
+                // Simple delay before next spin - TODO: Make configurable
+                const delay = 1000;
+                 this._nextSpinTimeout = setTimeout(() => {
+                    if (this._isAutoplaying) { // Double check state before spinning
+                        this.logger?.debug(AutoplayPlugin.pluginName, 'Triggering next autoplay spin.');
+                        this.eventBus?.emit('ui:button:click', { buttonName: 'spin' }); // Request spin via event
+                    } else {
+                         this.logger?.warn(AutoplayPlugin.pluginName, 'Delay finished but autoplay is now off. Spin cancelled.');
+                    }
+                 }, delay);
+            } else {
+                this.logger?.info(AutoplayPlugin.pluginName, 'Autoplay finished (0 spins remaining).');
+                // No need to call stopAutoplay here, state should already be updated
+            }
+        } else {
+            //this.logger?.debug(AutoplayPlugin.pluginName, 'Reels stopped, not in autoplay.');
+        }
+    }
+
+    startAutoplay(numSpins) {
+        if (numSpins <= 0) {
+            this.logger?.warn(AutoplayPlugin.pluginName, 'Cannot start autoplay with 0 or fewer spins.', { numSpins });
+            return;
+        }
+        this.logger?.info(AutoplayPlugin.pluginName, `Starting autoplay for ${numSpins} spins.`);
+        updateState({
+            isAutoplaying: true,
+            autoplaySpinsRemaining: numSpins
+        });
+        // Trigger the first spin immediately if game is idle
+        if (!state.isSpinning) {
+             this.logger?.debug(AutoplayPlugin.pluginName, 'Triggering first autoplay spin immediately.');
+             this.eventBus?.emit('ui:button:click', { buttonName: 'spin' });
+        } else {
+             this.logger?.debug(AutoplayPlugin.pluginName, 'Game is currently spinning, first autoplay spin will occur after reels stop.');
+        }
+    }
+
+    stopAutoplay(reason = 'unknown') {
+        this.logger?.info(AutoplayPlugin.pluginName, `Stopping autoplay. Reason: ${reason}`);
+        if (this._nextSpinTimeout) {
+            clearTimeout(this._nextSpinTimeout);
+            this._nextSpinTimeout = null;
+        }
+        // Only update state if it's currently on
+        if (this._isAutoplaying || this._autoplaySpinsRemaining > 0) {
+             updateState({
+                 isAutoplaying: false,
+                 autoplaySpinsRemaining: 0
+             });
+        } else {
+            this.logger?.debug(AutoplayPlugin.pluginName, 'stopAutoplay called but already stopped.');
+        }
+    }
+
+    _updateButtonState(isActive) {
+        if (!this.uiManager) {
+             this.logger?.error(AutoplayPlugin.pluginName, 'Cannot update button state - UIManager missing.');
+             return;
+        }
+         this.logger?.debug(AutoplayPlugin.pluginName, `Updating autoplay button visual state to: ${isActive ? 'Active' : 'Inactive'}`);
+         this.uiManager.setButtonVisualState('autoplay', isActive, 'autoplay-active', 'autoplay');
+    }
+
+    // Optional: Method to update a dedicated spins remaining display
+    /*
+    _updateSpinsRemainingDisplay(spinsLeft) {
+        if (this.uiManager && typeof this.uiManager.updateAutoplaySpinsDisplay === 'function') {
+            this.uiManager.updateAutoplaySpinsDisplay(spinsLeft);
+        } else {
+            // logger?.debug(AutoplayPlugin.pluginName, 'No dedicated spins remaining display method found on UIManager.');
+        }
+    }
+    */
+
+    destroy() {
+        this.logger?.info(AutoplayPlugin.pluginName, 'Destroying...');
+        this._listeners.forEach(unsubscribe => unsubscribe());
+        this._listeners = [];
+        if (this._nextSpinTimeout) {
+            clearTimeout(this._nextSpinTimeout);
+            this._nextSpinTimeout = null;
+        }
+        // Nullify references
+        this.logger = null;
+        this.eventBus = null;
+        this.spinManager = null;
+        this.uiManager = null;
+        this._initialState = null;
+    }
+}
