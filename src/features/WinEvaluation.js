@@ -1,11 +1,11 @@
 /**
  * @module WinEvaluation
- * @description Validates server-provided win data and prepares data for animations.
- * Listens for spin results and emits an event to trigger the AnimationController.
- * Does NOT calculate wins or update game state directly.
+ * @description (TEMP) Calculates wins based on final reel positions and triggers animations.
+ * (FUTURE) Validates server-provided win data and prepares data for animations.
+ * Listens for spin evaluation requests and emits an event to trigger the AnimationController.
  *
  * Dependencies (Injected via init):
- * - eventBus: To listen for server results and emit animation triggers.
+ * - eventBus: To listen for evaluation requests and emit animation triggers/state updates.
  * - logger: For logging.
  * - reelManager: To access symbol sprites on the reels.
  *
@@ -15,17 +15,19 @@
  *
  * Events Emitted:
  * - win:validatedForAnimation { totalWin, winningLines, symbolsToAnimate, currentTotalBet }
+ * - state:update { lastTotalWin, winningLinesInfo }
+ * - freespins:triggered { spinsAwarded }
  *
  * Events Consumed:
- * - server:spinResultReceived { data: SpinResult } 
+ * - spin:evaluateRequest
  */
 
 // Keep config imports needed for symbol/reel dimensions or constants if used in validation later
 import { PAYLINES } from '../config/paylines.js';
-// import { PAYTABLE } from '../config/symbolDefinitions.js'; 
+import { PAYTABLE } from '../config/symbolDefinitions.js'; // Import PAYTABLE
 import {
     SYMBOLS_PER_REEL_VISIBLE, 
-    // SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, ENABLE_FREE_SPINS, FREE_SPINS_AWARDED // Keep if validating scatters
+    SCATTER_SYMBOL_ID, MIN_SCATTERS_FOR_FREE_SPINS, ENABLE_FREE_SPINS, FREE_SPINS_AWARDED // Keep for scatter logic
 } from '../config/gameSettings.js';
 // Removed state and direct effect imports
 
@@ -33,6 +35,7 @@ import {
 import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 import { ReelManager } from '../core/ReelManager.js';
+import { state } from '../core/GameState.js'; // Import state for currentTotalBet
 
 // --- Module-level variables ---
 /** @type {EventBus | null} */
@@ -43,7 +46,7 @@ let logger = null;
 let reelManager = null;
 
 /** @type {Function | null} */
-let _unsubscribeSpinResult = null;
+let _unsubscribeEvalRequest = null;
 
 /**
  * Initializes the module with dependencies and subscribes to events.
@@ -61,20 +64,20 @@ export function init(dependencies) {
     logger = dependencies.logger;
     reelManager = dependencies.reelManager;
 
-    // Subscribe to server result event
-    _unsubscribeSpinResult = eventBus.on('server:spinResultReceived', _handleSpinResultReceived);
+    // Subscribe to evaluation request event
+    _unsubscribeEvalRequest = eventBus.on('spin:evaluateRequest', _handleEvaluateRequest); // Changed event
     
-    logger.info('WinEvaluation', 'Initialized and subscribed to server:spinResultReceived.');
+    logger.info('WinEvaluation', 'Initialized and subscribed to spin:evaluateRequest.');
 }
 
 /**
  * Cleans up event listeners.
  */
 export function destroy() {
-    if (_unsubscribeSpinResult) {
-        _unsubscribeSpinResult();
-        _unsubscribeSpinResult = null;
-        logger?.info('WinEvaluation', 'Unsubscribed from server:spinResultReceived.');
+    if (_unsubscribeEvalRequest) {
+        _unsubscribeEvalRequest();
+        _unsubscribeEvalRequest = null;
+        logger?.info('WinEvaluation', 'Unsubscribed from spin:evaluateRequest.');
     }
     // Nullify references
     eventBus = null;
@@ -83,113 +86,151 @@ export function destroy() {
 }
 
 /**
- * Event handler for processing server spin results.
- * Validates data (optional), identifies winning symbols, and emits event for animations.
- * @param {object} eventData
- * @param {object} eventData.data - The spin result payload (SpinResult structure expected).
- * @param {number[]} eventData.data.stopPositions - Final reel stop indices.
- * @param {object[]} eventData.data.winningLines - Array of winning line details from server.
- * @param {number} eventData.data.totalWin - Total win amount from server.
- * @param {number} eventData.data.currentTotalBet - Bet amount for the spin.
- * @param {object[]} [eventData.data.featureTriggers] - Optional array of feature triggers.
+ * Event handler for processing spin evaluation requests.
+ * (TEMP) Calculates wins based on the current reel grid.
+ * Identifies winning symbols, and emits event for animations.
  * @private
  */
-function _handleSpinResultReceived(eventData) {
-    logger?.debug('WinEvaluation', 'Handling server:spinResultReceived', eventData);
+function _handleEvaluateRequest() {
+    logger?.debug('WinEvaluation', 'Handling spin:evaluateRequest');
 
     if (!eventBus || !logger || !reelManager || !reelManager.reels) {
-         (logger || console).error('WinEvaluation Error: Dependencies (eventBus, logger, reelManager, reelManager.reels) not initialized or available.');
+         (logger || console).error('WinEvaluation Error: Dependencies not initialized or available.');
          return;
     }
 
-    if (!eventData || !eventData.data) {
-        logger.error('WinEvaluation', 'Received event with invalid data structure.', eventData);
+    // --- Get Current Grid --- 
+    const grid = getResultsGrid();
+    if (!grid || grid.length !== reelManager.reels.length) {
+        logger.error('WinEvaluation', 'Failed to get valid results grid from reels.');
         return;
     }
 
-    // --- Extract data from payload --- 
-    const {
-        stopPositions, // Needed to map winning lines to symbols
-        winningLines,  // Array of { lineIndex, symbolId, count, winAmount, /* positions?: number[] */ }
-        totalWin, 
-        currentTotalBet, // Needed for Big Win calc in Animations module
-        featureTriggers // Optional array like [{ type: 'FreeSpins', count: 10 }]
-    } = eventData.data;
-
-    // --- Basic Validation (Expand later if needed) --- 
-    if (!Array.isArray(winningLines) || typeof totalWin !== 'number' || typeof currentTotalBet !== 'number') {
-        logger.error('WinEvaluation', 'Invalid winningLines, totalWin, or currentTotalBet in payload.', eventData.data);
-        return;
-    }
-    // TODO: Add validation for stopPositions length against reelManager.reels.length?
-    // TODO: Add validation for featureTriggers structure?
-
-    // --- Identify Winning Symbols --- 
+    // --- TEMP: Client-Side Win Calculation --- 
+    let calculatedTotalWin = 0;
+    const calculatedWinningLines = [];
     const allSymbolsToAnimate = [];
-    const seenSymbols = new Set(); // Track unique symbol instances
+    const seenSymbols = new Set();
 
-    if (winningLines.length > 0) {
-        logger.debug('WinEvaluation', `Processing ${winningLines.length} winning lines from server.`);
+    // Check Paylines
+    PAYLINES.forEach((linePath, lineIndex) => {
+        if (!linePath || !reelManager?.reels || linePath.length !== reelManager.reels.length) return; 
+
+        const firstSymbolId = grid[0][linePath[0]];
+        if (!firstSymbolId || !PAYTABLE[firstSymbolId]) {
+            // Log why line is skipped early
+            // logger?.debug('WinEvaluation', `Skipping line ${lineIndex}: Invalid first symbol '${firstSymbolId}' or not in paytable.`);
+            return; 
+        }
+
+        let consecutiveCount = 0;
+        for (let reelIndex = 0; reelIndex < reelManager.reels.length; reelIndex++) {
+            if (grid[reelIndex][linePath[reelIndex]] === firstSymbolId) {
+                consecutiveCount++;
+            } else {
+                break; 
+            }
+        }
         
-        winningLines.forEach((winInfo) => {
-            const linePath = PAYLINES[winInfo.lineIndex]; // Assumes PAYLINES is available/imported
-            if (!linePath) {
-                logger?.warn('WinEvaluation', `Invalid lineIndex ${winInfo.lineIndex} received.`);
-                return; // Skip this winning line
-            }
+        // Get the payout MAP for the first symbol
+        const payoutMap = PAYTABLE[firstSymbolId]; 
+        // Check if a payout exists for the specific count
+        const winMultiplier = payoutMap ? payoutMap[consecutiveCount] : 0;
+        // Determine if a win occurred
+        const winConditionMet = winMultiplier > 0;
+        
+        // Log check details - UNCOMMENT
+        logger?.debug('WinEvaluation', `Line ${lineIndex}: Symbol='${firstSymbolId}', Count=${consecutiveCount}, PayoutMap=${JSON.stringify(payoutMap)}, Multiplier=${winMultiplier}, Met=${winConditionMet}`);
+
+        // Check for win
+        if (winConditionMet) {
+            const lineWin = winMultiplier * state.currentBetPerLine; 
+            calculatedTotalWin += lineWin;
             
-            if (!reelManager || !reelManager.reels) {
-                logger?.error('WinEvaluation', 'reelManager became unavailable during line processing.');
-                return; // Cannot proceed without reels
-            }
+            const lineInfo = {
+                lineIndex: lineIndex,
+                symbolId: firstSymbolId,
+                count: consecutiveCount,
+                winAmount: lineWin,
+            };
+            calculatedWinningLines.push(lineInfo);
+            // Log win - UNCOMMENT
+            logger?.info('WinEvaluation', `WIN FOUND on Line ${lineIndex}! Symbol=${firstSymbolId}, Count=${consecutiveCount}, Amount=${lineWin}`);
             
-            // Iterate through the reels involved in the win (up to winInfo.count)
-            for (let reelIndex = 0; reelIndex < winInfo.count; reelIndex++) {
+            // Identify symbols on this winning line for animation
+            for (let reelIndex = 0; reelIndex < consecutiveCount; reelIndex++) {
                 const rowIndex = linePath[reelIndex];
-                if (rowIndex >= 0 && rowIndex < SYMBOLS_PER_REEL_VISIBLE) {
-                    const reel = reelManager.reels[reelIndex];
-                    if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) {
-                        // Access the visible SymbolSprite instance
+                 if (rowIndex >= 0 && rowIndex < SYMBOLS_PER_REEL_VISIBLE) {
+                    // Check if reel exists before accessing symbols
+                    const reel = reelManager?.reels?.[reelIndex]; 
+                    if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) { // Explicit check for reel
                         const symbolSprite = reel.symbols[rowIndex + 1]; 
-                        
-                        // Optional: Verify symbol ID matches server data (sanity check)
-                        if (symbolSprite?.symbolId !== winInfo.symbolId) {
-                            logger?.warn('WinEvaluation', `Symbol ID mismatch on line ${winInfo.lineIndex}, reel ${reelIndex}. Server: ${winInfo.symbolId}, Client: ${symbolSprite?.symbolId}`);
-                        }
-                        
-                        // Add unique symbol instance to animation list
                         if (symbolSprite && !seenSymbols.has(symbolSprite)) {
                             seenSymbols.add(symbolSprite);
                             allSymbolsToAnimate.push(symbolSprite);
                         }
                     } else {
-                        logger?.error('WinEvaluation', `Could not find valid symbol sprite at [${reelIndex}, ${rowIndex}] for winning line ${winInfo.lineIndex}.`);
+                         // Log if reel or symbols array is missing/invalid
+                         logger?.warn('WinEvaluation', `Cannot access symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
                     }
                 }
             }
+        }
+    });
+
+    // --- TEMP: Scatter Check --- (Add if Scatters are implemented)
+    let scatterCount = 0;
+    let scatterPositions = []; // Optional: For animating scatters
+    if (ENABLE_FREE_SPINS && SCATTER_SYMBOL_ID) {
+        grid.forEach((column, reelIndex) => {
+            column.forEach((symbolId, rowIndex) => {
+                if (symbolId === SCATTER_SYMBOL_ID) {
+                    scatterCount++;
+                    // Identify scatter symbol sprites if needed for animation
+                     const reel = reelManager?.reels?.[reelIndex]; 
+                     // Explicit check for reel before accessing symbols
+                     if (reel && reel.symbols && reel.symbols.length > rowIndex + 1) { 
+                         const symbolSprite = reel.symbols[rowIndex + 1]; 
+                         if (symbolSprite && !seenSymbols.has(symbolSprite)) {
+                             seenSymbols.add(symbolSprite);
+                             allSymbolsToAnimate.push(symbolSprite);
+                         }
+                     } else {
+                         // Log if reel or symbols array is missing/invalid
+                         logger?.warn('WinEvaluation', `Cannot access scatter symbol at [${reelIndex},${rowIndex}]. Reel or symbols array missing/invalid.`);
+                     }
+                }
+            });
         });
-    } else {
-         logger?.debug('WinEvaluation', 'No winning lines reported by server.');
     }
+    
+    const freeSpinsTriggered = ENABLE_FREE_SPINS && scatterCount >= MIN_SCATTERS_FOR_FREE_SPINS;
+    
+    logger?.debug('WinEvaluation', `Client-side evaluation complete. Total Win: ${calculatedTotalWin}, Lines: ${calculatedWinningLines.length}, Symbols: ${allSymbolsToAnimate.length}`);
+
+    // --- Update Game State --- 
+    eventBus.emit('state:update', {
+        lastTotalWin: calculatedTotalWin,
+        // Maybe rename winningLinesInfo to winningLinesResult ?
+        winningLinesInfo: calculatedWinningLines 
+    });
 
     // --- Prepare Animation Payload --- 
     const animationPayload = {
-        totalWin, // Pass total win from server
-        winningLines, // Pass server winning lines (for payline graphics)
-        symbolsToAnimate: allSymbolsToAnimate, // Pass identified symbol instances
-        currentTotalBet // Pass bet (for big win calc)
-        // Add featureTriggers if animations need them?
+        totalWin: calculatedTotalWin, 
+        winningLines: calculatedWinningLines,
+        symbolsToAnimate: allSymbolsToAnimate,
+        currentTotalBet: state.currentTotalBet // Pass bet for big win calc
     };
 
     logger.info('WinEvaluation', 'Emitting win:validatedForAnimation', animationPayload);
-
-    // --- Emit Event for AnimationController --- 
     eventBus.emit('win:validatedForAnimation', animationPayload);
 
-    // TODO (Phase 3): Handle feature triggers - maybe emit separate events?
-    // e.g., if (featureTriggers?.some(t => t.type === 'FreeSpins')) { 
-    //           eventBus.emit('feature:trigger:FreeSpins', { count: ... }); 
-    //      } 
+    // --- Handle Feature Triggers --- 
+    if (freeSpinsTriggered) {
+         logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
+         eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED }); 
+    }
 }
 
 // Removed evaluateWin function

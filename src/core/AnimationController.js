@@ -21,6 +21,11 @@ import { Logger } from '../utils/Logger.js';
 // Import GSAP for potential future timeline management within the controller
 // import { gsap } from 'gsap';
 
+// Define Big Win thresholds (adjust as needed)
+const BIG_WIN_THRESHOLD_MULTIPLIER = 5;
+const MEGA_WIN_THRESHOLD_MULTIPLIER = 20; 
+// Add more levels if desired (EPIC_WIN, etc.)
+
 export class AnimationController {
     /** @type {import('../utils/EventBus.js').EventBus | null} */
     eventBus = null;
@@ -29,6 +34,9 @@ export class AnimationController {
 
     /** @type {Map<string, Function[]> | null} */ // Allow null after destroy
     registeredAnimations = null;
+
+    /** @type {Function | null} */
+    _unsubscribeWinValidated = null; // Store unsubscribe function
 
     // TODO: Add properties for managing active timelines or sequences if needed
 
@@ -51,12 +59,19 @@ export class AnimationController {
     }
 
     /**
-     * Initializes the controller, potentially subscribing to events.
+     * Initializes the controller, subscribing to win validation events.
      */
     init() {
-        // TODO: Subscribe to relevant events that might trigger animations directly
-        // e.g., this.eventBus.on('win:validatedForAnimation', this.handleWinAnimationTrigger.bind(this));
-        this.logger?.info('AnimationController', 'Initialized.');
+        // Subscribe to the win validation event
+        if (this.eventBus) {
+            this._unsubscribeWinValidated = this.eventBus.on(
+                'win:validatedForAnimation', 
+                this._handleWinValidated.bind(this)
+            );
+            this.logger?.info('AnimationController', 'Subscribed to win:validatedForAnimation.');
+        } else {
+            this.logger?.error('AnimationController', 'Cannot init - eventBus is missing.');
+        }
     }
 
     /**
@@ -146,12 +161,16 @@ export class AnimationController {
         // Execute callbacks safely
         callbacks.forEach(callback => {
             try {
+                // Log before calling callback
+                this.logger?.debug('AnimationController', `Executing callback for "${animationName}"...`);
                 // Execute the registered animation function
                 if (typeof callback === 'function') {
                      callback(data);
                 } else {
                      this.logger?.error('AnimationController', `Registered item for "${animationName}" is not a function.`);
                 }
+                // Log after calling callback
+                this.logger?.debug('AnimationController', `Callback executed for "${animationName}".`);
             } catch (error) {
                 this.logger?.error('AnimationController', `Error executing animation callback for "${animationName}":`, error);
                 // TODO: Consider more robust error handling - stop sequence? emit error event?
@@ -165,30 +184,83 @@ export class AnimationController {
      * Cleans up resources, like event listeners.
      */
     destroy() {
-        // TODO: Unsubscribe from any events subscribed to in init()
-        this.registeredAnimations?.clear(); // Use optional chaining
+        // Unsubscribe from events
+        if (this._unsubscribeWinValidated) {
+            this._unsubscribeWinValidated();
+            this._unsubscribeWinValidated = null;
+            this.logger?.info('AnimationController', 'Unsubscribed from win:validatedForAnimation.');
+        }
+        
+        this.registeredAnimations?.clear(); 
         this.logger?.info('AnimationController', 'Destroyed.');
-        // Nullify references to help GC and prevent accidental use
         this.eventBus = null;
         this.logger = null;
         this.registeredAnimations = null;
     }
 
-    // --- Potential Internal Event Handlers ---
-    /*
-    _handleWinAnimationTrigger(eventData) {
+    // --- Internal Event Handlers ---
+    
+    /**
+     * Handles the validated win event, triggering appropriate animations.
+     * @param {object} eventData - Payload from 'win:validatedForAnimation' event.
+     * @param {number} eventData.totalWin
+     * @param {object[]} eventData.winningLines
+     * @param {Array<import('../core/Symbol.js').SymbolSprite>} eventData.symbolsToAnimate
+     * @param {number} eventData.currentTotalBet
+     * @private
+     */
+    _handleWinValidated(eventData) {
+        // Log trigger - UNCOMMENT
         this.logger?.debug('AnimationController', 'Received win:validatedForAnimation trigger', eventData);
-        // Example: Trigger multiple animation types based on event data
-        if (eventData.winningSymbols && eventData.winningSymbols.length > 0) {
-            this.playAnimation('symbolWin', { symbols: eventData.winningSymbols });
+
+        if (!eventData) {
+            this.logger?.warn('AnimationController', '_handleWinValidated received invalid eventData.');
+            return;
         }
-        if (eventData.paylines && eventData.paylines.length > 0) {
-             this.playAnimation('paylineFlash', { lines: eventData.paylines });
+
+        const { totalWin, winningLines, symbolsToAnimate, currentTotalBet } = eventData;
+
+        // Log symbol animation attempt - UNCOMMENT
+        if (symbolsToAnimate && symbolsToAnimate.length > 0) {
+            this.logger?.debug('AnimationController', 'Calling playAnimation for symbolWin.');
+            this.playAnimation('symbolWin', { symbolsToAnimate });
+        } else {
+            // Log no symbols - UNCOMMENT
+            this.logger?.debug('AnimationController', 'No symbols provided for symbolWin animation.');
         }
-        if (eventData.totalWin > 0) {
-            this.playAnimation('winRollup', { amount: eventData.totalWin });
+        
+        // --- Big Win Check --- 
+        if (totalWin > 0 && currentTotalBet > 0) {
+            const winMultiplier = totalWin / currentTotalBet;
+            let winLevel = null;
+
+            // Determine win level (check highest first)
+            if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
+                winLevel = 'MEGA';
+            } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
+                winLevel = 'BIG';
+            }
+            // Add more else if checks for other levels (EPIC, etc.)
+
+            if (winLevel) {
+                // Log big win trigger - UNCOMMENT
+                this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
+                this.logger?.debug('AnimationController', 'Calling playAnimation for bigWinText.');
+                this.playAnimation('bigWinText', { totalWin, winLevel });
+                
+                this.logger?.debug('AnimationController', 'Calling playAnimation for particleBurst.');
+                this.playAnimation('particleBurst', { 
+                    amount: winLevel === 'MEGA' ? 100 : 50, 
+                    duration: winLevel === 'MEGA' ? 3 : 2    
+                 }); 
+            }
         }
-        // Add logic for big win, etc.
+        
+        // TODO: Consider adding a general win rollup animation call here?
+        // this.playAnimation('winRollup', { amount: totalWin });
+        
+        // TODO: Consider emitting animation:win:completed after a delay?
+        // const longestAnimDuration = ... estimate ...;
+        // setTimeout(() => this.eventBus?.emit('animation:win:completed'), longestAnimDuration);
     }
-    */
 }

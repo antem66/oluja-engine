@@ -251,48 +251,52 @@ export class Reel {
                 break;
 
             case 'spinning':
-                // Check if it's time to initiate the stop tween
-                if (this.targetStopTime > 0 && now >= this.targetStopTime - stopTweenDuration) {
-                    this.state = 'tweeningStop';
-                    this.spinSpeed = 0; // Stop natural spinning
-                    //console.log(`Reel ${this.reelIndex}: Initiating stop tween at time ${now.toFixed(0)}`);
+                // Check if time to stop
+                if (this.targetStopTime > 0 && now >= this.targetStopTime - stopTweenDuration) { 
+                     this.state = 'stopping';
+                     //console.log(`Reel ${this.reelIndex}: Initiating stop tween at time ${now.toFixed(0)}`);
 
-                    // *** DEBUG LOG ***: Check finalStopPosition before tweening
-                    if (isNaN(this.finalStopPosition)) {
-                       // console.error(`[Reel ${this.reelIndex}] *** ERROR: finalStopPosition is NaN before tween start!`);
-                    } else {
-                        //console.log(`[Reel ${this.reelIndex}] finalStopPosition before tween: ${this.finalStopPosition}`);
-                    }
+                     // *** DEBUG LOG ***: Check finalStopPosition before tweening - UNCOMMENT
+                     // Use logger if available, else console
+                     const logFunc = console.error; // Default to console.error for visibility
+                     if (isNaN(this.finalStopPosition)) {
+                        logFunc(`[Reel ${this.reelIndex}] *** ERROR: finalStopPosition is NaN before tween start!`);
+                     } else {
+                         // Use console.log or logger.debug for non-errors
+                         console.log(`[Reel ${this.reelIndex}] finalStopPosition before tween: ${this.finalStopPosition}`);
+                     }
 
-                    // Kill any previous tween just in case
-                    if (this.stopTween) {
-                        this.stopTween.kill();
-                    }
+                     // Kill any previous tween just in case
+                     if (this.stopTween) {
+                         this.stopTween.kill();
+                     }
 
-                    // Create the GSAP tween to stop the reel
-                    this.stopTween = gsap.to(this, {
-                        position: this.finalStopPosition, // Target the final logical position
-                        duration: stopTweenDuration / 1000, // GSAP uses seconds
-                        ease: 'quad.out', // Smooth deceleration
-                        onUpdate: () => {
-                            // Update visuals during the tween
-                            this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length; // Wrap position during tween
-                            this.alignReelSymbols();
-                            // Gradually reduce spin effects during tween
-                            const progress = this.stopTween ? this.stopTween.progress() : 1;
-                            this.updateSpinEffects(1 - progress);
-                        },
-                        onComplete: () => {
-                          //  console.log(`Reel ${this.reelIndex}: Stop tween completed at time ${performance.now().toFixed(0)}`);
-                            this.state = 'stopped';
-                            this.position = this.finalStopPosition; // Ensure exact final position
-                            this.stopTween = null;
-                            this.updateSpinEffects(0); // Turn off effects completely
-                            this.alignReelSymbols(); // Align one last time
-                        }
-                    });
-                    // Tween started, no need for natural position update this frame
-                    needsAlign = false; // onUpdate will handle alignment
+                     // Create the GSAP tween to stop the reel
+                     this.stopTween = gsap.to(this, {
+                         position: this.finalStopPosition, // Target the final logical position
+                         duration: stopTweenDuration / 1000, // GSAP uses seconds
+                         ease: 'quad.out', // Smooth deceleration
+                         onUpdate: () => {
+                             // Update visuals during the tween
+                             this.position = ((this.position % this.strip.length) + this.strip.length) % this.strip.length; // Wrap position during tween
+                             this.alignReelSymbols();
+                             // Gradually reduce spin effects during tween
+                             const progress = this.stopTween ? this.stopTween.progress() : 1;
+                             this.updateSpinEffects(1 - progress);
+                         },
+                         onComplete: () => {
+                             // ADD CLEAR LOG HERE
+                             console.info(`%c[Reel ${this.reelIndex}] Tween ON_COMPLETE FIRING! Setting state to stopped.`, 'color: lime; font-weight: bold;');
+                             this.position = this.finalStopPosition; 
+                             this.state = 'stopped';
+                             this.spinSpeed = 0;
+                             this.updateSpinEffects(0); 
+                             needsAlign = true; // Set flag for final alignment after switch
+                             this.stopTween = null;
+                             // console.log(`Reel ${this.reelIndex}: GSAP Stop tween completed. State: ${this.state}`);
+                         }
+                     });
+                     needsAlign = false; // onUpdate will handle alignment
                 } else {
                     // Continue spinning normally
                     this.position += maxSpinSpeed * delta;
@@ -301,21 +305,21 @@ export class Reel {
                 }
                 break;
 
-            // Uncomment and adjust tweeningStop case
-            case 'tweeningStop':
-                // GSAP tween handles position updates via onUpdate.
-                // The onUpdate callback now sets needsAlign = true implicitly by calling alignReelSymbols.
-                // We just need to check if the tween is still active.
-                reelIsActive = this.stopTween ? this.stopTween.isActive() : false;
-                if (!reelIsActive) {
-                    // Fallback if tween completed but onComplete didn't run or state didn't change
-                    //console.warn(`Reel ${this.reelIndex}: Tween stopped unexpectedly or onComplete failed. Forcing state to 'stopped'.`);
-                    this.state = 'stopped';
-                    this.position = this.finalStopPosition; // Snap logical position
+            case 'stopping':
+                // If we are in the stopping state, the tween should be running.
+                // Report as active until the state transitions to 'stopped' (via onComplete).
+                if (this.stopTween) {
+                    needsAlign = true; // Align symbols during tween via onUpdate
+                    reelIsActive = true; // Always active while in 'stopping' state
+                } else {
+                    // Fallback if tween somehow disappeared (shouldn't happen often)
+                    console.warn(`Reel ${this.reelIndex}: In stopping state but no stopTween found. Forcing stopped state & inactive.`);
+                    this.state = 'stopped'; 
+                    this.spinSpeed = 0;
                     this.updateSpinEffects(0);
-                    this.alignReelSymbols(); // Align one last time
+                    needsAlign = true;
+                    reelIsActive = false; // Set to inactive only in fallback
                 }
-                // No need to set needsAlign here, onUpdate handles it.
                 break;
 
             case 'stopped': // Restore correct stopped/idle behavior

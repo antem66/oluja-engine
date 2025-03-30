@@ -78,7 +78,11 @@ export class ReelManager {
         // this.reelContainer.addChild(reelBackground);
 
         // Add the container to the parent layer
-        this.parentLayer.addChild(this.reelContainer);
+        if (this.parentLayer) {
+            this.parentLayer.addChild(this.reelContainer);
+        } else {
+             this.logger?.error('ReelManager', '_setupContainer called but parentLayer is null.');
+        }
         this.logger?.debug('ReelManager', 'Reel container setup complete.');
     }
 
@@ -139,20 +143,29 @@ export class ReelManager {
     }
 
     /**
-     * Updates all managed Reel instances.
-     * @param {number} delta - Time elapsed since the last frame.
-     * @param {number} now - Current time.
-     * @returns {boolean} True if any reel is still moving, false otherwise.
+     * Update all reels and return true if any reel is still considered active.
+     * A reel is considered active if its state is not 'stopped' or 'idle'.
+     * @param {number} delta - Time difference since the last frame.
+     * @param {number} now - Current time (ticker.lastTime).
+     * @returns {boolean} True if any reel is active, false otherwise.
      */
     update(delta, now) {
         let anyMoving = false;
+        let reelStates = []; // Array to store states for logging
         for (const reel of this.reels) {
-            // Use the return value of update() to check if reel is active/moving
-            const isActive = reel.update(delta, now);
-            if (isActive) {
+            // Update the reel first (this handles its internal state changes)
+            reel.update(delta, now);
+            
+            // Now, check the reel's state directly
+            const isStopped = reel.state === 'stopped' || reel.state === 'idle';
+            reelStates.push(`R${reel.reelIndex}:${reel.state}`); // Log state
+            if (!isStopped) {
                 anyMoving = true;
+                //this.logger?.warn('ReelManager.update', `Reel ${reel.reelIndex} still active! State: ${reel.state}`);
             }
         }
+        // Use info level for visibility - RE-COMMENT
+        // this.logger?.info('ReelManager.update', `States: [${reelStates.join(', ')}] -> anyMoving: ${anyMoving}`); 
         return anyMoving;
     }
 

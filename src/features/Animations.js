@@ -154,6 +154,8 @@ function setupDefaultSymbolAnimations() {
  * @param {Array<import('../core/Symbol.js').SymbolSprite>} data.symbolsToAnimate - Array of SymbolSprite instances to animate.
  */
 export function animateWinningSymbols(data) {
+    logger?.debug('Animations', 'animateWinningSymbols execution started.', data);
+    
     if (!data || !data.symbolsToAnimate || data.symbolsToAnimate.length === 0) {
         logger?.debug('Animations', 'animateWinningSymbols called with no symbols.');
         return;
@@ -271,7 +273,9 @@ export function animateWinningSymbols(data) {
  * @param {number} data.winAmount - The total win amount for the spin.
  * @param {number} data.currentTotalBet - The total bet amount for the spin.
  */
-function _playBigWinText(data) { // Renamed, made internal
+function _playBigWinText(data) {
+    logger?.debug('Animations', '_playBigWinText execution started.', data);
+
     if (!data) return;
     const { winAmount, currentTotalBet } = data;
     logger?.debug('Animations', `_playBigWinText called with win: ${winAmount}, bet: ${currentTotalBet}`);
@@ -414,6 +418,8 @@ function _playBigWinText(data) { // Renamed, made internal
  * @param {number} data.count - Number of particles to create.
  */
 function createParticles(data) {
+    logger?.debug('Animations', 'createParticles execution started.', data);
+    
     if (!particleContainer || !data || typeof data.count !== 'number' || data.count <= 0) {
         logger?.warn('Animations', 'Cannot create particles - container missing or invalid count.', { data });
         return;

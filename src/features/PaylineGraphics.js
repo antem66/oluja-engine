@@ -17,15 +17,17 @@ let eventBus = null;
 let logger = null;
 /** @type {Function | null} */
 let _unsubscribeWinEvent = null;
+/** @type {Function | null} */
+let _unsubscribeSpinStart = null; // Add listener for spin start
 
 /**
- * Initializes the module, stores dependencies, and subscribes to win events.
+ * Initializes the module, stores dependencies, and subscribes to events.
  * @param {object} dependencies
  * @param {EventBus} dependencies.eventBus
  * @param {Logger} dependencies.logger
  * @param {PIXI.Graphics} dependencies.graphics - The Pixi Graphics object for drawing lines.
  */
-export function initPaylineGraphics(dependencies) {
+export function init(dependencies) { // Renamed initPaylineGraphics
     if (!dependencies || !dependencies.eventBus || !dependencies.logger || !dependencies.graphics) {
         console.error("PaylineGraphics Init Error: Missing dependencies (eventBus, logger, graphics).");
         return;
@@ -34,14 +36,13 @@ export function initPaylineGraphics(dependencies) {
     logger = dependencies.logger;
     winLineGraphics = dependencies.graphics;
 
-    // Set initial position based on config 
-    winLineGraphics.x = reelAreaX;
-    winLineGraphics.y = reelAreaY;
-
     // Subscribe to win event
-    _unsubscribeWinEvent = eventBus.on('win:validatedForAnimation', drawWinLines);
+    _unsubscribeWinEvent = eventBus.on('win:validatedForAnimation', _drawLines); // Call renamed _drawLines
     
-    logger.info('PaylineGraphics', 'Initialized and subscribed to win:validatedForAnimation.');
+    // Subscribe to spin start event to clear lines
+    _unsubscribeSpinStart = eventBus.on('spin:started', _clearLines); // Call renamed _clearLines
+    
+    logger.info('PaylineGraphics', 'Initialized and subscribed to events.');
 }
 
 /**
@@ -53,8 +54,13 @@ export function destroy() {
         _unsubscribeWinEvent = null;
         logger?.info('PaylineGraphics', 'Unsubscribed from win:validatedForAnimation.');
     }
+    if (_unsubscribeSpinStart) { // Unsubscribe spin start
+        _unsubscribeSpinStart();
+        _unsubscribeSpinStart = null;
+        logger?.info('PaylineGraphics', 'Unsubscribed from spin:started.');
+    }
     // Stop any ongoing animations and clear graphics upon destruction
-    clearWinLines(); 
+    _clearLines(); // Call renamed _clearLines
     winLineGraphics = null;
     eventBus = null;
     logger = null;
@@ -64,8 +70,9 @@ export function destroy() {
  * Draws the winning paylines based on the data received from the win event.
  * Includes fade-in and fade-out animations using GSAP.
  * @param {object} eventData - Payload from the 'win:validatedForAnimation' event.
+ * @private // Make internal
  */
-function drawWinLines(eventData) { // No longer exported, becomes event handler
+function _drawLines(eventData) { // Renamed drawWinLines
     if (!winLineGraphics || !logger) {
         (logger || console).error("PaylineGraphics Error: Module not initialized (graphics or logger missing).");
         return;
@@ -77,7 +84,7 @@ function drawWinLines(eventData) { // No longer exported, becomes event handler
     const winningLines = eventData?.winningLines;
     if (!winningLines || winningLines.length === 0) {
         currentLogger.debug('PaylineGraphics', 'Received win event with no winning lines.');
-        clearWinLines(); 
+        _clearLines(); 
         return;
     }
 
@@ -111,7 +118,9 @@ function drawWinLines(eventData) { // No longer exported, becomes event handler
             // Calculate symbol center position based on config/layout
             const symbolCenterX = reelIndex * REEL_WIDTH + REEL_WIDTH / 2;
             const symbolCenterY = rowIndex * SYMBOL_SIZE + SYMBOL_SIZE / 2; // Use SYMBOL_SIZE
-            // TODO: Verify this calculation aligns symbols correctly.
+            
+            // Log Coordinates
+            currentLogger?.debug('PaylineGraphics', `Drawing line ${winInfo.lineIndex}, Reel ${reelIndex}, Row ${rowIndex} -> Coords (${symbolCenterX.toFixed(1)}, ${symbolCenterY.toFixed(1)})`);
 
             if (firstValidPoint) {
                 currentGraphics.moveTo(symbolCenterX, symbolCenterY);
@@ -144,15 +153,13 @@ function drawWinLines(eventData) { // No longer exported, becomes event handler
 
 /**
  * Clears any active win lines and stops animations.
- * Still exported as it might be called externally (e.g., before a spin).
+ * @private // Make internal
  */
-export function clearWinLines() {
-    // Use optional chaining as logger might be null if called after destroy
+function _clearLines() { // Renamed clearWinLines and removed export
     logger?.debug('PaylineGraphics', 'Clearing win lines.'); 
-    gsap.killTweensOf(winLineGraphics); // Stop GSAP animations
     if (winLineGraphics) {
+        gsap.killTweensOf(winLineGraphics); // Stop GSAP animations
         winLineGraphics.clear();
         winLineGraphics.alpha = 0;
     }
-    // No need to manage interval/timeout IDs anymore
 }

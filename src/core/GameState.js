@@ -265,11 +265,25 @@ function _handleBetChange(direction) {
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
+    // Check for isSpinning: false - REMOVE
+    /* if (updates && updates.isSpinning === false) {
+        const errorMsg = `[GameState] DETECTED isSpinning: false update!`;
+        console.error(errorMsg, updates);
+    } */
+    // Check for isSpinning: true - REMOVE
+    /* if (updates && updates.isSpinning === true) {
+        console.info(`[GameState] DETECTED isSpinning: true update!`, updates);
+    } */
+    
     if (!eventBusInstance || !loggerInstance) {
-        console.warn('GameState: updateState called before initGameState or dependencies not set. Events and logging will be skipped.');
-        // Perform basic merge without events/logging
-        state = { ...state, ...updates };
-        return;
+        // ADD ERROR LOG HERE
+        console.error('[GameState] updateState entered BUT eventBus or logger is MISSING!', 
+            { hasEventBus: !!eventBusInstance, hasLogger: !!loggerInstance }
+        );
+        // Log the update attempt even if we can't emit events
+        console.log('[GameState] updateState called (no bus/logger):', updates);
+        state = { ...state, ...updates }; // Apply update directly
+        return; // Cannot proceed with event emission
     }
 
     const changedProperties = {};

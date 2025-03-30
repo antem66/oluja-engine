@@ -31,7 +31,7 @@ import { Reel } from './Reel.js';
 import { initInfoOverlay, updateInfoOverlay } from '../ui/InfoOverlay.js';
 import { initNotifications } from '../ui/Notifications.js'; // init only
 import * as WinEvaluation from '../features/WinEvaluation.js'; // Import the module itself
-import { initPaylineGraphics, clearWinLines } from '../features/PaylineGraphics.js'; // Import clearWinLines here
+import { init as initPaylineGraphics } from '../features/PaylineGraphics.js'; // Import clearWinLines here
 import { initFreeSpins, handleFreeSpinEnd } from '../features/FreeSpins.js';
 import { initTurboMode, applyTurboSettings } from '../features/TurboMode.js';
 import { initAnimations, updateParticles } from '../features/Animations.js'; // Import updateParticles here
@@ -123,6 +123,7 @@ export class Game {
 
     /** @type {object | null} */
     initialState = null; // Add property to store initial state
+    wasSpinning = false; // Add flag to track previous spin state
 
     /**
      * @property {UIManager} uiManager
@@ -285,6 +286,13 @@ export class Game {
         } else {
             console.error("Game Init Error: One or more layers failed to initialize before adding to stage.");
         }
+
+        // <<< ADD POSITIONING HERE >>>
+        if (this.layerWinLines) {
+            this.layerWinLines.position.set(SETTINGS.reelAreaX, SETTINGS.reelAreaY);
+            logger?.debug('Game', `Positioned layerWinLines at (${SETTINGS.reelAreaX}, ${SETTINGS.reelAreaY})`);
+        }
+        // <<< END POSITIONING >>>
     }
 
     _createManagers() {
@@ -301,8 +309,11 @@ export class Game {
         // Instantiate managers with correct arguments
         this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
         this.reelManager = new ReelManager(this.layerReels, app.ticker, logger);
+        
         // Instantiate AnimationController first 
         this.animationController = new AnimationController({ logger, eventBus });
+        this.animationController.init();
+        
         // Now instantiate UIManager, passing animationController
         this.uiManager = new UIManager({
             parentLayer: this.layerUI, logger, eventBus, featureManager,
@@ -483,33 +494,33 @@ export class Game {
                 this.freeSpinsUIManager.update();
             }
 
-            // Log state values before check
-            // logger?.debug('Game.update', 'Checking spin end condition', { 
-            //     isSpinning: state.isSpinning, 
-            //     anyReelMoving: anyReelMoving, 
-            //     isTransitioning: state.isTransitioning 
-            // });
+            // Capture current spinning state *before* the check
+            this.wasSpinning = state.isSpinning; 
 
-            // --- Spin End Check ---
-            if (state.isSpinning && !anyReelMoving && !state.isTransitioning) {
-                // Log when condition is met
-                logger?.info('Game.update', 'Spin end condition MET!'); // Use info level
+            // --- Spin End Check (Revised) ---
+            const conditionMet = this.wasSpinning && !anyReelMoving;
+            // Use console.log directly to bypass Logger issues - REMOVE
+            // console.log('Game.update EvalCondition:', { wasSpinning: this.wasSpinning, anyReelMoving, conditionMet });
 
-                updateState({ isTransitioning: true });
-                const stopTweenDurationMs = stopTweenDuration;
-                const evaluationDelay = stopTweenDurationMs + 100;
-
-                setTimeout(() => {
-                    // Log when timeout executes
-                    logger?.debug('Game.update', 'setTimeout callback executing for handleSpinEnd.');
-
-                    if (this.spinManager) {
-                        this.spinManager.handleSpinEnd();
-                    } else {
-                        console.error("Game.update Error: Spin ended but SpinManager is not available.");
-                        updateState({ isSpinning: false, isTransitioning: false });
-                    }
-                }, evaluationDelay);
+            if (conditionMet) {
+                 logger?.info('Game.update', '>>> Spin End IF Block ENTERED <<<'); 
+                 logger?.info('Game.update', 'Spin end condition MET (wasSpinning && !anyReelMoving)!'); 
+                 
+                 // Prevent re-triggering immediately
+                 this.wasSpinning = false; 
+                 
+                 // No need to set isTransitioning here, handleSpinEnd does it.
+                 // updateState({ isTransitioning: true }); 
+                 
+                 // REMOVE setTimeout, call directly:
+                 if (this.spinManager) {
+                     logger?.debug('Game.update', 'Calling spinManager.handleSpinEnd() directly.');
+                     this.spinManager.handleSpinEnd();
+                 } else {
+                     console.error("Game.update Error: Spin ended but SpinManager is not available.");
+                     updateState({ isSpinning: false, isTransitioning: false }); 
+                 }
+                 // END of direct call
             }
         } catch (err) {
             console.error("Error in game loop:", err);

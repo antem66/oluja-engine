@@ -33,7 +33,7 @@
  * - reel:stopped { reelIndex: number } (Potentially, to track when all reels are done)
  */
 
-import { state } from './GameState.js'; // Keep for reading state temporarily
+import { state, updateState } from './GameState.js'; // Keep for reading state temporarily
 // Remove imports for WinEvaluation, FreeSpins, Autoplay, UIManager, PaylineGraphics
 import * as SETTINGS from '../config/gameSettings.js';
 import {
@@ -110,6 +110,12 @@ export class SpinManager {
      * This method will primarily be triggered AFTER receiving server response.
      */
     startSpin() {
+        this.logger?.info('SpinManager', 'startSpin() called.'); 
+        
+        if (state.isSpinning || state.isInFreeSpins || state.isTransitioning) {
+            this.logger?.warn('SpinManager', 'Spin requested but already spinning or in transition/FS.');
+            return;
+        }
         if (!this.reelManager || !this.eventBus) {
             this.logger?.error('SpinManager', 'Cannot start spin: ReelManager or EventBus missing.');
             return;
@@ -121,20 +127,17 @@ export class SpinManager {
 
         this.logger?.debug('SpinManager', 'Starting spin sequence...');
 
-        // Update state via events
-        this.eventBus.emit('state:update', { isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
+        this.logger?.info('SpinManager', '>>> About to call updateState { isSpinning: true } <<<');
         
-        // Emit event for UI/Graphics updates
-        // UIManager listens for state:changed to disable buttons, update displays, start spin anim
-        // PaylineGraphics listens for spin:started to clear lines
-        this.eventBus.emit('spin:started');
+        updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
+        
+        this.eventBus?.emit('spin:started');
 
         const isTurbo = state.isTurboMode;
         const startTime = performance.now();
         let winPattern = null;
         const currentReels = this.reelManager.reels;
 
-        // --- START OF MOCK LOGIC (Moves to ApiService) --- 
         if (state.isDebugMode && state.forceWin) {
             this.logger?.info("SpinManager", "Debug mode active: Forcing a win pattern (Mock)");
             winPattern = this._generateRandomWinPattern(); 
@@ -159,9 +162,8 @@ export class SpinManager {
 
             reel.scheduleStop(targetStopTime);
         });
-        // --- END OF MOCK LOGIC --- 
 
-        this.eventBus.emit('state:update', { targetStoppingReelIndex: -1 }); // Reset state if needed
+        this.eventBus?.emit('state:update', { targetStoppingReelIndex: -1 });
         this.logger?.info('SpinManager', 'Reels spinning visually.');
     }
 
@@ -170,32 +172,28 @@ export class SpinManager {
      * Called by Game loop.
      */
     handleSpinEnd() {
+        this.logger?.info('SpinManager', 'handleSpinEnd() called.'); 
+        
+        if (!state.isSpinning && !state.isTransitioning) {
+             this.logger?.warn('SpinManager', 'handleSpinEnd called but not spinning or transitioning?');
+             return; 
+        }
         if (!this.reelManager || !this.eventBus) {
              this.logger?.error('SpinManager', 'Cannot handle spin end: ReelManager or EventBus missing.');
             return;
         }
 
-        // Update state via event - mark spinning false, transition true (for evaluation)
-        this.eventBus.emit('state:update', { isSpinning: false, isTransitioning: true });
+        this.logger?.debug("SpinManager", "Calling updateState { isSpinning: false, isTransitioning: true }");
+        updateState({ isSpinning: false, isTransitioning: true });
         this.logger?.debug("SpinManager", "All reels visually stopped.");
 
-        // Emit event for UI to stop spin animation
-        // UIManager listens for state:changed, specifically isSpinning=false
-        this.eventBus.emit('spin:stoppedVisuals');
+        this.eventBus?.emit('spin:stoppedVisuals');
 
-        // Emit event to request win evaluation
-        // WinEvaluation module should listen for this
-        // TODO (Phase 2): Pass server result data in the event payload
         this.logger?.debug("SpinManager", "Requesting win evaluation...");
-        this.eventBus.emit('spin:evaluateRequest'); 
+        this.eventBus?.emit('spin:evaluateRequest'); 
 
-        // Logic for starting next Free Spin or Autoplay spin is now handled
-        // by the FreeSpins and Autoplay modules listening for 'reels:stopped' or a similar event.
-        // Button enabling is handled by UIManager listening for state changes.
-        
-        // After evaluation is requested, mark transition as false
-        // TODO: Should this wait for an evaluation:complete event?
-        this.eventBus.emit('state:update', { isTransitioning: false }); 
+        this.logger?.debug("SpinManager", "Calling updateState { isTransitioning: false }");
+        updateState({ isTransitioning: false }); 
     }
 
     // --- Debug Helper Methods (Keep for now, move to ApiService later) --- 
