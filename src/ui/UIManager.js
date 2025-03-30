@@ -623,35 +623,42 @@ export class UIManager {
      * @param {number} data.amount - The target balance amount.
      */
     animateBalance(data) {
-        if (!this.balanceText) return;
-        const targetBalance = data?.amount;
-        if (typeof targetBalance !== 'number') {
-            this.logger?.error('UIManager', 'animateBalance called with invalid data', data);
-            return;
-        }
-        const currentDisplayValue = this._balanceRollupValues.currentValue;
-        const currentCurrencyCode = state.currentCurrency;
-        
-        this.logger?.debug('UIManager', `Animating balance rollup from ${currentDisplayValue} to ${targetBalance}`);
-
-        gsap.killTweensOf(this._balanceRollupValues); // Kill previous tween
-
-        gsap.to(this._balanceRollupValues, {
-            currentValue: targetBalance,
-            duration: 0.5, // Shorter duration for balance usually feels better
-            ease: "power1.out",
-            onUpdate: () => {
-                if (this.balanceText) {
-                    this.balanceText.text = this._formatMoney(this._balanceRollupValues.currentValue, currentCurrencyCode);
-                }
-            },
-            onComplete: () => {
-                if (this.balanceText) {
-                    this.balanceText.text = this._formatMoney(targetBalance, currentCurrencyCode); // Ensure final value is exact
-                }
-                 this._lastKnownBalance = targetBalance; // Update tracked balance on complete
-                 this.logger?.debug('UIManager', 'Balance rollup complete.');
+        return new Promise((/** @type {(value?: void) => void} */ resolve) => {
+            if (!this.balanceText) {
+                resolve(); // Resolve immediately if no text element
+                return;
             }
+            const targetBalance = data?.amount;
+            if (typeof targetBalance !== 'number') {
+                this.logger?.error('UIManager', 'animateBalance called with invalid data', data);
+                resolve(); // Resolve on error
+                return;
+            }
+            const currentDisplayValue = this._balanceRollupValues.currentValue;
+            const currentCurrencyCode = state.currentCurrency;
+
+            this.logger?.debug('UIManager', `Animating balance rollup from ${currentDisplayValue} to ${targetBalance}`);
+
+            gsap.killTweensOf(this._balanceRollupValues); // Kill previous tween
+
+            gsap.to(this._balanceRollupValues, {
+                currentValue: targetBalance,
+                duration: 0.5, // Shorter duration for balance usually feels better
+                ease: "power1.out",
+                onUpdate: () => {
+                    if (this.balanceText) {
+                        this.balanceText.text = this._formatMoney(this._balanceRollupValues.currentValue, currentCurrencyCode);
+                    }
+                },
+                onComplete: () => {
+                    if (this.balanceText) {
+                        this.balanceText.text = this._formatMoney(targetBalance, currentCurrencyCode); // Ensure final value is exact
+                    }
+                    this._lastKnownBalance = targetBalance; // Update tracked balance on complete
+                    this.logger?.debug('UIManager', 'Balance rollup complete.');
+                    resolve(); // Resolve the promise on completion
+                }
+            });
         });
     }
 

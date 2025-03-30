@@ -233,6 +233,13 @@ export class ResultHandler {
         });
         this.logger?.debug('ResultHandler', `Mock evaluation complete. Win: ${calculatedTotalWin}`);
 
+        // --- Add win to balance (CRITICAL) ---
+        if (calculatedTotalWin > 0) {
+            const currentBalance = state.balance;
+            updateState({ balance: currentBalance + calculatedTotalWin });
+            this.logger?.info('ResultHandler', `Updated balance from ${currentBalance} to ${state.balance}`);
+        }
+
         // Emit event for payline drawing
         if (calculatedWinningLines.length > 0) {
             this.logger?.info('ResultHandler', 'Emitting paylines:show');

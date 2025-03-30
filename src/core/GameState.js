@@ -175,8 +175,7 @@ function handleButtonClick(eventData) {
             case 'betDecrease':
                 _handleBetChange(-1);
                 break;
-            default:
-                loggerInstance?.warn('GameState', `Unhandled button click in GameState: ${buttonName}`);
+            // No default case needed, other clicks handled elsewhere
         }
     } catch (error) {
         loggerInstance?.error('GameState', 'Error in handleButtonClick handler:', error);
