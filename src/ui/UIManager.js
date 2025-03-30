@@ -75,6 +75,11 @@ export class UIManager {
     /** @type {PIXI.Text | null} */
     winLabel = null;
 
+    // --- Add Property for Background Sprite ---
+    /** @type {PIXI.Sprite | null} */
+    _backgroundPanel = null; 
+    // -----------------------------------------
+
     /** @type {object | null} */
     uiStyles = null; // Store UI styles
 
@@ -141,28 +146,34 @@ export class UIManager {
         this.internalContainer = new PIXI.Container();
         this.parentLayer.addChild(this.internalContainer);
 
-        // --- Define Sizes and Spacing --- (Move constants inside method? Or make them class fields?)
+        // --- Define Sizes and Spacing ---
         const panelHeight = 80;
-    const panelY = GAME_HEIGHT - panelHeight;
-    const panelCenterY = panelY + panelHeight / 2;
-        const btnSize = 40;
+        const panelY = GAME_HEIGHT - panelHeight;
+        const panelCenterY = panelY + panelHeight / 2;
+        const btnSize = 40; // Moved these back here for clarity in text display positioning
         const spinBtnSize = 85;
         const sideMargin = 35;
         const buttonSpacing = 20;
         const textButtonGap = 20;
         const labelOffset = -15;
-    const valueOffset = 15;
+        const valueOffset = 15;
 
-    // --- Create UI Panel ---
-    const panel = new PIXI.Graphics()
-        .rect(0, panelY, GAME_WIDTH, panelHeight)
-            .fill({ color: 0x1a1a1a, alpha: 0.85 });
-        this.internalContainer.addChild(panel);
+        // --- Create Gradient Background Sprite ---
+        const gradientTexture = this._createGradientTexture(panelHeight, 'rgba(0,0,0,1)', 'rgba(0,0,0,0)');
+        this._backgroundPanel = new PIXI.Sprite(gradientTexture);
+        // --- Make gradient very wide and center it horizontally ---
+        const gradientWidth = 4000; // Sufficiently large width
+        this._backgroundPanel.width = gradientWidth;
+        this._backgroundPanel.height = panelHeight;
+        this._backgroundPanel.x = (GAME_WIDTH - gradientWidth) / 2; // Center within logical GAME_WIDTH
+        this._backgroundPanel.y = panelY;
+        this._backgroundPanel.name = "UIManagerBackgroundPanel";
+        this.internalContainer.addChild(this._backgroundPanel); // Add gradient first
+        this.logger?.debug("UIManager", "Created centered, wide gradient background panel sprite.");
+        // ------------------------------------------
 
-        // --- BEGIN EDIT (Call builder instead of creator) ---
-        this._buildPanelFromConfig(); // Build buttons from config
-        // --- END EDIT ---
-        this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState);
+        this._buildPanelFromConfig(); // Build buttons from config (added on top of gradient)
+        this._createTextDisplays(panelCenterY, labelOffset, valueOffset, sideMargin, btnSize, buttonSpacing, textButtonGap, initialState); // Add text displays (added on top of gradient)
         
         // Set initial state visually using initialState
         // Visual state should now be set by listeners/plugins reacting to initial state event
@@ -185,6 +196,7 @@ export class UIManager {
         this.eventBus?.emit('ui:initialized');
 
         this._lastKnownBalance = initialState.balance; // Initialize tracked balance
+        this.logger?.info("UIManager", `Built UI panel with ${this.buttons.size} buttons from configuration.`);
     }
 
     // --- BEGIN EDIT (Add _buildPanelFromConfig) ---
@@ -380,6 +392,15 @@ export class UIManager {
         this.eventBus = null;
         this.featureManager = null;
         this.animationController = null;
+
+        // Clean up balance animation registration if applicable
+        if (this.animationController) {
+            this.animationController.unregisterAnimation('balanceRollup');
+        }
+
+        // Destroy background panel if it exists
+        this._backgroundPanel?.destroy();
+        this._backgroundPanel = null;
     }
 
     // --- Event Handlers --- 
@@ -795,4 +816,38 @@ export class UIManager {
         });
         // --- END REVISED ANIMATION LOGIC with Rotation ---
     }
+
+    // --- Add Gradient Texture Helper ---
+    /**
+     * Creates a vertical gradient texture.
+     * @param {number} height - The height of the gradient texture.
+     * @param {string} colorBottom - CSS color string for the bottom (e.g., 'rgba(0,0,0,1)').
+     * @param {string} colorTop - CSS color string for the top (e.g., 'rgba(0,0,0,0)').
+     * @returns {PIXI.Texture} The generated gradient texture.
+     * @private
+     */
+    _createGradientTexture(height, colorBottom, colorTop) {
+        const canvas = document.createElement('canvas');
+        // Width can be 1px as it will be stretched
+        canvas.width = 1; 
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+            this.logger?.error("UIManager", "Failed to get 2D context for gradient canvas.");
+            return PIXI.Texture.WHITE; // Return fallback texture
+        }
+
+        // Create gradient (from bottom to top)
+        const gradient = ctx.createLinearGradient(0, height, 0, 0); 
+        gradient.addColorStop(0, colorBottom); // Bottom color stop
+        gradient.addColorStop(1, colorTop);   // Top color stop
+
+        // Draw the gradient
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 1, height);
+
+        return PIXI.Texture.from(canvas);
+    }
+    // ---------------------------------
 }
