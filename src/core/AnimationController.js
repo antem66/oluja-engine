@@ -19,7 +19,8 @@
 import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 // Import GSAP for potential future timeline management within the controller
-// import { gsap } from 'gsap';
+import { gsap } from 'gsap';
+import { WIN_ROLLUP_DURATION } from '../config/animationSettings.js';
 
 // Define Big Win thresholds (adjust as needed)
 const BIG_WIN_THRESHOLD_MULTIPLIER = 5;
@@ -220,16 +221,18 @@ export class AnimationController {
 
         const { totalWin, winningLines, symbolsToAnimate, currentTotalBet } = eventData;
 
-        // Log symbol animation attempt - UNCOMMENT
+        // Track longest animation duration
+        let maxDuration = 0;
+
+        // Play Symbol Animations
         if (symbolsToAnimate && symbolsToAnimate.length > 0) {
             this.logger?.debug('AnimationController', 'Calling playAnimation for symbolWin.');
             this.playAnimation('symbolWin', { symbolsToAnimate });
-        } else {
-            // Log no symbols - UNCOMMENT
-            this.logger?.debug('AnimationController', 'No symbols provided for symbolWin animation.');
+            // TODO: Get actual duration from registered symbolWin animation?
+            maxDuration = Math.max(maxDuration, 1.0); // Placeholder duration
         }
 
-        // --- Big Win Check --- 
+        // Play Big Win / Particle Effects
         if (totalWin > 0 && currentTotalBet > 0) {
             const winMultiplier = totalWin / currentTotalBet;
             let winLevel = null;
@@ -243,27 +246,24 @@ export class AnimationController {
             // Add more else if checks for other levels (EPIC, etc.)
 
             if (winLevel) {
-                // Log big win trigger - UNCOMMENT
                 this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
-                this.logger?.debug('AnimationController', 'Calling playAnimation for bigWinText.');
                 this.playAnimation('bigWinText', { totalWin, winLevel });
+                // TODO: Get actual duration from bigWinText animation?
+                maxDuration = Math.max(maxDuration, 2.0); // Placeholder
 
-                this.logger?.debug('AnimationController', 'Calling playAnimation for particleBurst.');
-                this.playAnimation('particleBurst', {
-                    amount: winLevel === 'MEGA' ? 100 : 50,
-                    duration: winLevel === 'MEGA' ? 3 : 2
-                });
+                const particleAmount = winLevel === 'MEGA' ? 100 : 50;
+                const particleDuration = winLevel === 'MEGA' ? 3 : 2;
+                this.playAnimation('particleBurst', { amount: particleAmount, duration: particleDuration });
+                maxDuration = Math.max(maxDuration, particleDuration);
             }
         }
 
-        // Call the win rollup animation
-        if (totalWin > 0) { // Only animate if there's actually a win
+        // Play Win Rollup
+        if (totalWin > 0) {
             this.logger?.debug('AnimationController', 'Calling playAnimation for winRollup.');
             this.playAnimation('winRollup', { amount: totalWin });
+            maxDuration = Math.max(maxDuration, WIN_ROLLUP_DURATION); 
         }
-
-        // TODO: Consider emitting animation:win:completed after a delay?
-        // const longestAnimDuration = ... estimate ...;
-        // setTimeout(() => this.eventBus?.emit('animation:win:completed'), longestAnimDuration);
     }
 }
+

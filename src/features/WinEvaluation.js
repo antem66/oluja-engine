@@ -232,9 +232,10 @@ function _handleEvaluateRequest() {
         eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED });
     }
     
-    // --- End Transition --- 
-    logger?.debug('WinEvaluation', 'Evaluation complete, calling updateState { isTransitioning: false }');
-    updateState({ isTransitioning: false }); 
+    // --- End Transition (REMOVED) --- 
+    // AnimationController will now signal completion via event
+    // logger?.debug('WinEvaluation', 'Evaluation complete, REMOVED calling updateState { isTransitioning: false }');
+    // updateState({ isTransitioning: false }); 
 }
 
 // Removed evaluateWin function

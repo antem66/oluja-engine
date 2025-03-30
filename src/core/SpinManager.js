@@ -125,6 +125,14 @@ export class SpinManager {
             return; // Don't start if already spinning
         }
 
+        // --- INTERRUPT previous win presentation --- 
+        this.logger?.debug('SpinManager', 'Emitting spin:interruptAnimations');
+        this.eventBus?.emit('spin:interruptAnimations');
+        // Also request payline clear immediately
+        this.logger?.debug('SpinManager', 'Emitting paylines:clearRequest');
+        this.eventBus?.emit('paylines:clearRequest');
+        // ----------------------------------------
+
         this.logger?.debug('SpinManager', 'Starting spin sequence...');
 
         this.logger?.info('SpinManager', '>>> About to call updateState { isSpinning: true } <<<');
@@ -194,6 +202,10 @@ export class SpinManager {
         this.logger?.info("SpinManager", ">>> EMITTING spin:evaluateRequest >>>");
         this.eventBus?.emit('spin:evaluateRequest');
         this.logger?.info("SpinManager", "<<< EMITTED spin:evaluateRequest <<<");
+        
+        // Set transitioning false IMMEDIATELY after requesting evaluation
+        this.logger?.debug('SpinManager', 'Evaluation requested, calling updateState { isTransitioning: false }');
+        updateState({ isTransitioning: false });
     }
 
     // --- Debug Helper Methods (Keep for now, move to ApiService later) --- 
@@ -236,8 +248,7 @@ export class SpinManager {
     }
 
     destroy() {
-        // TODO: Unsubscribe event listeners if any were added directly here
-        this.logger?.info('SpinManager', 'Destroyed.');
+        this.logger?.info('SpinManager', 'Destroying...');
         this.reelManager = null;
         this.logger = null;
         this.eventBus = null;

@@ -17,8 +17,9 @@ let eventBus = null;
 let logger = null;
 /** @type {Function | null} */
 let _unsubscribeWinEvent = null;
-/** @type {Function | null} */
-let _unsubscribeSpinStart = null; // Add listener for spin start
+let animationController = null;
+let reelManager = null;
+let uiManager = null;
 
 /**
  * Initializes the module, stores dependencies, and subscribes to events.
@@ -39,8 +40,8 @@ export function init(dependencies) { // Renamed initPaylineGraphics
     // Subscribe to win event
     _unsubscribeWinEvent = eventBus.on('win:validatedForAnimation', _drawLines); // Call renamed _drawLines
     
-    // Subscribe to spin start event to clear lines
-    _unsubscribeSpinStart = eventBus.on('spin:started', _clearLines); // Call renamed _clearLines
+    // Listen for clear requests
+    eventBus?.on('paylines:clearRequest', _clearLines);
     
     logger.info('PaylineGraphics', 'Initialized and subscribed to events.');
 }
@@ -54,12 +55,8 @@ export function destroy() {
         _unsubscribeWinEvent = null;
         logger?.info('PaylineGraphics', 'Unsubscribed from win:validatedForAnimation.');
     }
-    if (_unsubscribeSpinStart) { // Unsubscribe spin start
-        _unsubscribeSpinStart();
-        _unsubscribeSpinStart = null;
-        logger?.info('PaylineGraphics', 'Unsubscribed from spin:started.');
-    }
-    // Stop any ongoing animations and clear graphics upon destruction
+    logger?.warn('PaylineGraphics', 'TODO: Implement unsubscription for paylines:clearRequest in destroy.');
+
     _clearLines(); // Call renamed _clearLines
     winLineGraphics = null;
     eventBus = null;
@@ -176,11 +173,7 @@ function _drawLines(eventData) {
 
     const tl = gsap.timeline();
     tl.to(currentGraphics, { alpha: 0.8, duration: fadeInDuration, ease: "power1.in" }) 
-      .to(currentGraphics, { alpha: 0, duration: fadeOutDuration, ease: "power1.out" }, `+=${displayDuration}`)
-      .call(() => { 
-          currentGraphics?.clear(); // Clear graphics after fade out
-          currentLogger?.debug('PaylineGraphics', 'Win lines cleared after animation.'); 
-      });
+      .to(currentGraphics, { alpha: 0, duration: fadeOutDuration, ease: "power1.out" }, `+=${displayDuration}`);
 }
 
 /**
@@ -188,12 +181,18 @@ function _drawLines(eventData) {
  * @private // Make internal
  */
 function _clearLines() { // Renamed clearWinLines and removed export
-    logger?.debug('PaylineGraphics', 'Clearing win lines graphics.'); 
-    if (winLineGraphics) {
-        // Stop animations targeting the graphics object
-        gsap.killTweensOf(winLineGraphics); 
-        // Clear paths from the graphics object
-        winLineGraphics.clear();
-        winLineGraphics.alpha = 0; // Ensure it starts transparent if reused
+    if (!winLineGraphics) {
+        logger?.warn('PaylineGraphics', 'Attempted to clear lines, but graphics object not initialized.');
+        return;
     }
+    logger?.debug('PaylineGraphics', 'Clearing win lines: Killing animations and clearing graphics paths.');
+    
+    // Kill fade animations targeting the graphics object itself
+    gsap.killTweensOf(winLineGraphics);
+
+    // Explicitly clear drawn paths
+    winLineGraphics.clear();
+
+    // Reset alpha just in case an animation was interrupted
+    winLineGraphics.alpha = 1;
 }

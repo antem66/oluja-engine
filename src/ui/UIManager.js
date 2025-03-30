@@ -80,6 +80,10 @@ export class UIManager {
     /** @type {object | null} */
     uiStyles = null; // Store UI styles
 
+    /** @type {gsap.core.Tween | null} */
+    _winRollupTween = null; // Store tween reference
+    /** @type {object} */
+    _winRollupValues = { currentValue: 0 }; // Store tween target object
     /** @type {Array<Function>} */
     _listeners = []; // To store unsubscribe functions
     /** @type {Function | null} */
@@ -299,9 +303,10 @@ export class UIManager {
         // Example subscriptions (implement handlers later)
         const unsubscribeBalance = this.eventBus.on('server:balanceUpdated', this._handleBalanceUpdate.bind(this));
         const unsubscribeState = this.eventBus.on('game:stateChanged', this._handleStateChange.bind(this));
-        // TODO: Add listener for win animation event
+        // Listen for spin interruption
+        const unsubscribeInterrupt = this.eventBus?.on('spin:interruptAnimations', this._handleInterruptAnimations.bind(this));
 
-        this._listeners.push(unsubscribeBalance, unsubscribeState);
+        this._listeners.push(unsubscribeBalance, unsubscribeState, unsubscribeInterrupt);
         this.logger?.info('UIManager', 'Subscribed to events.');
     }
 
@@ -366,6 +371,14 @@ export class UIManager {
             // Optional: Stop animation immediately if needed
             this.stopSpinButtonRotation(); 
         }
+    }
+
+    _handleInterruptAnimations() {
+        this.logger?.debug('UIManager', 'Received spin:interruptAnimations, stopping win rollup.');
+        // Kill the stored win rollup tween if it exists
+        gsap.killTweensOf(this._winRollupValues);
+        if (this.winText) this.winText.visible = false; // Hide win text immediately
+        if (this.winLabel) this.winLabel.visible = false; // Hide label
     }
 
     // --- Utility --- 
@@ -507,52 +520,32 @@ export class UIManager {
             return;
         }
         const winAmount = data.amount;
-        // Get current currency from GameState
         const currentCurrencyCode = state.currentCurrency;
-        this.logger?.debug('UIManager', `Animating win rollup to ${winAmount} (${currentCurrencyCode})`);
-
-        if (!this.winText || !this.winLabel) {
-            this.logger?.error("UIManager", "winText or winLabel element not found for animation.");
-            return;
+        // Reset values before tweening
+        this._winRollupValues.currentValue = 0;
+        if (this.winText) {
+            this.winText.text = this._formatMoney(0, currentCurrencyCode);
+            this.winText.visible = true; // Ensure visible before animation
         }
-        if (winAmount <= 0) {
-            // Ensure text elements exist before modification
-            if (this.winText) this.winText.text = this._formatMoney(0);
-            this.winText.visible = false;
-            if (this.winLabel) this.winLabel.visible = false;
-            if (this.winRollupText) this.winRollupText.visible = false;
-            return;
-        }
-        this.winText.visible = true;
         if (this.winLabel) this.winLabel.visible = true;
-        if (this.winRollupText) this.winRollupText.visible = false;
 
-        const animationDuration = 1.5; // TODO: Get duration from config/animationSettings?
-        const animationValues = { currentValue: 0 };
+        gsap.killTweensOf(this._winRollupValues); // Kill previous tween on the same object
 
-        gsap.killTweensOf(animationValues);
-        gsap.killTweensOf(this.winText); // Kill tweens on the text object itself
-        if (this.winText) { // Check if winText exists before manipulating
-            this.winText.alpha = 1;
-            this.winText.text = this._formatMoney(0);
-        }
-
-        gsap.to(animationValues, {
+        this._winRollupTween = gsap.to(this._winRollupValues, {
             currentValue: winAmount,
-            duration: animationDuration,
+            duration: 1.5, // TODO: Get duration from config/animationSettings?
             ease: "power2.out",
             onUpdate: () => {
                 if (this.winText) { 
-                    // Pass currency code
-                    this.winText.text = this._formatMoney(animationValues.currentValue, currentCurrencyCode);
+                    this.winText.text = this._formatMoney(this._winRollupValues.currentValue, currentCurrencyCode);
                 }
             },
             onComplete: () => {
                 if (this.winText) { 
-                     // Pass currency code
                      this.winText.text = this._formatMoney(winAmount, currentCurrencyCode);
                      this.logger?.debug('UIManager', 'Win rollup animation complete.');
                 }
+                this._winRollupTween = null; // Clear reference on completion
             }
         });
     }

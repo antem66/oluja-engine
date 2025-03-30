@@ -28,3 +28,9 @@ export const BOUNCE_BACK_DURATION = 180; // ms
 export let skipBounceInTurbo = true; // Configurable turbo behavior (Currently unused by tween logic)
 
 // Removed updateAnimationSettings function - settings are applied directly based on state.isTurboMode
+
+export const BIG_WIN_THRESHOLD_MULTIPLIER = 15;
+export const MEGA_WIN_THRESHOLD_MULTIPLIER = 30;
+
+// Reduce duration for faster button enable
+export const WIN_ROLLUP_DURATION = 1.0; // Was 1.5
