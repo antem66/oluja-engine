@@ -28,6 +28,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config/gameSettings.js';
 // Import types for JSDoc
 import { Logger } from '../utils/Logger.js';
 import { AnimationController } from '../core/AnimationController.js';
+import { EventBus } from '../utils/EventBus.js';
 
 // Module-level variables for dependencies and containers
 /** @type {Logger | null} */
@@ -43,6 +44,9 @@ let particleContainer = null;
 let winOverlayAnimInterval = null;
 const particles = [];
 const symbolAnimations = new Map();
+
+/** @type {EventBus | null} */
+let eventBus = null;
 
 /**
  * Registers a custom animation for a specific symbol type
@@ -62,16 +66,18 @@ export function registerSymbolAnimation(symbolId, animationFn) {
  * @param {AnimationController} dependencies.animationController
  * @param {PIXI.Container} dependencies.overlayContainer 
  * @param {PIXI.Container} dependencies.particleContainer
+ * @param {EventBus} dependencies.eventBus
  */
 export function initAnimations(dependencies) {
-    if (!dependencies || !dependencies.logger || !dependencies.animationController || !dependencies.overlayContainer || !dependencies.particleContainer) {
-        console.error("Animations Init Error: Missing dependencies (logger, animationController, overlayContainer, particleContainer).");
+    if (!dependencies || !dependencies.logger || !dependencies.animationController || !dependencies.overlayContainer || !dependencies.particleContainer || !dependencies.eventBus) {
+        console.error("Animations Init Error: Missing dependencies (logger, eventBus, animationController, overlayContainer, particleContainer).");
         return;
     }
     logger = dependencies.logger;
     animationController = dependencies.animationController;
     assignedOverlayContainer = dependencies.overlayContainer;
     particleContainer = dependencies.particleContainer;
+    eventBus = dependencies.eventBus;
     
     logger.info("Animations", "Initialized and dependencies stored.");
 
@@ -83,6 +89,14 @@ export function initAnimations(dependencies) {
     animationController.registerAnimation('particleBurst', createParticles);
     
     logger.info("Animations", "Core animations registered with AnimationController.");
+    
+    // --- ADD Listener for Coordination Event --- 
+    if (eventBus) {
+        eventBus.on('win:coordinateAnimations', coordinateAndCompleteWinAnimations);
+        logger.info("Animations", "Registered listener for win:coordinateAnimations.");
+    } else {
+        logger.error("Animations", "EventBus missing, cannot listen for win coordination event.");
+    }
 }
 
 /**
@@ -152,118 +166,134 @@ function setupDefaultSymbolAnimations() {
  * Triggered via AnimationController.playAnimation('symbolWin', { symbols: [...] })
  * @param {object} data - Data payload from AnimationController.
  * @param {Array<import('../core/Symbol.js').SymbolSprite>} data.symbolsToAnimate - Array of SymbolSprite instances to animate.
+ * @returns {Promise<void>} A promise that resolves when all symbol animations complete.
  */
 export function animateWinningSymbols(data) {
     logger?.debug('Animations', 'animateWinningSymbols execution started.', data);
     
-    if (!data || !data.symbolsToAnimate || data.symbolsToAnimate.length === 0) {
-        logger?.debug('Animations', 'animateWinningSymbols called with no symbols.');
-        return;
-    }
-    const symbolsToAnimate = data.symbolsToAnimate;
-    logger?.debug('Animations', `Animating ${symbolsToAnimate.length} winning symbols...`);
+    // --- Return Promise --- 
+    return new Promise((resolveAll) => {
+        if (!data || !data.symbolsToAnimate || data.symbolsToAnimate.length === 0) {
+            logger?.debug('Animations', 'animateWinningSymbols called with no symbols.');
+            // return; // Resolve immediately if no symbols
+            resolveAll();
+            return;
+        }
+        const symbolsToAnimate = data.symbolsToAnimate;
+        logger?.debug('Animations', `Animating ${symbolsToAnimate.length} winning symbols...`);
 
-    const baseDuration = 0.35;
-    const duration = baseDuration * winAnimDelayMultiplier;
-    const targetScaleUp = 1.25;
-    const initialDipScale = 0.9;
-    const easeType = "power2.out";
-    const easeBack = "elastic.out(1.2, 0.5)";
+        const baseDuration = 0.35;
+        const duration = baseDuration * winAnimDelayMultiplier;
+        const targetScaleUp = 1.25;
+        const initialDipScale = 0.9;
+        const easeType = "power2.out";
+        const easeBack = "elastic.out(1.2, 0.5)";
 
-    const seenSymbols = new Set();
-    
-    symbolsToAnimate.forEach((symbol, index) => {
-        if (!symbol?.scale || symbol.isAnimating || seenSymbols.has(symbol)) return;
+        const seenSymbols = new Set();
+        const symbolPromises = []; // Array to hold promises for each symbol animation
         
-        seenSymbols.add(symbol);
-        symbol.isAnimating = true;
-        
-        gsap.killTweensOf(symbol);
-        gsap.killTweensOf(symbol.scale);
+        symbolsToAnimate.forEach((symbol, index) => {
+            if (!symbol?.scale || symbol.isAnimating || seenSymbols.has(symbol)) return;
+            
+            seenSymbols.add(symbol);
+            symbol.isAnimating = true;
+            
+            gsap.killTweensOf(symbol);
+            gsap.killTweensOf(symbol.scale);
 
-        const originalScaleX = symbol.scale.x;
-        const originalScaleY = symbol.scale.y;
-        const originalAlpha = symbol.alpha;
-        const originalRotation = symbol.rotation;
-        const originalTint = symbol.tint;
-        
-        const staggerDelay = index * 0.08 * winAnimDelayMultiplier;
-        const goldTint = 0xFFDF00;
-        
-        const animConfig = {
-            duration,
-            originalScaleX,
-            originalScaleY,
-            originalAlpha,
-            originalRotation,
-            originalTint,
-            targetScaleUp,
-            initialDipScale,
-            easeType,
-            easeBack,
-            goldTint
-        };
+            const originalScaleX = symbol.scale.x;
+            const originalScaleY = symbol.scale.y;
+            const originalAlpha = symbol.alpha;
+            const originalRotation = symbol.rotation;
+            const originalTint = symbol.tint;
+            
+            const staggerDelay = index * 0.08 * winAnimDelayMultiplier;
+            const goldTint = 0xFFDF00;
+            
+            const animConfig = {
+                duration,
+                originalScaleX,
+                originalScaleY,
+                originalAlpha,
+                originalRotation,
+                originalTint,
+                targetScaleUp,
+                initialDipScale,
+                easeType,
+                easeBack,
+                goldTint
+            };
+            
+            // --- Create Promise for this symbol's timeline ---
+            const symbolPromise = new Promise((/** @type {(value?: void) => void} */ resolveSymbol) => {
+                const tl = gsap.timeline({
+                    delay: staggerDelay,
+                    onComplete: () => {
+                        symbol.tint = originalTint;
+                        symbol.alpha = originalAlpha;
+                        symbol.rotation = originalRotation;
+                        symbol.isAnimating = false;
+                        resolveSymbol(); // Resolve this symbol's promise
+                    }
+                });
 
-        const tl = gsap.timeline({
-            delay: staggerDelay,
-            onComplete: () => {
-                symbol.tint = originalTint;
-                symbol.alpha = originalAlpha;
-                symbol.rotation = originalRotation;
-                symbol.isAnimating = false;
-            }
+                tl.to(symbol, { 
+                    alpha: 1.5, 
+                    duration: duration * 0.2, 
+                    ease: "power1.in",
+                }, 0)
+                .to(symbol.scale, { 
+                    x: originalScaleX * initialDipScale, 
+                    y: originalScaleY * initialDipScale, 
+                    duration: duration * 0.3, 
+                    ease: "power2.in" 
+                }, 0)
+                .to(symbol, {
+                    rotation: originalRotation - 0.05,
+                    duration: duration * 0.3,
+                    ease: "power1.in"
+                }, 0);
+                
+                const symbolId = symbol.symbolId;
+                const customAnimation = symbolAnimations.get(symbolId);
+                
+                if (customAnimation) {
+                    customAnimation(symbol, tl, animConfig);
+                } else {
+                    // Default animation sequence
+                    tl.to(symbol.scale, { 
+                        x: originalScaleX * targetScaleUp,
+                        y: originalScaleY * targetScaleUp,
+                        duration: duration * 0.8, // Slightly longer upward scale
+                        ease: easeType
+                    }, ">0.05") // Start slightly after dip starts returning
+                    .to(symbol.scale, { 
+                        x: originalScaleX,
+                        y: originalScaleY,
+                        duration: duration * 0.6, // Longer settle back down
+                        ease: easeBack // Apply elastic bounce back
+                    }, ">0.1") // Start settling back shortly after reaching peak
+                    .to(symbol, {
+                        tint: goldTint,
+                        duration: duration * 0.3,
+                        yoyo: true,
+                        repeat: 3, // Flash gold 3 times
+                        ease: "sine.inOut"
+                    }, duration * 0.3)
+                    .to(symbol, {
+                        rotation: originalRotation,
+                        duration: duration * 0.6,
+                        ease: easeBack
+                    }, duration * 0.4);
+                }
+            }); // --- End symbol Promise ---
+            symbolPromises.push(symbolPromise); // Add to array
         });
 
-        tl.to(symbol, { 
-            alpha: 1.5, 
-            duration: duration * 0.2, 
-            ease: "power1.in",
-        }, 0)
-        .to(symbol.scale, { 
-            x: originalScaleX * initialDipScale, 
-            y: originalScaleY * initialDipScale, 
-            duration: duration * 0.3, 
-            ease: "power2.in" 
-        }, 0)
-        .to(symbol, {
-            rotation: originalRotation - 0.05,
-            duration: duration * 0.3,
-            ease: "power1.in"
-        }, 0);
+        // Resolve the main promise when all individual symbol promises resolve
+        Promise.all(symbolPromises).then(() => resolveAll());
         
-        const symbolId = symbol.symbolId;
-        const customAnimation = symbolAnimations.get(symbolId);
-        
-        if (customAnimation) {
-            customAnimation(symbol, tl, animConfig);
-        } else {
-            // Default animation sequence
-            tl.to(symbol.scale, { 
-                x: originalScaleX * targetScaleUp,
-                y: originalScaleY * targetScaleUp,
-                duration: duration * 0.8, // Slightly longer upward scale
-                ease: easeType
-            }, ">0.05") // Start slightly after dip starts returning
-            .to(symbol.scale, { 
-                x: originalScaleX,
-                y: originalScaleY,
-                duration: duration * 0.6, // Longer settle back down
-                ease: easeBack // Apply elastic bounce back
-            }, ">0.1") // Start settling back shortly after reaching peak
-            .to(symbol, {
-                tint: goldTint,
-                duration: duration * 0.3,
-                yoyo: true,
-                repeat: 3, // Flash gold 3 times
-                ease: "sine.inOut"
-            }, duration * 0.3)
-            .to(symbol, {
-                rotation: originalRotation,
-                duration: duration * 0.6,
-                ease: easeBack
-            }, duration * 0.4);
-        }
-    });
+    }); // --- End Main Promise --- 
 }
 
 /**
@@ -272,143 +302,157 @@ export function animateWinningSymbols(data) {
  * @param {object} data - Data payload.
  * @param {number} data.winAmount - The total win amount for the spin.
  * @param {number} data.currentTotalBet - The total bet amount for the spin.
+ * @returns {Promise<void>} A promise that resolves when the big win animation completes.
  */
 function _playBigWinText(data) {
-    logger?.debug('Animations', '_playBigWinText execution started.', data);
+    // --- Return Promise --- 
+    return new Promise((resolve) => {
+        logger?.debug('Animations', '_playBigWinText execution started.', data);
 
-    if (!data) return;
-    const { winAmount, currentTotalBet } = data;
-    logger?.debug('Animations', `_playBigWinText called with win: ${winAmount}, bet: ${currentTotalBet}`);
-    
-    if (winAmount <= 0 || currentTotalBet <= 0 || !assignedOverlayContainer) return;
-
-    const winMultiplier = winAmount / currentTotalBet;
-    let winLevel = null; // 'BIG', 'MEGA', 'EPIC'
-    let winText = "";
-    let particleCount = 0;
-    let winTextColor = 0xFFFF00; // Default gold
-
-    // Define win level thresholds (example values, adjust as needed)
-    const bigWinThreshold = 15;
-    const megaWinThreshold = 40;
-    const epicWinThreshold = 75;
-
-    if (winMultiplier >= epicWinThreshold) {
-        winLevel = 'EPIC';
-        winText = "EPIC WIN!";
-        particleCount = 150;
-        winTextColor = 0xFF00FF; // Magenta for Epic
-    } else if (winMultiplier >= megaWinThreshold) {
-        winLevel = 'MEGA';
-        winText = "MEGA WIN!";
-        particleCount = 100;
-        winTextColor = 0x00FFFF; // Cyan for Mega
-    } else if (winMultiplier >= bigWinThreshold) {
-        winLevel = 'BIG';
-        winText = "BIG WIN!";
-        particleCount = 50;
-        winTextColor = 0xFF8C00; // Dark Orange for Big
-    }
-
-    if (winLevel) {
-        logger?.info('Animations', `Triggering ${winLevel} Win presentation.`);
-        // Clear any previous interval
-        if (winOverlayAnimInterval) {
-            clearInterval(winOverlayAnimInterval);
-            winOverlayAnimInterval = null;
+        if (!data) {
+            resolve(); // Resolve immediately if no data
+            return;
         }
-        // Remove existing win text if any
-        const existingText = assignedOverlayContainer.getChildByName("winOverlayText");
-        if (existingText) {
-            assignedOverlayContainer.removeChild(existingText);
-            existingText.destroy();
+        const { winAmount, currentTotalBet } = data;
+        logger?.debug('Animations', `_playBigWinText called with win: ${winAmount}, bet: ${currentTotalBet}`);
+        
+        if (winAmount <= 0 || currentTotalBet <= 0 || !assignedOverlayContainer) {
+             resolve(); // Resolve immediately if no big win or container missing
+             return;
         }
 
-        // Create the FillGradient instance
-        const fillGradient = new PIXI.FillGradient({
-            type: 'linear', // Specify linear gradient
-            colorStops: [
-                { offset: 0.3, color: winTextColor }, // Use the determined color
-                { offset: 0.7, color: 0xFFFFFF },     // White
-            ],
-            // Define gradient start/end points if needed (defaults likely vertical)
-            // start: { x: 0, y: 0 },
-            // end: { x: 0, y: 1 }, 
-        });
+        const winMultiplier = winAmount / currentTotalBet;
+        let winLevel = null; // 'BIG', 'MEGA', 'EPIC'
+        let winText = "";
+        let particleCount = 0;
+        let winTextColor = 0xFFFF00; // Default gold
 
-        const winTextStyle = new PIXI.TextStyle({
-            fontFamily: 'Arial', 
-            fontSize: 80,
-            fontWeight: 'bold',
-            fill: fillGradient, 
-            stroke: { color: 0x000000, width: 5 }, 
-            dropShadow: { // Define the object to enable drop shadow
-                color: 0x000000, 
-                blur: 10,
-                angle: Math.PI / 4,
-                distance: 8,
-                alpha: 0.75 
-            },
-            align: 'center'
-        });
+        // Define win level thresholds (example values, adjust as needed)
+        const bigWinThreshold = 15;
+        const megaWinThreshold = 40;
+        const epicWinThreshold = 75;
 
-        const winOverlayText = new PIXI.Text({ text: winText, style: winTextStyle });
-        winOverlayText.anchor.set(0.5);
-        winOverlayText.x = GAME_WIDTH / 2;
-        winOverlayText.y = GAME_HEIGHT / 2 - 50; // Position slightly above center
-        winOverlayText.name = "winOverlayText";
-        winOverlayText.alpha = 0;
-        winOverlayText.scale.set(0.5);
-
-        assignedOverlayContainer.addChild(winOverlayText);
-
-        // Entrance animation
-        gsap.to(winOverlayText, { alpha: 1, duration: 0.4, ease: "power2.out" });
-        gsap.to(winOverlayText.scale, { x: 1, y: 1, duration: 0.6, ease: "elastic.out(1, 0.5)" });
-
-        // Pulsing animation using interval for continuous effect
-        let scaleDirection = 1;
-        winOverlayAnimInterval = setInterval(() => {
-            const targetScale = 1 + (0.05 * scaleDirection);
-            gsap.to(winOverlayText.scale, { 
-                x: targetScale, 
-                y: targetScale, 
-                duration: 0.7, // Slower pulse
-                ease: "sine.inOut" 
-            });
-            scaleDirection *= -1; // Reverse direction
-        }, 800); // Interval matches duration + small buffer
-
-        // Trigger particle burst via AnimationController
-        if (particleCount > 0) {
-             animationController?.playAnimation('particleBurst', { count: particleCount });
+        if (winMultiplier >= epicWinThreshold) {
+            winLevel = 'EPIC';
+            winText = "EPIC WIN!";
+            particleCount = 150;
+            winTextColor = 0xFF00FF; // Magenta for Epic
+        } else if (winMultiplier >= megaWinThreshold) {
+            winLevel = 'MEGA';
+            winText = "MEGA WIN!";
+            particleCount = 100;
+            winTextColor = 0x00FFFF; // Cyan for Mega
+        } else if (winMultiplier >= bigWinThreshold) {
+            winLevel = 'BIG';
+            winText = "BIG WIN!";
+            particleCount = 50;
+            winTextColor = 0xFF8C00; // Dark Orange for Big
         }
 
-        // Automatically remove after a duration
-        const displayDuration = 4000 * winAnimDelayMultiplier; // Longer display time
-        setTimeout(() => {
+        if (winLevel) {
+            logger?.info('Animations', `Triggering ${winLevel} Win presentation.`);
+            // Clear any previous interval
             if (winOverlayAnimInterval) {
                 clearInterval(winOverlayAnimInterval);
                 winOverlayAnimInterval = null;
             }
-            if (winOverlayText.parent) { // Check if still attached
-                 gsap.to(winOverlayText, { 
-                     alpha: 0, 
-                     duration: 0.5, 
-                     ease: "power2.in",
-                     onComplete: () => {
-                         if (winOverlayText.parent) {
-                            assignedOverlayContainer?.removeChild(winOverlayText);
-                            winOverlayText.destroy();
-                         }
-                     }
-                });
+            // Remove existing win text if any
+            const existingText = assignedOverlayContainer.getChildByName("winOverlayText");
+            if (existingText) {
+                assignedOverlayContainer.removeChild(existingText);
+                existingText.destroy();
             }
-        }, displayDuration);
-        
-    } else {
-        logger?.debug('Animations', 'Win amount did not trigger Big/Mega/Epic presentation.');
-    }
+
+            // Create the FillGradient instance
+            const fillGradient = new PIXI.FillGradient({
+                type: 'linear', // Specify linear gradient
+                colorStops: [
+                    { offset: 0.3, color: winTextColor }, // Use the determined color
+                    { offset: 0.7, color: 0xFFFFFF },     // White
+                ],
+                // Define gradient start/end points if needed (defaults likely vertical)
+                // start: { x: 0, y: 0 },
+                // end: { x: 0, y: 1 }, 
+            });
+
+            const winTextStyle = new PIXI.TextStyle({
+                fontFamily: 'Arial', 
+                fontSize: 80,
+                fontWeight: 'bold',
+                fill: fillGradient, 
+                stroke: { color: 0x000000, width: 5 }, 
+                dropShadow: { // Define the object to enable drop shadow
+                    color: 0x000000, 
+                    blur: 10,
+                    angle: Math.PI / 4,
+                    distance: 8,
+                    alpha: 0.75 
+                },
+                align: 'center'
+            });
+
+            const winOverlayText = new PIXI.Text({ text: winText, style: winTextStyle });
+            winOverlayText.anchor.set(0.5);
+            winOverlayText.x = GAME_WIDTH / 2;
+            winOverlayText.y = GAME_HEIGHT / 2 - 50; // Position slightly above center
+            winOverlayText.name = "winOverlayText";
+            winOverlayText.alpha = 0;
+            winOverlayText.scale.set(0.5);
+
+            assignedOverlayContainer.addChild(winOverlayText);
+
+            // Entrance animation
+            gsap.to(winOverlayText, { alpha: 1, duration: 0.4, ease: "power2.out" });
+            gsap.to(winOverlayText.scale, { x: 1, y: 1, duration: 0.6, ease: "elastic.out(1, 0.5)" });
+
+            // Pulsing animation using interval for continuous effect
+            let scaleDirection = 1;
+            winOverlayAnimInterval = setInterval(() => {
+                const targetScale = 1 + (0.05 * scaleDirection);
+                gsap.to(winOverlayText.scale, { 
+                    x: targetScale, 
+                    y: targetScale, 
+                    duration: 0.7, // Slower pulse
+                    ease: "sine.inOut" 
+                });
+                scaleDirection *= -1; // Reverse direction
+            }, 800); // Interval matches duration + small buffer
+
+            // Trigger particle burst via AnimationController
+            if (particleCount > 0) {
+                 animationController?.playAnimation('particleBurst', { count: particleCount });
+            }
+
+            // Automatically remove after a duration
+            const displayDuration = 4000 * winAnimDelayMultiplier; // Longer display time
+            setTimeout(() => {
+                if (winOverlayAnimInterval) {
+                    clearInterval(winOverlayAnimInterval);
+                    winOverlayAnimInterval = null;
+                }
+                if (winOverlayText.parent) { // Check if still attached
+                     gsap.to(winOverlayText, { 
+                         alpha: 0, 
+                         duration: 0.5, 
+                         ease: "power2.in",
+                         onComplete: () => {
+                             if (winOverlayText.parent) {
+                                assignedOverlayContainer?.removeChild(winOverlayText);
+                                winOverlayText.destroy();
+                             }
+                             resolve(); // Resolve the promise when fade out completes
+                         }
+                    });
+                } else {
+                    resolve(); // Resolve if text was already removed
+                }
+            }, displayDuration);
+            
+        } else {
+            logger?.debug('Animations', 'Win amount did not trigger Big/Mega/Epic presentation.');
+            resolve(); // Resolve immediately if no big win triggered
+        }
+    }); // --- End Promise ---
 }
 
 /**
@@ -479,3 +523,79 @@ export function updateParticles(delta) {
 }
 
 // TODO (Phase 2/3): Add destroy function to clean up intervals, containers?, particles?
+
+// --- NEW COORDINATOR FUNCTION --- 
+/**
+ * Coordinates the execution of all win-related animations and emits
+ * 'spin:sequenceComplete' when all have finished.
+ * Listens for 'win:coordinateAnimations' event.
+ * @param {object} eventData - Payload from 'win:coordinateAnimations' event.
+ */
+async function coordinateAndCompleteWinAnimations(eventData) {
+    logger?.debug('Animations', 'Coordinating win animations...', eventData);
+
+    if (!eventData || !animationController || !eventBus) {
+        logger?.error('Animations', 'Cannot coordinate animations: Missing data, controller, or eventBus.');
+        return;
+    }
+
+    const { totalWin, symbolsToAnimate, currentTotalBet } = eventData;
+    const animationPromises = [];
+
+    // 1. Trigger Symbol Animations (if any)
+    if (symbolsToAnimate && symbolsToAnimate.length > 0) {
+        animationPromises.push(animationController.playAnimation('symbolWin', { symbolsToAnimate }));
+    }
+
+    // 2. Trigger Big Win Text & Particles (if applicable)
+    if (totalWin > 0 && currentTotalBet > 0) {
+        const winMultiplier = totalWin / currentTotalBet;
+        // Reuse thresholds (consider moving to config)
+        const bigWinThreshold = 15;
+        const megaWinThreshold = 40;
+        const epicWinThreshold = 75;
+        let winLevel = null;
+        let particleCount = 0;
+
+        if (winMultiplier >= epicWinThreshold) {
+            winLevel = 'EPIC'; particleCount = 150;
+        } else if (winMultiplier >= megaWinThreshold) {
+            winLevel = 'MEGA'; particleCount = 100;
+        } else if (winMultiplier >= bigWinThreshold) {
+            winLevel = 'BIG'; particleCount = 50;
+        }
+
+        if (winLevel) {
+            // Big Win Text returns a promise
+            animationPromises.push(animationController.playAnimation('bigWinText', { totalWin, currentTotalBet /* Pass original data */ }));
+            // Particles don't return a promise we need to wait for
+            animationController.playAnimation('particleBurst', { count: particleCount });
+        }
+    }
+
+    // 3. Trigger Win Rollup (if any win)
+    if (totalWin > 0) {
+        // UIManager.animateWin returns a promise
+        animationPromises.push(animationController.playAnimation('winRollup', { amount: totalWin }));
+    }
+
+    // 4. Wait for all critical animations to complete
+    if (animationPromises.length > 0) {
+        try {
+            logger?.debug('Animations', `Waiting for ${animationPromises.length} animation promises...`);
+            await Promise.all(animationPromises);
+            logger?.info('Animations', 'All coordinated win animations complete.');
+        } catch (error) {
+            logger?.error('Animations', 'Error occurred during coordinated win animations:', error);
+            // Decide how to handle errors - still emit complete?
+        }
+    } else {
+         logger?.debug('Animations', 'No win animations were triggered to wait for.');
+    }
+
+    // 5. Emit completion event
+    logger?.info('Animations', '>>> EMITTING spin:sequenceComplete >>>');
+    eventBus.emit('spin:sequenceComplete');
+    logger?.info('Animations', '<<< EMITTED spin:sequenceComplete <<<');
+}
+// --- END COORDINATOR --- 

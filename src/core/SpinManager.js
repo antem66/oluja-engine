@@ -112,7 +112,7 @@ export class SpinManager {
     startSpin() {
         this.logger?.info('SpinManager', 'startSpin() called.');
 
-        if (state.isSpinning || state.isInFreeSpins || state.isTransitioning) {
+        if (state.isSpinning || state.isInFreeSpins || state.isFeatureTransitioning) {
             this.logger?.warn('SpinManager', 'Spin requested but already spinning or in transition/FS.');
             return;
         }
@@ -206,8 +206,7 @@ export class SpinManager {
             return;
         }
 
-        this.logger?.debug("SpinManager", "Calling updateState { isSpinning: false, isTransitioning: true }");
-        updateState({ isSpinning: false, isTransitioning: true });
+        updateState({ isSpinning: false });
         this.logger?.debug("SpinManager", "All reels visually stopped.");
 
         // Emit event for UI to stop spin animation (UI listens for state change)
@@ -223,10 +222,6 @@ export class SpinManager {
         this.logger?.info("SpinManager", ">>> EMITTING spin:evaluateRequest >>>");
         this.eventBus?.emit('spin:evaluateRequest');
         this.logger?.info("SpinManager", "<<< EMITTED spin:evaluateRequest <<<");
-        
-        // Set transitioning false IMMEDIATELY after requesting evaluation
-        this.logger?.debug('SpinManager', 'Evaluation requested, calling updateState { isTransitioning: false }');
-        updateState({ isTransitioning: false });
     }
 
     // --- Debug Helper Methods (Keep for now, move to ApiService later) --- 

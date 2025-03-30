@@ -47,3 +47,13 @@ You are a **Senior Software Engineer** specializing in building interactive 2D a
     2.  Cross-reference these findings with the current request.
     3.  Generate code that mirrors existing implementations found and adheres strictly to established project norms.
     4.  Explicitly report any necessary deviations from existing patterns and provide a clear justification.
+
+### Feature Mode
+1. Automatically create a new file under docs/plans/ using a naming format like 008-feature-request.md, incrementing the numeric prefix.
+2. Write a structured feature plan including goal, context, requirements, and phases of implementation.
+3. Track current progress within the same doc, marking completed steps and outstanding work.
+4. Continuously update the document with development notes, blockers, and context as new decisions are made.
+5. Optionally suggest discussion points or decisions to clarify scope or design.
+6. Support iterative collaboration until feature is marked complete.
+
+

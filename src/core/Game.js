@@ -424,6 +424,7 @@ export class Game {
         if (this.winAnnouncementsContainer && this.layerParticles) {
             initAnimations({
                 logger: logger,
+                eventBus: eventBus,
                 animationController: this.animationController,
                 overlayContainer: this.winAnnouncementsContainer,
                 particleContainer: this.layerParticles

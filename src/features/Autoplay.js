@@ -47,7 +47,7 @@ export function initAutoplay(dependencies) {
 
     // Subscribe to the event indicating a spin sequence has fully completed
     // TODO: Determine the correct event: 'spin:complete', 'reels:stopped', or 'animation:completed'? Using 'reels:stopped' for now.
-    const unsubscribeSpinEnd = eventBus.on('reels:stopped', handleSpinEndForAutoplay);
+    const unsubscribeSpinEnd = eventBus.on('spin:sequenceComplete', handleSpinEndForAutoplay);
     listeners.push(unsubscribeSpinEnd);
     
     // Listen for state changes to potentially cancel autoplay mid-spin
@@ -88,12 +88,12 @@ function handleSpinEndForAutoplay() {
     
     // Check conditions *after* the spin has ended
     if (!state.isAutoplaying) {
-        logger?.debug('Autoplay', 'Spin ended, but autoplay is not active.');
+        logger?.debug('Autoplay', 'Spin sequence complete, but autoplay is not active.');
         return;
     }
 
     if (state.isInFreeSpins) {
-        logger?.info('Autoplay', 'Spin ended, stopping autoplay because Free Spins are active.');
+        logger?.info('Autoplay', 'Spin sequence complete, stopping autoplay because Free Spins are active.');
         // Request state change - UIManager will handle button updates
         eventBus?.emit('autoplay:requestStop'); 
         return;
@@ -102,7 +102,7 @@ function handleSpinEndForAutoplay() {
     if (state.autoplaySpinsRemaining > 0) {
         const currentTotalBet = state.currentBetPerLine * NUM_PAYLINES; // Still need to read state for this
         if (state.balance < currentTotalBet) {
-            logger?.info('Autoplay', 'Spin ended, stopping autoplay due to low balance.');
+            logger?.info('Autoplay', 'Spin sequence complete, stopping autoplay due to low balance.');
             eventBus?.emit('autoplay:requestStop', { reason: 'balance' }); // Emit stop request
             // Potentially notify user via event -> Notifications module?
             return;
@@ -118,7 +118,7 @@ function handleSpinEndForAutoplay() {
         // --- End Decrement ---
 
         const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
-        logger?.debug('Autoplay', `Spin ended, scheduling next autoplay spin in ${delay}ms.`);
+        logger?.debug('Autoplay', `Spin sequence complete, scheduling next autoplay spin in ${delay}ms.`);
 
         nextSpinTimeout = setTimeout(() => {
             // Final check before spinning
@@ -133,7 +133,7 @@ function handleSpinEndForAutoplay() {
         }, delay);
 
     } else {
-        logger?.info('Autoplay', 'Spin ended, autoplay finished naturally.');
+        logger?.info('Autoplay', 'Spin sequence complete, autoplay finished naturally.');
         eventBus?.emit('autoplay:requestStop', { reason: 'completed' }); // Emit stop request
     }
 }
@@ -151,13 +151,13 @@ function handleStateChangeForAutoplay(eventData) {
     // Check if autoplay was just turned ON
     if (updatedProps.includes('isAutoplaying') && newState.isAutoplaying) {
         // Check if we are in a state where we *can* start spinning
-        if (!newState.isSpinning && !newState.isTransitioning && !newState.isInFreeSpins) {
+        if (!newState.isSpinning && !newState.isFeatureTransitioning && !newState.isInFreeSpins) {
             logger?.info('Autoplay', 'Autoplay activated via state change, scheduling first spin.');
             // Ensure we have a spin manager before setting timeout
             if (spinManager) { 
                 setTimeout(() => {
                     // Re-check state and spinManager *inside* the timeout
-                    if (spinManager && state.isAutoplaying && !state.isSpinning && !state.isTransitioning && !state.isInFreeSpins) {
+                    if (spinManager && state.isAutoplaying && !state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
                         logger?.debug('Autoplay', 'Timeout triggered, starting first spin.');
                         spinManager.startSpin(); 
                     } else {
@@ -172,7 +172,7 @@ function handleStateChangeForAutoplay(eventData) {
         } else {
              logger?.debug('Autoplay', 'Autoplay activated, but cannot start first spin due to current state.', { 
                  isSpinning: newState.isSpinning, 
-                 isTransitioning: newState.isTransitioning, 
+                 isFeatureTransitioning: newState.isFeatureTransitioning,
                  isInFreeSpins: newState.isInFreeSpins 
              });
         }

@@ -90,4 +90,19 @@ export class BackgroundManager {
 
         console.log(`Background adjusted: offset(${offsetX}, ${offsetY}), scale: ${scale.toFixed(2)}`);
     }
+
+    /**
+     * Placeholder method to change the background tint/image.
+     * Called by FreeSpins feature.
+     * TODO: Implement actual background change logic (e.g., tinting, swapping texture).
+     * @param {number} targetColor - The target background color tint (e.g., 0xff0000).
+     * @param {number} duration - Duration of the transition in seconds.
+     */
+    changeBackground(targetColor, duration) {
+        this.logger?.info('BackgroundManager', `Placeholder: changeBackground called with color ${targetColor.toString(16)} and duration ${duration}s.`);
+        // TODO: Implement tint animation using GSAP
+        // if (this.backgroundSprite) {
+        //     gsap.to(this.backgroundSprite, { pixi: { tint: targetColor }, duration: duration });
+        // }
+    }
 }

@@ -135,30 +135,32 @@ export class AnimationController {
         }
     }
 
-
     /**
      * Plays all registered animation callbacks for a given animation name.
+     * Each callback is expected to return a Promise that resolves when its animation completes.
      * @param {string} animationName - The name/key of the animation to play.
      * @param {any} [data] - Optional data payload to pass to the animation callback functions.
+     * @returns {Promise<void>} A Promise that resolves when all animations for this name complete.
      */
-    playAnimation(animationName, data = null) {
+    async playAnimation(animationName, data = null) {
         if (!this.registeredAnimations) {
             this.logger?.warn('AnimationController', `Attempted to play animation "${animationName}" after controller was destroyed.`);
-            return;
+            return Promise.reject(new Error('Controller destroyed'));
         }
         if (!this.registeredAnimations.has(animationName)) {
             this.logger?.debug('AnimationController', `playAnimation called for "${animationName}", but no callbacks registered.`);
-            return;
+            return Promise.resolve();
         }
 
         const callbacks = this.registeredAnimations.get(animationName);
         if (!callbacks || callbacks.length === 0) {
             this.logger?.debug('AnimationController', `playAnimation called for "${animationName}", but callback list is empty.`);
-            return;
+            return Promise.resolve();
         }
 
         this.logger?.info('AnimationController', `Playing animation "${animationName}" (${callbacks.length} callbacks)...`, { data });
 
+        const animationPromises = [];
         // Execute callbacks safely
         callbacks.forEach(callback => {
             try {
@@ -166,19 +168,38 @@ export class AnimationController {
                 this.logger?.debug('AnimationController', `Executing callback for "${animationName}"...`);
                 // Execute the registered animation function
                 if (typeof callback === 'function') {
-                    callback(data);
+                    const promise = callback(data); // Assume it returns a Promise
+                    if (promise instanceof Promise) {
+                        animationPromises.push(promise);
+                    } else {
+                         this.logger?.warn('AnimationController', `Callback for "${animationName}" did not return a Promise.`);
+                         // Push a resolved promise to avoid breaking Promise.all
+                         animationPromises.push(Promise.resolve());
+                    }
                 } else {
                     this.logger?.error('AnimationController', `Registered item for "${animationName}" is not a function.`);
+                    animationPromises.push(Promise.resolve()); // Push resolved promise
                 }
                 // Log after calling callback
-                this.logger?.debug('AnimationController', `Callback executed for "${animationName}".`);
+                // Logging completion here is premature, happens when promise resolves
+                // this.logger?.debug('AnimationController', `Callback executed for "${animationName}".`);
             } catch (error) {
                 this.logger?.error('AnimationController', `Error executing animation callback for "${animationName}":`, error);
+                // Push a rejected promise? Or resolve to not break sequence?
+                // Let's resolve for now, but log the error.
+                animationPromises.push(Promise.resolve());
                 // TODO: Consider more robust error handling - stop sequence? emit error event?
             }
         });
 
-        // TODO: Potentially manage completion events or timelines here
+        // Wait for all animation promises to complete
+        return Promise.all(animationPromises).then(() => {
+            this.logger?.info('AnimationController', `Animation "${animationName}" completed.`);
+        }).catch(error => {
+            this.logger?.error('AnimationController', `Error during animations for "${animationName}":`, error);
+            // Re-throw or handle as needed
+            throw error; 
+        });
     }
 
     /**
@@ -210,7 +231,7 @@ export class AnimationController {
      * @param {number} eventData.currentTotalBet
      * @private
      */
-    _handleWinValidated(eventData) {
+    async _handleWinValidated(eventData) {
         // Log trigger - UNCOMMENT
         this.logger?.debug('AnimationController', 'Received win:validatedForAnimation trigger', eventData);
 
@@ -221,49 +242,51 @@ export class AnimationController {
 
         const { totalWin, winningLines, symbolsToAnimate, currentTotalBet } = eventData;
 
-        // Track longest animation duration
-        let maxDuration = 0;
+        // --- EMIT COORDINATION EVENT --- 
+        // Instead of calling playAnimation directly here, emit an event
+        // for Animations.js (or another coordinator) to handle.
+        this.logger?.debug('AnimationController', 'Emitting win:coordinateAnimations');
+        this.eventBus?.emit('win:coordinateAnimations', eventData);
+        // --- END EMIT --- 
 
-        // Play Symbol Animations
-        if (symbolsToAnimate && symbolsToAnimate.length > 0) {
-            this.logger?.debug('AnimationController', 'Calling playAnimation for symbolWin.');
-            this.playAnimation('symbolWin', { symbolsToAnimate });
-            // TODO: Get actual duration from registered symbolWin animation?
-            maxDuration = Math.max(maxDuration, 1.0); // Placeholder duration
-        }
+        // --- REMOVE OLD playAnimation calls --- 
+        // // Track promises for all animations triggered by this win
+        // const allWinPromises = [];
 
-        // Play Big Win / Particle Effects
-        if (totalWin > 0 && currentTotalBet > 0) {
-            const winMultiplier = totalWin / currentTotalBet;
-            let winLevel = null;
+        // // Play Symbol Animations
+        // if (symbolsToAnimate && symbolsToAnimate.length > 0) {
+        //     this.logger?.debug('AnimationController', 'Calling playAnimation for symbolWin.');
+        //     this.playAnimation('symbolWin', { symbolsToAnimate }); 
+        // }
 
-            // Determine win level (check highest first)
-            if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
-                winLevel = 'MEGA';
-            } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
-                winLevel = 'BIG';
-            }
-            // Add more else if checks for other levels (EPIC, etc.)
+        // // Play Big Win / Particle Effects
+        // if (totalWin > 0 && currentTotalBet > 0) {
+        //     const winMultiplier = totalWin / currentTotalBet;
+        //     let winLevel = null;
 
-            if (winLevel) {
-                this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
-                this.playAnimation('bigWinText', { totalWin, winLevel });
-                // TODO: Get actual duration from bigWinText animation?
-                maxDuration = Math.max(maxDuration, 2.0); // Placeholder
+        //     // Determine win level (check highest first)
+        //     if (winMultiplier >= MEGA_WIN_THRESHOLD_MULTIPLIER) {
+        //         winLevel = 'MEGA';
+        //     } else if (winMultiplier >= BIG_WIN_THRESHOLD_MULTIPLIER) {
+        //         winLevel = 'BIG';
+        //     }
 
-                const particleAmount = winLevel === 'MEGA' ? 100 : 50;
-                const particleDuration = winLevel === 'MEGA' ? 3 : 2;
-                this.playAnimation('particleBurst', { amount: particleAmount, duration: particleDuration });
-                maxDuration = Math.max(maxDuration, particleDuration);
-            }
-        }
+        //     if (winLevel) {
+        //         this.logger?.info('AnimationController', `Triggering ${winLevel} WIN animation!`);
+        //         this.playAnimation('bigWinText', { totalWin, winLevel });
+        //         this.playAnimation('winParticles', { winLevel }); 
+        //     }
+        // }
 
-        // Play Win Rollup
-        if (totalWin > 0) {
-            this.logger?.debug('AnimationController', 'Calling playAnimation for winRollup.');
-            this.playAnimation('winRollup', { amount: totalWin });
-            maxDuration = Math.max(maxDuration, WIN_ROLLUP_DURATION); 
-        }
+        // // Play Win Rollup Animation
+        // if (totalWin > 0) {
+        //     this.logger?.debug('AnimationController', 'Calling playAnimation for winRollup.');
+        //     this.playAnimation('winRollup', { amount: totalWin }); 
+        // }
+        // --- END REMOVAL ---
+        
+        // --- IMPORTANT --- 
+        // This handler now only validates and emits the coordination event.
     }
 }
 

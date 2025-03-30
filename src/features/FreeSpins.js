@@ -79,7 +79,7 @@ export function initFreeSpins(dependencies) {
 
     // Listen for spin end to handle next free spin or exit
     // TODO: Determine correct event: 'reels:stopped' or 'spin:complete'?
-    const unsubSpinEnd = eventBus.on('reels:stopped', handleFreeSpinEnd); 
+    const unsubSpinEnd = eventBus.on('spin:sequenceComplete', handleFreeSpinEnd);
     listeners.push(unsubSpinEnd);
 
     // TODO: Listen for state changes? (e.g., if FS cancelled externally?)
@@ -183,12 +183,12 @@ export function enterFreeSpins(eventData = {}) { // Now expects eventData
  */
 function playFreeSpinsEntryAnimation(onComplete = () => {}) {
     // Request state update: transitioning = true
-    eventBus?.emit('state:update', { isTransitioning: true });
+    eventBus?.emit('state:update', { isFeatureTransitioning: true });
     logger?.debug('FreeSpins', 'Starting entry animation.');
 
     if (!specialAnimationsContainer || !animationController) {
         logger?.error('FreeSpins', 'Cannot play entry animation - container or animationController missing.');
-        eventBus?.emit('state:update', { isTransitioning: false }); // Reset state
+        eventBus?.emit('state:update', { isFeatureTransitioning: false });
         onComplete(); // Call complete immediately
         return;
     }
@@ -240,8 +240,7 @@ function playFreeSpinsEntryAnimation(onComplete = () => {}) {
             if (specialAnimationsContainer) {
                 specialAnimationsContainer.removeChildren();
             }
-            // Request state update: transitioning = false
-            eventBus?.emit('state:update', { isTransitioning: false });
+            eventBus?.emit('state:update', { isFeatureTransitioning: false });
             logger?.debug('FreeSpins', 'Entry animation complete.');
             onComplete(); 
         }
@@ -281,14 +280,14 @@ function startFreeSpin() {
     const currentRemaining = state.freeSpinsRemaining;
     const currentInFs = state.isInFreeSpins;
     const currentSpinning = state.isSpinning;
-    const currentTransitioning = state.isTransitioning;
+    const currentFeatureTransitioning = state.isFeatureTransitioning;
     
-    logger?.debug('FreeSpins', 'Attempting startFreeSpin', { currentInFs, currentRemaining, currentSpinning, currentTransitioning });
+    logger?.debug('FreeSpins', 'Attempting startFreeSpin', { currentInFs, currentRemaining, currentSpinning, currentFeatureTransitioning });
 
-    if (!currentInFs || currentRemaining <= 0 || currentSpinning || currentTransitioning) {
+    if (!currentInFs || currentRemaining <= 0 || currentSpinning || currentFeatureTransitioning) {
         logger?.warn('FreeSpins', 'Conditions not met for starting free spin.');
         // If we shouldn't be spinning but are in FS mode with spins left, maybe try exiting?
-        if (currentInFs && currentRemaining <= 0 && !currentSpinning && !currentTransitioning) {
+        if (currentInFs && currentRemaining <= 0 && !currentSpinning && !currentFeatureTransitioning) {
              logger?.info('FreeSpins', 'Auto-triggering exitFreeSpins due to 0 remaining spins.');
              exitFreeSpins();
         }
@@ -318,8 +317,7 @@ export function exitFreeSpins() {
     }
 
     logger?.info('FreeSpins', `Exit Free Spins. Total Win: ${currentTotalWin?.toFixed(2)}`);
-    // Request state update: transitioning = true
-    eventBus?.emit('state:update', { isTransitioning: true }); // Use eventBus
+    eventBus?.emit('state:update', { isFeatureTransitioning: true });
 
     // Request background change via BackgroundManager
     backgroundManager?.changeBackground(normalBgColor, 1); // Keep this call (method needs adding)
@@ -341,7 +339,7 @@ export function exitFreeSpins() {
                 isInFreeSpins: false,
                 freeSpinsRemaining: 0,
                 // Keep totalFreeSpinsWin as is for history
-                isTransitioning: false, // Mark transition complete
+                isFeatureTransitioning: false,
             });
             // UI updates (displays, buttons) handled by UIManager listening to state changes
         }
@@ -349,7 +347,7 @@ export function exitFreeSpins() {
 }
 
 /**
- * Handles logic after a free spin completes. Triggered by 'reels:stopped' event.
+ * Handles logic after a free spin completes. Triggered by 'spin:sequenceComplete' event.
  * Calculates win, updates state, and schedules next action (spin or exit).
  */
 export function handleFreeSpinEnd() { 
@@ -379,15 +377,10 @@ export function handleFreeSpinEnd() {
     // Delay before next action (next spin or exit)
     // TODO: Use AnimationController to manage delays/sequences?
     const delay = (state.isTurboMode ? 200 : 800) * winAnimDelayMultiplier;
-    // Request state update: transitioning = true
-    eventBus?.emit('state:update', { isTransitioning: true }); // Use eventBus
 
     logger?.debug('FreeSpins', `Scheduling next action in ${delay}ms...`);
 
     setTimeout(() => {
-        // Request state update: transitioning = false
-        eventBus?.emit('state:update', { isTransitioning: false }); // Use eventBus
-
         // Read updated remaining spins count AFTER state update
         const remainingSpinsAfterUpdate = state.freeSpinsRemaining;
 

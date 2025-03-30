@@ -57,6 +57,7 @@ export let state = {
     // Spin state
     isSpinning: false,
     isTransitioning: false,
+    isFeatureTransitioning: false,
     targetStoppingReelIndex: -1,
 
     // Features state
@@ -105,6 +106,7 @@ export function initGameState(dependencies) {
         winningLinesInfo: [],
         isSpinning: false,
         isTransitioning: false,
+        isFeatureTransitioning: false,
         targetStoppingReelIndex: -1,
         isAutoplaying: false,
         autoplaySpinsRemaining: 0,
@@ -221,7 +223,7 @@ function _handleAutoplayToggle() {
         loggerInstance?.info('GameState', `Autoplay toggled OFF`);
     } else {
         // Start autoplay only if conditions met
-        if (!state.isSpinning && !state.isTransitioning && !state.isInFreeSpins) {
+        if (!state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
             updateState({
                 isAutoplaying: true,
                 autoplaySpinsRemaining: state.autoplaySpinsDefault
@@ -236,8 +238,8 @@ function _handleAutoplayToggle() {
 }
 
 function _handleBetChange(direction) {
-    if (state.isSpinning || state.isTransitioning || state.isInFreeSpins || state.isAutoplaying) {
-        loggerInstance?.warn('GameState', 'Cannot change bet during spin, transition, free spins, or autoplay.');
+    if (state.isSpinning || state.isFeatureTransitioning || state.isInFreeSpins || state.isAutoplaying) {
+        loggerInstance?.warn('GameState', 'Cannot change bet during spin, feature transition, free spins, or autoplay.');
         return;
     }
 

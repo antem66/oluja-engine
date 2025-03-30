@@ -542,39 +542,45 @@ export class UIManager {
      * @param {number} data.amount - The final win amount to display.
      */
     animateWin(data) {
-        if (!data || typeof data.amount !== 'number') {
-            this.logger?.error("UIManager", "animateWin called with invalid data", data);
-            return;
-        }
-        const winAmount = data.amount;
-        const currentCurrencyCode = state.currentCurrency;
-        // Reset values before tweening
-        this._winRollupValues.currentValue = 0;
-        if (this.winText) {
-            this.winText.text = this._formatMoney(0, currentCurrencyCode);
-            this.winText.visible = true; // Ensure visible before animation
-        }
-        if (this.winLabel) this.winLabel.visible = true;
-
-        gsap.killTweensOf(this._winRollupValues); // Kill previous tween on the same object
-
-        this._winRollupTween = gsap.to(this._winRollupValues, {
-            currentValue: winAmount,
-            duration: 1.5, // TODO: Get duration from config/animationSettings?
-            ease: "power2.out",
-            onUpdate: () => {
-                if (this.winText) { 
-                    this.winText.text = this._formatMoney(this._winRollupValues.currentValue, currentCurrencyCode);
-                }
-            },
-            onComplete: () => {
-                if (this.winText) { 
-                     this.winText.text = this._formatMoney(winAmount, currentCurrencyCode);
-                     this.logger?.debug('UIManager', 'Win rollup animation complete.');
-                }
-                this._winRollupTween = null; // Clear reference on completion
+        // --- Return a Promise --- 
+        return new Promise((resolve) => {
+            if (!data || typeof data.amount !== 'number') {
+                this.logger?.error("UIManager", "animateWin called with invalid data", data);
+                // return; // Resolve promise immediately on error
+                resolve();
+                return;
             }
-        });
+            const winAmount = data.amount;
+            const currentCurrencyCode = state.currentCurrency;
+            // Reset values before tweening
+            this._winRollupValues.currentValue = 0;
+            if (this.winText) {
+                this.winText.text = this._formatMoney(0, currentCurrencyCode);
+                this.winText.visible = true; // Ensure visible before animation
+            }
+            if (this.winLabel) this.winLabel.visible = true;
+
+            gsap.killTweensOf(this._winRollupValues); // Kill previous tween on the same object
+
+            this._winRollupTween = gsap.to(this._winRollupValues, {
+                currentValue: winAmount,
+                duration: 1.5, // TODO: Get duration from config/animationSettings?
+                ease: "power2.out",
+                onUpdate: () => {
+                    if (this.winText) { 
+                        this.winText.text = this._formatMoney(this._winRollupValues.currentValue, currentCurrencyCode);
+                    }
+                },
+                onComplete: () => {
+                    if (this.winText) { 
+                         this.winText.text = this._formatMoney(winAmount, currentCurrencyCode);
+                         this.logger?.debug('UIManager', 'Win rollup animation complete.');
+                    }
+                    this._winRollupTween = null; // Clear reference on completion
+                    resolve(); // Resolve the promise on completion
+                }
+            });
+        }); // --- End Promise --- 
     }
 
     /**
