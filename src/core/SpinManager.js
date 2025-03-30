@@ -212,6 +212,12 @@ export class SpinManager {
 
         // Emit event for UI to stop spin animation (UI listens for state change)
         this.eventBus?.emit('spin:stoppedVisuals');
+        
+        // --- EMIT REELS_STOPPED FOR AUTOPLAY/OTHER LOGIC --- 
+        this.logger?.info('SpinManager', '>>> EMITTING reels:stopped >>>');
+        this.eventBus?.emit('reels:stopped');
+        this.logger?.info('SpinManager', '<<< EMITTED reels:stopped <<<');
+        // --- END EMIT ---
 
         // Emit event to request win evaluation
         this.logger?.info("SpinManager", ">>> EMITTING spin:evaluateRequest >>>");

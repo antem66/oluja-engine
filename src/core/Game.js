@@ -404,12 +404,12 @@ export class Game {
 
         // Init utility UI modules with specific deps
         if (this.notificationsContainer) {
-            initNotifications({ logger, eventBus, container: this.notificationsContainer });
+            initNotifications(this.notificationsContainer); // Pass container directly
         } else { logger.error('Game', 'Cannot init Notifications, container missing.'); }
 
         const infoOverlayElement = document.getElementById('info-overlay');
         if (infoOverlayElement) {
-            initInfoOverlay({ logger, eventBus, overlayElement: infoOverlayElement });
+            initInfoOverlay(infoOverlayElement); // Pass element directly
         } else { logger.warn('Game', 'InfoOverlay element #info-overlay not found in DOM.'); }
 
         if (this.layerDebug) {
@@ -501,6 +501,15 @@ export class Game {
             const conditionMet = this.wasSpinning && !anyReelMoving;
             // Use console.log directly to bypass Logger issues - REMOVE
             // console.log('Game.update EvalCondition:', { wasSpinning: this.wasSpinning, anyReelMoving, conditionMet });
+            // --- ADD LOGGING --- 
+            if (this.wasSpinning && !anyReelMoving) { 
+                this.deps.logger?.info('Game.update SpinEnd Check:', { 
+                    wasSpinning: this.wasSpinning, 
+                    anyReelMoving: anyReelMoving, 
+                    conditionMet: conditionMet 
+                });
+            }
+            // --- END LOGGING ---
 
             if (conditionMet) {
                  logger?.info('Game.update', '>>> Spin End IF Block ENTERED <<<'); 
@@ -588,9 +597,9 @@ export class Game {
         this.uiManager?.destroy();
         this.animationController?.destroy();
         this.spinManager?.destroy(); // Assuming SpinManager might have destroy later
-        this.reelManager?.destroy(); // Assuming ReelManager might have destroy later
-        this.backgroundManager?.destroy(); // Assuming BackgroundManager might have destroy later
-        this.freeSpinsUIManager?.destroy(); // Assuming FreeSpinsUIManager has destroy
+        // this.reelManager?.destroy(); // Commented out - Method doesn't exist
+        // this.backgroundManager?.destroy(); // Commented out - Method doesn't exist
+        // this.freeSpinsUIManager?.destroy(); // Commented out - Method doesn't exist
         // TODO: Call destroy on TurboMode, Autoplay, FreeSpins if they implement it
 
         // Stop ticker

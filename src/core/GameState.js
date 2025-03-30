@@ -82,7 +82,7 @@ export let state = {
  * @param {object} dependencies - Core dependencies.
  * @param {EventBus} dependencies.eventBus - The global event bus instance.
  * @param {Logger} dependencies.logger - The global logger instance.
- * @returns {typeof state} The initial state object.
+ * @returns {typeof state | undefined} The initial state object, or undefined on error.
  */
 export function initGameState(dependencies) {
     if (!dependencies || !dependencies.eventBus || !dependencies.logger) {
@@ -125,9 +125,13 @@ export function initGameState(dependencies) {
         unsubscribeListeners();
         const unsubscribeClick = eventBusInstance.on('ui:button:click', handleButtonClick);
         listeners.push(unsubscribeClick);
-        loggerInstance.info('GameState', 'Subscribed to ui:button:click events.');
+        // --- Add Listener for Autoplay Stop Request ---
+        const unsubscribeAutoplayStop = eventBusInstance.on('autoplay:requestStop', _handleAutoplayStopRequest);
+        listeners.push(unsubscribeAutoplayStop);
+        // --- End Listener ---
+        loggerInstance.info('GameState', 'Subscribed to ui:button:click and autoplay:requestStop events.');
     } else {
-        loggerInstance.error('GameState', 'EventBus not available, cannot subscribe to button clicks.');
+        loggerInstance.error('GameState', 'EventBus not available, cannot subscribe to events.');
     }
 
     loggerInstance.info('GameState', 'Initialized and dependencies set.', { initialState: state });
@@ -182,6 +186,22 @@ function handleButtonClick(eventData) {
             loggerInstance?.warn('GameState', `Unhandled button click: ${buttonName}`);
     }
 }
+
+// --- Add Handler for Autoplay Stop Request ---
+/**
+ * Handles 'autoplay:requestStop' events to stop autoplay.
+ * @param {object} [eventData] - Optional data (e.g., { reason: 'balance' })
+ */
+function _handleAutoplayStopRequest(eventData) {
+    const reason = eventData?.reason || 'unknown';
+    if (state.isAutoplaying) {
+        updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
+        loggerInstance?.info('GameState', `Autoplay stopped via request. Reason: ${reason}`);
+    } else {
+        loggerInstance?.debug('GameState', 'Received autoplay:requestStop, but autoplay is already inactive.');
+    }
+}
+// --- End Handler ---
 
 // --- Internal State Update Logic ---
 
@@ -267,6 +287,18 @@ function _handleBetChange(direction) {
 export function updateState(updates) {
     // Log entry point
     console.log('[GameState] updateState CALLED with:', updates);
+
+    // --- ADD isAutoplaying LOG ---
+    if (updates && typeof updates.isAutoplaying === 'boolean') {
+        const oldValue = state.isAutoplaying;
+        const newValue = updates.isAutoplaying;
+        if (oldValue !== newValue) {
+            console.info(`[GameState] >>> isAutoplaying CHANGING from ${oldValue} to ${newValue} <<<`, updates);
+            // Add a stack trace to see who called updateState
+            console.trace('[GameState] Stack trace for isAutoplaying change:'); 
+        }
+    }
+    // --- END LOGGING ---
 
     // --- ADD lastTotalWin LOG --- 
     if (updates && typeof updates.lastTotalWin === 'number') { // Check if lastTotalWin is present

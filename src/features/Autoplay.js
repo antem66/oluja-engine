@@ -1,4 +1,4 @@
-import { state } from '../core/GameState.js'; // Keep for reading state values temporarily
+import { state, updateState } from '../core/GameState.js'; // Keep for reading state values temporarily + ADD updateState
 // Removed GameState updateState import
 // Removed UIManager imports
 // Removed ButtonHandlers import
@@ -92,8 +92,8 @@ function handleSpinEndForAutoplay() {
         return;
     }
 
-    if (state.isInFreeSpins || state.isTransitioning) {
-        logger?.info('Autoplay', 'Spin ended, stopping autoplay due to FS/Transition state.');
+    if (state.isInFreeSpins) {
+        logger?.info('Autoplay', 'Spin ended, stopping autoplay because Free Spins are active.');
         // Request state change - UIManager will handle button updates
         eventBus?.emit('autoplay:requestStop'); 
         return;
@@ -108,17 +108,21 @@ function handleSpinEndForAutoplay() {
             return;
         }
 
-        // Decrement spins *before* scheduling the next one
         // TODO: This state update should ideally happen via an event/handler too.
         // For now, let's assume something else handles decrementing based on spin start/end.
         // updateState({ autoplaySpinsRemaining: state.autoplaySpinsRemaining - 1 });
+        // --- Decrement spins --- 
+        const newRemaining = state.autoplaySpinsRemaining - 1;
+        updateState({ autoplaySpinsRemaining: newRemaining });
+        logger?.debug('Autoplay', `Decremented spins remaining to: ${newRemaining}`);
+        // --- End Decrement ---
 
         const delay = (state.isTurboMode ? 150 : 600) * winAnimDelayMultiplier;
         logger?.debug('Autoplay', `Spin ended, scheduling next autoplay spin in ${delay}ms.`);
 
         nextSpinTimeout = setTimeout(() => {
             // Final check before spinning
-            if (!spinManager || !state.isAutoplaying || state.isInFreeSpins || state.isTransitioning) {
+            if (!spinManager || !state.isAutoplaying || state.isInFreeSpins) {
                 logger?.debug('Autoplay', 'Next spin cancelled (timeout check).');
                 eventBus?.emit('autoplay:requestStop'); // Ensure stopped if conditions changed during delay
                 return;
@@ -135,14 +139,49 @@ function handleSpinEndForAutoplay() {
 }
 
 /**
- * Listens for relevant state changes to cancel autoplay immediately if needed.
+ * Listens for relevant state changes to cancel autoplay immediately if needed,
+ * or to trigger the first spin when autoplay is activated.
  * @param {object} eventData - Data from the 'game:stateChanged' event.
  * @private
  */
 function handleStateChangeForAutoplay(eventData) {
-    if (!state.isAutoplaying) return; // Only care if autoplay is active
-
     const { newState, updatedProps } = eventData;
+    
+    // --- Trigger First Spin ---
+    // Check if autoplay was just turned ON
+    if (updatedProps.includes('isAutoplaying') && newState.isAutoplaying) {
+        // Check if we are in a state where we *can* start spinning
+        if (!newState.isSpinning && !newState.isTransitioning && !newState.isInFreeSpins) {
+            logger?.info('Autoplay', 'Autoplay activated via state change, scheduling first spin.');
+            // Ensure we have a spin manager before setting timeout
+            if (spinManager) { 
+                setTimeout(() => {
+                    // Re-check state and spinManager *inside* the timeout
+                    if (spinManager && state.isAutoplaying && !state.isSpinning && !state.isTransitioning && !state.isInFreeSpins) {
+                        logger?.debug('Autoplay', 'Timeout triggered, starting first spin.');
+                        spinManager.startSpin(); 
+                    } else {
+                         logger?.debug('Autoplay', 'First spin cancelled (state changed or spinManager missing during initial delay).');
+                    }
+                }, 50); // Small delay (e.g., 50ms)
+            } else {
+                logger?.error('Autoplay', 'Cannot schedule first spin, SpinManager is missing.');
+            }
+            // Don't proceed to the 'stop' check below if we just started
+            return; 
+        } else {
+             logger?.debug('Autoplay', 'Autoplay activated, but cannot start first spin due to current state.', { 
+                 isSpinning: newState.isSpinning, 
+                 isTransitioning: newState.isTransitioning, 
+                 isInFreeSpins: newState.isInFreeSpins 
+             });
+        }
+    }
+
+    // --- Stop Autoplay ---
+    // Only proceed if autoplay is currently supposed to be active
+    if (!state.isAutoplaying) return;
+
     let shouldStop = false;
 
     // Check if specific relevant properties changed *to* a stopping condition
@@ -152,9 +191,6 @@ function handleStateChangeForAutoplay(eventData) {
     } else if (updatedProps.includes('isInFreeSpins') && newState.isInFreeSpins) {
         shouldStop = true;
         logger?.info('Autoplay', 'Detected FS start, stopping autoplay.');
-    } else if (updatedProps.includes('isTransitioning') && newState.isTransitioning) {
-        shouldStop = true;
-        logger?.info('Autoplay', 'Detected transition start, stopping autoplay.');
     }
     // Add other conditions like server error flag if needed
 
@@ -166,8 +202,13 @@ function handleStateChangeForAutoplay(eventData) {
         }
         // Ensure state is fully updated (UIManager handles button visuals based on state)
         // If the state change didn't already set isAutoplaying to false, we might need to emit here,
-        // but ideally the source of the state change (e.g., user click) handles it.
-        // eventBus?.emit('autoplay:requestStop'); // Avoid redundant emissions if possible
+        // but ideally the source of the state change (e.g., user click via GameState) handles it.
+        // We might need to explicitly emit 'autoplay:requestStop' if the stopping condition 
+        // wasn't the user directly toggling the isAutoplaying flag.
+        if (!(updatedProps.includes('isAutoplaying') && !newState.isAutoplaying)) {
+             logger?.debug('Autoplay', 'Emitting autoplay:requestStop due to FS/Transition/Other.');
+             eventBus?.emit('autoplay:requestStop'); 
+        }
     }
 }
 
