@@ -1,5 +1,5 @@
-export const GAME_WIDTH = 1000;
-export const GAME_HEIGHT = 700;
+export const GAME_WIDTH = 1280;
+export const GAME_HEIGHT = 720;
 export const NUM_REELS = 5;
 export const SYMBOLS_PER_REEL_VISIBLE = 4;
 export const REEL_WIDTH = 150;
