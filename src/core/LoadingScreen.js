@@ -296,7 +296,7 @@ export class LoadingScreen {
         
        // Update text position
         if (this._progressText && this._progressBarFill) { 
-             this._progressText.text = `Loading ${percentage}%`;
+             this._progressText.text = `${percentage}%`;
              this._progressText.x = barX + this._barWidth / 2; // Center over the logical bar
              this._progressText.y = this._progressBarFill.y + this._barHeight + 15; 
         }
