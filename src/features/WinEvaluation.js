@@ -243,6 +243,11 @@ function _handleEvaluateRequest() {
             logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
             eventBus.emit('feature:trigger:freeSpins', { spinsAwarded: FREE_SPINS_AWARDED });
         }
+
+        // --- Emit Evaluation Complete Event --- 
+        logger?.info('WinEvaluation', '>>> EMITTING win:evaluationComplete >>>');
+        eventBus.emit('win:evaluationComplete');
+        // --- End Emit ---
     
     } catch (error) {
         logger?.error('WinEvaluation', 'Error in _handleEvaluateRequest handler:', error);

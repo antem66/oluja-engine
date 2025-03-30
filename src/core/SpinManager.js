@@ -158,6 +158,8 @@ export class SpinManager {
             stateUpdates.balance = newBalance; // Add balance update only for normal spins
         } else {
             this.logger?.debug('SpinManager', 'Free spin: Skipping bet deduction.');
+            // --- REMOVE DECREMENT LOGIC --- 
+            /*
             // Decrement remaining free spins count
             if (state.freeSpinsRemaining > 0) {
                 stateUpdates.freeSpinsRemaining = state.freeSpinsRemaining - 1;
@@ -165,6 +167,8 @@ export class SpinManager {
                 // This case shouldn't normally happen if logic is correct, but log it.
                 this.logger?.warn('SpinManager', 'Attempted free spin with 0 remaining spins.');
             }
+            */
+           // --- END REMOVAL ---
         }
 
         // Update state 

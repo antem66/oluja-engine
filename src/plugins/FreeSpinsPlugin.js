@@ -92,17 +92,18 @@ export class FreeSpinsPlugin {
         // Listen for state changes to update local tracking and UI
         const unsubscribeState = this.eventBus.on('game:stateChanged', this._handleStateChange.bind(this));
 
-        // Listen for reels stopping to trigger next FS spin or exit
-        const unsubscribeReelsStopped = this.eventBus.on('reels:stopped', this._handleReelsStopped.bind(this));
+        // Listen for win evaluation complete instead of reels stopped
+        const unsubscribeWinEval = this.eventBus.on('win:evaluationComplete', this._handleReelsStopped.bind(this));
+        this._listeners.push(unsubscribeWinEval);
 
-        // --- BEGIN EDIT: Add Trigger Listener ---
+        // Listen for free spins trigger
         const unsubscribeTrigger = this.eventBus.on('feature:trigger:freeSpins', this._handleFreeSpinsTrigger.bind(this));
         this._listeners.push(unsubscribeTrigger);
-        // --- END EDIT ---
+        
+        // Keep state listener
+        this._listeners.push(unsubscribeState);
 
-        this._listeners.push(unsubscribeState, unsubscribeReelsStopped); // Add trigger listener later
-
-        this.logger?.debug(FreeSpinsPlugin.pluginName, 'Subscribed to events.');
+        this.logger?.debug(FreeSpinsPlugin.pluginName, 'Subscribed to game:stateChanged, win:evaluationComplete, feature:trigger:freeSpins events.');
     }
 
     /**
@@ -238,7 +239,8 @@ export class FreeSpinsPlugin {
     }
 
     /**
-     * Handles the reels stopping, potentially triggering the next free spin or exiting the feature.
+     * Handles the win evaluation completing, potentially triggering the next free spin or exiting the feature.
+     * NOTE: Renamed from _handleReelsStopped but keeps the same logic, just triggered later.
      * @private
      */
     _handleReelsStopped() {
@@ -247,18 +249,20 @@ export class FreeSpinsPlugin {
             return;
         }
 
-        this.logger?.debug(FreeSpinsPlugin.pluginName, 'Reels stopped during Free Spins.');
+        this.logger?.debug(FreeSpinsPlugin.pluginName, 'Win evaluation complete during Free Spins.');
 
         // --- BEGIN IMPLEMENTATION based on old handleFreeSpinEnd ---
         try {
             // 1. Accumulate Win
             const lastWin = state.lastTotalWin; // Read from global state (as updated by WinEvaluation)
             if (lastWin > 0) {
-                const winToAdd = lastWin * FreeSpinsPlugin.FREE_SPINS_MULTIPLIER; // Use multiplier
+                const winToAdd = lastWin; // <-- FIX: Add the win directly without multiplying
                 const newTotalWin = this._totalWin + winToAdd;
-                this.logger?.info(FreeSpinsPlugin.pluginName, `Accumulating win. Last: ${lastWin}, Multiplier: ${FreeSpinsPlugin.FREE_SPINS_MULTIPLIER}, Added: ${winToAdd}, New Total: ${newTotalWin}`);
+                // Updated log message to remove multiplier reference
+                this.logger?.info(FreeSpinsPlugin.pluginName, `Accumulating win. Last: ${lastWin}, Added: ${winToAdd}, New Total: ${newTotalWin}`);
                 // Update total win state ONLY (remaining decremented below)
                 updateState({ totalFreeSpinsWin: newTotalWin });
+                this._totalWin = newTotalWin; 
             }
 
             // 2. Decrement Spins Remaining
@@ -291,10 +295,6 @@ export class FreeSpinsPlugin {
         }
         // --- END IMPLEMENTATION ---
     }
-
-    // --- BEGIN EDIT: Add FREE_SPINS_MULTIPLIER constant ---
-    static FREE_SPINS_MULTIPLIER = 2;
-    // --- END EDIT ---
 
     // TODO: Add methods for entry sequence (_enterFreeSpins) -> Renamed to _playEntryAnimation
     // --- BEGIN ADD HELPER METHODS ---
@@ -378,6 +378,14 @@ export class FreeSpinsPlugin {
             duration: 4000, // Longer duration for summary
             onComplete: () => {
                 this.logger?.debug(FreeSpinsPlugin.pluginName, 'Exit summary complete.');
+
+                // --- FIX: Add total win to balance BEFORE exiting ---
+                if (this._totalWin > 0) {
+                    this.logger?.info(FreeSpinsPlugin.pluginName, `Adding total Free Spins win (${this._totalWin}) to balance (${state.balance}).`);
+                    updateState({ balance: state.balance + this._totalWin });
+                }
+                // --- END FIX ---
+
                 // Final state update to exit Free Spins
                 updateState({
                     isInFreeSpins: false,
