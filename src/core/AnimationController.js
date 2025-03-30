@@ -256,8 +256,11 @@ export class AnimationController {
             }
         }
 
-        // TODO: Consider adding a general win rollup animation call here?
-        // this.playAnimation('winRollup', { amount: totalWin });
+        // Call the win rollup animation
+        if (totalWin > 0) { // Only animate if there's actually a win
+            this.logger?.debug('AnimationController', 'Calling playAnimation for winRollup.');
+            this.playAnimation('winRollup', { amount: totalWin });
+        }
 
         // TODO: Consider emitting animation:win:completed after a delay?
         // const longestAnimDuration = ... estimate ...;

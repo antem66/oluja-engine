@@ -37,19 +37,19 @@ import { state, updateState } from './GameState.js'; // Keep for reading state t
 // Remove imports for WinEvaluation, FreeSpins, Autoplay, UIManager, PaylineGraphics
 import * as SETTINGS from '../config/gameSettings.js';
 import {
-    REEL_STOP_STAGGER, baseSpinDuration, 
-    turboBaseSpinDuration, turboReelStopStagger 
+    REEL_STOP_STAGGER, baseSpinDuration,
+    turboBaseSpinDuration, turboReelStopStagger
 } from '../config/animationSettings.js';
 import { REEL_STRIPS } from '../config/reelStrips.js'; // Keep for debug helpers
 // Import types
 import { Logger } from '../utils/Logger.js';
 import { EventBus } from '../utils/EventBus.js';
 import { ApiService } from './ApiService.js';
-import { ReelManager } from './ReelManager.js'; 
+import { ReelManager } from './ReelManager.js';
 
 export class SpinManager {
     /** @type {import('./ReelManager.js').ReelManager | null} */
-    reelManager = null; 
+    reelManager = null;
     /** @type {import('../utils/Logger.js').Logger | null} */
     logger = null;
     /** @type {import('../utils/EventBus.js').EventBus | null} */
@@ -63,7 +63,7 @@ export class SpinManager {
      * @param {import('../utils/EventBus.js').EventBus} eventBusInstance 
      * @param {import('./ApiService.js').ApiService} apiServiceInstance 
      */
-    constructor(reelManagerInstance, loggerInstance, eventBusInstance, apiServiceInstance) { 
+    constructor(reelManagerInstance, loggerInstance, eventBusInstance, apiServiceInstance) {
         this.reelManager = reelManagerInstance;
         this.logger = loggerInstance;
         this.eventBus = eventBusInstance;
@@ -74,20 +74,20 @@ export class SpinManager {
             // TODO: Handle error - throw?
         }
         if (!this.logger) {
-             console.error("SpinManager: Logger instance is required!");
+            console.error("SpinManager: Logger instance is required!");
         }
         if (!this.eventBus) {
-             this.logger?.warn("SpinManager", "EventBus instance was not provided.");
+            this.logger?.warn("SpinManager", "EventBus instance was not provided.");
         }
         if (!this.apiService) {
-             this.logger?.error("SpinManager", "ApiService instance is required!");
-             // TODO: Handle error - throw?
+            this.logger?.error("SpinManager", "ApiService instance is required!");
+            // TODO: Handle error - throw?
         }
 
         this.logger?.info('SpinManager', 'Initialized.');
         // Subscribe to spin requests from UI
         this.eventBus?.on('ui:button:click', (event) => {
-           if (event.buttonName === 'spin') this.handleSpinRequest(); 
+            if (event.buttonName === 'spin') this.handleSpinRequest();
         });
         // TODO (Phase 2.2+): Subscribe to server:spinResultReceived
     }
@@ -110,8 +110,8 @@ export class SpinManager {
      * This method will primarily be triggered AFTER receiving server response.
      */
     startSpin() {
-        this.logger?.info('SpinManager', 'startSpin() called.'); 
-        
+        this.logger?.info('SpinManager', 'startSpin() called.');
+
         if (state.isSpinning || state.isInFreeSpins || state.isTransitioning) {
             this.logger?.warn('SpinManager', 'Spin requested but already spinning or in transition/FS.');
             return;
@@ -121,16 +121,16 @@ export class SpinManager {
             return;
         }
         if (state.isSpinning) {
-             this.logger?.warn('SpinManager', 'Spin requested but already spinning.');
+            this.logger?.warn('SpinManager', 'Spin requested but already spinning.');
             return; // Don't start if already spinning
         }
 
         this.logger?.debug('SpinManager', 'Starting spin sequence...');
 
         this.logger?.info('SpinManager', '>>> About to call updateState { isSpinning: true } <<<');
-        
+
         updateState({ isSpinning: true, isTransitioning: false, lastTotalWin: 0 });
-        
+
         this.eventBus?.emit('spin:started');
 
         const isTurbo = state.isTurboMode;
@@ -140,7 +140,7 @@ export class SpinManager {
 
         if (state.isDebugMode && state.forceWin) {
             this.logger?.info("SpinManager", "Debug mode active: Forcing a win pattern (Mock)");
-            winPattern = this._generateRandomWinPattern(); 
+            winPattern = this._generateRandomWinPattern();
             this.logger?.debug("SpinManager", "Generated win pattern:", winPattern);
         }
 
@@ -149,9 +149,9 @@ export class SpinManager {
 
             let stopIndex;
             if (state.isDebugMode && state.forceWin && winPattern?.positions) {
-                 stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]);
+                stopIndex = this._findStopIndexForSymbol(reel, winPattern.symbol, winPattern.positions[i]);
             } else {
-                 stopIndex = Math.floor(Math.random() * (reel.strip?.length || 1));
+                stopIndex = Math.floor(Math.random() * (reel.strip?.length || 1));
             }
             // Set final stop position (In Phase 2, this comes from server response)
             reel.finalStopPosition = stopIndex;
@@ -172,14 +172,14 @@ export class SpinManager {
      * Called by Game loop.
      */
     handleSpinEnd() {
-        this.logger?.info('SpinManager', 'handleSpinEnd() called.'); 
-        
+        this.logger?.info('SpinManager', 'handleSpinEnd() called.');
+
         if (!state.isSpinning && !state.isTransitioning) {
-             this.logger?.warn('SpinManager', 'handleSpinEnd called but not spinning or transitioning?');
-             return; 
+            this.logger?.warn('SpinManager', 'handleSpinEnd called but not spinning or transitioning?');
+            return;
         }
         if (!this.reelManager || !this.eventBus) {
-             this.logger?.error('SpinManager', 'Cannot handle spin end: ReelManager or EventBus missing.');
+            this.logger?.error('SpinManager', 'Cannot handle spin end: ReelManager or EventBus missing.');
             return;
         }
 
@@ -187,13 +187,13 @@ export class SpinManager {
         updateState({ isSpinning: false, isTransitioning: true });
         this.logger?.debug("SpinManager", "All reels visually stopped.");
 
+        // Emit event for UI to stop spin animation (UI listens for state change)
         this.eventBus?.emit('spin:stoppedVisuals');
 
-        this.logger?.debug("SpinManager", "Requesting win evaluation...");
-        this.eventBus?.emit('spin:evaluateRequest'); 
-
-        this.logger?.debug("SpinManager", "Calling updateState { isTransitioning: false }");
-        updateState({ isTransitioning: false }); 
+        // Emit event to request win evaluation
+        this.logger?.info("SpinManager", ">>> EMITTING spin:evaluateRequest >>>");
+        this.eventBus?.emit('spin:evaluateRequest');
+        this.logger?.info("SpinManager", "<<< EMITTED spin:evaluateRequest <<<");
     }
 
     // --- Debug Helper Methods (Keep for now, move to ApiService later) --- 
@@ -225,10 +225,10 @@ export class SpinManager {
         if (!symbols) return Math.floor(Math.random() * (reel.strip?.length || 1));
 
         for (let i = 0; i < symbols.length; i++) {
-          if (symbols[i] === targetSymbol) {
-            let stopIndex = (i - targetPosition + symbols.length) % symbols.length;
-            return stopIndex;
-          }
+            if (symbols[i] === targetSymbol) {
+                let stopIndex = (i - targetPosition + symbols.length) % symbols.length;
+                return stopIndex;
+            }
         }
         // TODO: Use Logger
         console.log(`Could not find symbol ${targetSymbol} on reel ${reel.reelIndex} - using random position`);
@@ -236,11 +236,11 @@ export class SpinManager {
     }
 
     destroy() {
-         // TODO: Unsubscribe event listeners if any were added directly here
-         this.logger?.info('SpinManager', 'Destroyed.');
-         this.reelManager = null;
-         this.logger = null;
-         this.eventBus = null;
-         this.apiService = null;
+        // TODO: Unsubscribe event listeners if any were added directly here
+        this.logger?.info('SpinManager', 'Destroyed.');
+        this.reelManager = null;
+        this.logger = null;
+        this.eventBus = null;
+        this.apiService = null;
     }
 }

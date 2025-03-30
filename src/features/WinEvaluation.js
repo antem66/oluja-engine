@@ -35,7 +35,7 @@ import {
 import { EventBus } from '../utils/EventBus.js';
 import { Logger } from '../utils/Logger.js';
 import { ReelManager } from '../core/ReelManager.js';
-import { state } from '../core/GameState.js'; // Import state for currentTotalBet
+import { state, updateState } from '../core/GameState.js'; // Import state AND updateState
 
 // --- Module-level variables ---
 /** @type {EventBus | null} */
@@ -92,7 +92,8 @@ export function destroy() {
  * @private
  */
 function _handleEvaluateRequest() {
-    logger?.debug('WinEvaluation', 'Handling spin:evaluateRequest');
+    // Ensure this log is present and clear
+    logger?.info('WinEvaluation', '>>> _handleEvaluateRequest RECEIVED! <<<'); // Use INFO level
 
     if (!eventBus || !logger || !reelManager || !reelManager.reels) {
         (logger || console).error('WinEvaluation Error: Dependencies not initialized or available.');
@@ -209,9 +210,8 @@ function _handleEvaluateRequest() {
     logger?.debug('WinEvaluation', `Client-side evaluation complete. Total Win: ${calculatedTotalWin}, Lines: ${calculatedWinningLines.length}, Symbols: ${allSymbolsToAnimate.length}`);
 
     // --- Update Game State --- 
-    eventBus.emit('state:update', {
+    updateState({ 
         lastTotalWin: calculatedTotalWin,
-        // Maybe rename winningLinesInfo to winningLinesResult ?
         winningLinesInfo: calculatedWinningLines
     });
 
@@ -231,6 +231,10 @@ function _handleEvaluateRequest() {
         logger.info('WinEvaluation', `Free Spins Triggered! Count: ${scatterCount}`);
         eventBus.emit('freespins:triggered', { spinsAwarded: FREE_SPINS_AWARDED });
     }
+    
+    // --- End Transition --- 
+    logger?.debug('WinEvaluation', 'Evaluation complete, calling updateState { isTransitioning: false }');
+    updateState({ isTransitioning: false }); 
 }
 
 // Removed evaluateWin function

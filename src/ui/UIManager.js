@@ -34,6 +34,7 @@ import { Logger } from '../utils/Logger.js';
 import { EventBus } from '../utils/EventBus.js';
 import { FeatureManager } from '../utils/FeatureManager.js';
 import { AnimationController } from '../core/AnimationController.js'; // Import AnimationController
+import { state } from '../core/GameState.js'; // Import state
 
 export class UIManager {
     // Dependencies
@@ -387,7 +388,7 @@ export class UIManager {
 
     // --- Public Methods (Now accept newState) ---
 
-    updateDisplays(currentState) { // Accept state
+    updateDisplays(currentState) { 
         if (!this.balanceText || !this.betText || !this.winText || !this.winLabel) {
             this.logger?.warn("UIManager", "Cannot update displays - text elements not initialized.");
             return;
@@ -400,9 +401,22 @@ export class UIManager {
         const showWin = currentState.lastTotalWin >= winDisplayThreshold;
         this.winText.visible = showWin;
         this.winLabel.visible = showWin;
-        if (showWin && this.winText) { // Update win text only if visible
-             this.winText.text = this._formatMoney(currentState.lastTotalWin, currentState.currentCurrency);
+        let winTextValue = 'N/A'; // Default if not shown/updated
+        if (showWin && this.winText) { 
+             const formattedWin = this._formatMoney(currentState.lastTotalWin, currentState.currentCurrency);
+             this.winText.text = formattedWin;
+             winTextValue = formattedWin; // Capture value for logging
         }
+        
+        // Log win display status
+        this.logger?.debug('UIManager.updateDisplays', 'Updating Win Display', {
+            lastTotalWin: currentState.lastTotalWin,
+            showWin: showWin,
+            winTextVisible: this.winText?.visible,
+            winLabelVisible: this.winLabel?.visible,
+            winTextValue: winTextValue
+        });
+
         if (this.winRollupText) this.winRollupText.visible = false;
     }
 
@@ -493,7 +507,9 @@ export class UIManager {
             return;
         }
         const winAmount = data.amount;
-        this.logger?.debug('UIManager', `Animating win rollup to ${winAmount}`);
+        // Get current currency from GameState
+        const currentCurrencyCode = state.currentCurrency;
+        this.logger?.debug('UIManager', `Animating win rollup to ${winAmount} (${currentCurrencyCode})`);
 
         if (!this.winText || !this.winLabel) {
             this.logger?.error("UIManager", "winText or winLabel element not found for animation.");
@@ -526,15 +542,16 @@ export class UIManager {
             duration: animationDuration,
             ease: "power2.out",
             onUpdate: () => {
-                if (this.winText) { // Add null check inside tween
-                    this.winText.text = this._formatMoney(animationValues.currentValue);
+                if (this.winText) { 
+                    // Pass currency code
+                    this.winText.text = this._formatMoney(animationValues.currentValue, currentCurrencyCode);
                 }
             },
             onComplete: () => {
-                if (this.winText) { // Add null check inside tween
-                     this.winText.text = this._formatMoney(winAmount);
+                if (this.winText) { 
+                     // Pass currency code
+                     this.winText.text = this._formatMoney(winAmount, currentCurrencyCode);
                      this.logger?.debug('UIManager', 'Win rollup animation complete.');
-                     // No need to emit here, AnimationController might handle sequence completion
                 }
             }
         });

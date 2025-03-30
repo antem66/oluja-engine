@@ -265,15 +265,17 @@ function _handleBetChange(direction) {
  * @param {Partial<typeof state>} updates - An object containing state properties to update.
  */
 export function updateState(updates) {
-    // Check for isSpinning: false - REMOVE
-    /* if (updates && updates.isSpinning === false) {
-        const errorMsg = `[GameState] DETECTED isSpinning: false update!`;
-        console.error(errorMsg, updates);
-    } */
-    // Check for isSpinning: true - REMOVE
-    /* if (updates && updates.isSpinning === true) {
-        console.info(`[GameState] DETECTED isSpinning: true update!`, updates);
-    } */
+    // Log entry point
+    console.log('[GameState] updateState CALLED with:', updates);
+
+    // --- ADD lastTotalWin LOG --- 
+    if (updates && typeof updates.lastTotalWin === 'number') { // Check if lastTotalWin is present
+        const oldValue = state.lastTotalWin;
+        const newValue = updates.lastTotalWin;
+        const changed = oldValue !== newValue;
+        console.info(`[GameState] Checking lastTotalWin update! New: ${newValue}, Old: ${oldValue}, Changed: ${changed}`, updates);
+    }
+    // --- END LOGGING --- 
     
     if (!eventBusInstance || !loggerInstance) {
         // ADD ERROR LOG HERE
