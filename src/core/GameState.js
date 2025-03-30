@@ -216,36 +216,6 @@ function _handleAutoplayStopRequest(eventData) {
 
 // --- Internal State Update Logic ---
 
-function _handleTurboToggle() {
-    const newState = !state.isTurboMode;
-    updateState({ isTurboMode: newState });
-    // Apply turbo settings immediately after state change
-    // This assumes applyTurboSettings handles reading the new state
-    // applyTurboSettings(newState);
-    loggerInstance?.info('GameState', `Turbo mode toggled ${newState ? 'ON' : 'OFF'}`);
-}
-
-function _handleAutoplayToggle() {
-    if (state.isAutoplaying) {
-        // Stop autoplay
-        updateState({ isAutoplaying: false, autoplaySpinsRemaining: 0 });
-        loggerInstance?.info('GameState', `Autoplay toggled OFF`);
-    } else {
-        // Start autoplay only if conditions met
-        if (!state.isSpinning && !state.isFeatureTransitioning && !state.isInFreeSpins) {
-            updateState({
-                isAutoplaying: true,
-                autoplaySpinsRemaining: state.autoplaySpinsDefault
-            });
-            loggerInstance?.info('GameState', `Autoplay toggled ON - ${state.autoplaySpinsRemaining} spins`);
-            // Note: Autoplay module should listen for state:changed:isAutoplaying 
-            //       and trigger the first spin if needed.
-        } else {
-            loggerInstance?.warn('GameState', 'Cannot start autoplay due to current game state.');
-        }
-    }
-}
-
 function _handleBetChange(direction) {
     if (state.isSpinning || state.isFeatureTransitioning || state.isInFreeSpins || state.isAutoplaying) {
         loggerInstance?.warn('GameState', 'Cannot change bet during spin, feature transition, free spins, or autoplay.');
