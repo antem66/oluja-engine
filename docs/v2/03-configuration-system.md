@@ -6,12 +6,13 @@ The configuration system is the cornerstone of the V2 engine's flexibility and e
 
 ## 2. `game-configs` Package
 
-*   **Purpose:** To define the canonical TypeScript interfaces, types, and potentially validation schemas for *all* possible game configurations.
-*   **Contents:** This package contains **only type definitions** (`.ts` files exporting interfaces/types) and possibly schema definitions (e.g., using Zod for runtime validation if needed). It contains **no implementation logic or default values**.
+*   **Purpose:** To define the canonical TypeScript interfaces, types, and **strongly recommended validation schemas** for *all* possible game configurations.
+*   **Contents:** This package contains **only type definitions** (`.ts` files exporting interfaces/types) and validation schema definitions (e.g., using **Zod** is recommended for runtime validation and deriving types). It contains **no implementation logic or default values**.
 *   **Consumers:**
     *   `engine-core`: Relies on these types to understand the shape of the configuration object it receives and operates upon.
     *   `games/*`: Implements these interfaces when defining the specific configuration values for a game.
     *   `game-server` (Potentially): Can use these types for validating game configurations it uses for calculations or for defining API payload structures.
+*   **Benefits of Schemas:** Using a library like Zod allows runtime validation of game configuration objects, catching structural errors or incorrect value types early in development or before deployment, significantly improving robustness.
 
 ## 3. Core Configuration Interfaces (Examples - Needs Full Definition)
 
@@ -56,6 +57,7 @@ export interface GameSettings {
     assets: AssetManifest;
     soundConfig?: SoundConfig;
     animationTimings?: AnimationTimings;
+    i18nConfig?: I18nConfig;
     // ★ Reference potentially game-specific visual components (by convention/name? TBD)
     // backgroundComponentKey?: string;
     // symbolComponentKey?: string;
@@ -121,7 +123,7 @@ export interface PaylineSet {
 // --- Assets & Sound --- 
 
 export interface AssetDefinition {
-    key: string;    // Unique key (e.g., textureId)
+    key: string;    // Unique key (e.g., textureId) - ★ ESTABLISH CLEAR NAMING CONVENTIONS ★
     url: string;    // Path to the asset (relative to game package)
     type: 'texture' | 'spritesheet' | 'sound' | 'spine' | 'font' | 'json';
     // Optional metadata (e.g., frame dimensions for spritesheet)
@@ -135,10 +137,11 @@ export interface AssetManifest {
 }
 
 export interface SoundDefinition {
-    key: string;    // Unique sound ID (e.g., 'spinClick', 'winSmall')
-    assetKey: string; // Key matching an asset in the manifest
+    key: string;    // Unique sound ID (e.g., 'spinClick', 'winSmall') - ★ NAMING CONVENTIONS ★
+    assetKey: string; // Key matching an audio asset in the manifest
     volume?: number;
     loop?: boolean;
+    type?: 'sfx' | 'music' | 'ambient'; // Optional category for group control
 }
 
 export type SoundConfig = Record<string, SoundDefinition>;
@@ -184,6 +187,20 @@ export interface FeatureParameters {
     // Add parameters for other engine-supported features
 }
 
+// --- Internationalization (i18n) --- 
+
+// Structure for language files (e.g., loaded as JSON)
+export type TranslationKey = string; // e.g., 'spin_button_label', 'win_amount_display'
+export type LanguageTranslations = Record<TranslationKey, string>;
+
+// Game config might specify supported languages and path to translation files
+export interface I18nConfig {
+    defaultLanguage: string; // e.g., 'en'
+    supportedLanguages: string[]; // e.g., ['en', 'de', 'es']
+    translationFileBasePath: string; // Path relative to game package (e.g., '/assets/translations/')
+    // Structure could be base_path/en.json, base_path/de.json etc.
+}
+
 // --- Main Game Configuration Structure --- 
 
 export interface GameConfiguration {
@@ -217,8 +234,6 @@ export interface ISpinReactor {
     react(input: ISpinReactionInput): ISpinReactionOutput;
 }
 
-```
-
 ## 4. Configuration in `games/*` Packages
 
 *   Each game package (e.g., `packages/games/my-awesome-game/`) will have a `src/config/` directory.
@@ -239,3 +254,20 @@ The engine achieves extensibility primarily through these configuration points:
 *   **Animation Definitions:** Similarly, keys like `winAnimationKey` in the config can map to specific GSAP timelines defined within the game package's code, which are then triggered by the engine or game-specific components.
 
 This configuration-driven approach, **combined with component composition and injection points designed into the engine components**, ensures that `engine-core` remains generic and reusable, while individual games have deep control over their specific implementation, characteristics, **and visual presentation/animations**.
+
+## 6. Internationalization (i18n) Strategy (New Section)
+
+To support multiple languages:
+
+1.  **Configuration:** The game's `GameSettings` includes an optional `i18nConfig` object specifying supported languages and the location of translation files.
+2.  **Translation Files:** Each game package provides JSON files (e.g., `en.json`, `es.json`) containing key-value pairs for all display text, located under the path specified in `i18nConfig.translationFileBasePath`.
+3.  **Library:** Integrate a standard i18n library (e.g., `i18next` with `react-i18next`).
+4.  **Loading:** The engine (perhaps in `useAssets` or a dedicated i18n setup effect) loads the appropriate language file based on browser settings, user preference (stored in state), or the configured default.
+5.  **Usage Hook (`engine-core`):** Provide a `useTranslation` hook (likely wrapping the library's hook) in `engine-core`.
+6.  **Implementation:** UI components (`TextDisplay`, `Button` labels, etc.) use the `useTranslation` hook to get the translated string for a given key: `const { t } = useTranslation(); <TextDisplay text={t('spin_button_label')} />`.
+
+## 7. Asset Key Conventions (New Section)
+
+*   **Importance:** Consistent naming conventions for asset keys (`AssetDefinition.key`, `SymbolDefinition.textureId`, `SoundDefinition.key` / `assetKey`) are crucial for maintainability and preventing errors.
+*   **Recommendation:** Define a clear convention early (e.g., `texture.[symbol_id]`, `sfx.[action]`, `music.[screen]`, `ui.[element].[state]`). Document this convention and enforce it across all game packages.
+*   **Tooling:** Linting rules or simple scripts could potentially be used to help enforce naming conventions.

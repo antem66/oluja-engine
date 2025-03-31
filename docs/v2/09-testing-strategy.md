@@ -26,6 +26,12 @@ We aim for a balanced testing pyramid:
 *   **Mocking/Spying:** Built into Vitest/Jest (e.g., `vi.fn()`, `vi.spyOn`).
 *   **E2E Testing Framework:** Playwright (recommended) or Cypress. Playwright offers robust cross-browser testing.
 *   **Code Coverage:** Vitest/Jest can generate coverage reports (e.g., using `v8` or `istanbul`).
+*   **Debugging Tools:**
+    *   Browser DevTools (Performance, Memory, Network, Console)
+    *   React DevTools (Component hierarchy inspection, Profiler)
+    *   PixiJS DevTools (Browser extension for inspecting Pixi scene graph)
+    *   Zustand DevTools Middleware (Integrates with Redux DevTools extension for state inspection/time-travel debugging)
+    *   IDE Debugger (Breakpoints in VS Code, etc.)
 
 ## 4. Testing Strategies per Package
 
@@ -89,5 +95,17 @@ We aim for a balanced testing pyramid:
 *   **Turborepo:** Use `turbo run test` to run tests across all changed packages efficiently.
 *   **CI/CD:** Integrate test runs (unit, integration, potentially a subset of E2E) into the Continuous Integration pipeline to catch regressions before merging.
 *   **Coverage:** Regularly check code coverage reports to identify untested areas, aiming for high coverage on core logic and utilities.
+
+## 7. Debugging Techniques (New Section)
+
+Effective debugging involves using the right tools and techniques:
+
+*   **Console Logging:** Use `console.log`, `warn`, `error` strategically, but remove or disable excessive logs for production builds.
+*   **React DevTools:** Inspect component props and state, identify why components re-render using the Profiler.
+*   **PixiJS DevTools:** Visually inspect the scene graph, check object properties (position, alpha, visibility), helpful for diagnosing rendering issues.
+*   **Zustand DevTools:** Inspect the state store, view action history, and time-travel debug state changes (requires setting up the middleware).
+*   **Breakpoints:** Use debugger statements or IDE breakpoints to step through complex logic in hooks, actions, or utility functions.
+*   **Isolate Issues:** Try to reproduce bugs in minimal test cases or simplified component setups.
+*   **State Assertions:** Add assertions or conditional logging based on state values to catch unexpected conditions.
 
 By implementing this multi-layered strategy, focusing unit tests on logic, integration/RTL tests on component behavior, and E2E tests on critical flows, the project can achieve a high degree of confidence and maintainability.

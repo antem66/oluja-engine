@@ -107,3 +107,10 @@ The engine utilizes a monorepo structure managed by pnpm workspaces and **Turbor
 *   **Game Loop:** Logic within `useGameLoop` must be lean to avoid draining CPU.
 
 This architecture provides a clear flow where configuration dictates setup, Zustand manages state, React declaratively builds the scene via `@pixi/react`, GSAP handles complex animations, and the `game-server` provides authoritative results, with performance and mobile considerations integrated throughout the implementation.
+
+## 4. Build & Deployment Context
+
+*   **Build Process:** Each game package (`games/*`) is built independently using Vite (orchestrated via `pnpm` scripts and potentially `turbo run build`). This produces an optimized, static set of HTML, CSS, and JavaScript assets in the game package's `dist` directory.
+*   **Deployment:** The build output (`dist` folder) for each game is typically deployed to static web hosting (e.g., AWS S3/CloudFront, Vercel, Netlify, Azure Static Web Apps) or integrated into a larger platform/portal.
+*   **Environment Configuration:** The client might need environment-specific configuration (e.g., API endpoint URLs for staging vs. production). This is typically handled via environment variables during the build process (using Vite's `env` support) or loaded dynamically at runtime from a configuration file or endpoint.
+*   **Game Server Deployment:** The `game-server` package is deployed separately as a Node.js application (e.g., to container services like Docker/Kubernetes, serverless functions, or traditional VMs).

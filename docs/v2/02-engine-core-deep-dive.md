@@ -56,17 +56,19 @@ packages/engine-core/src/
 
 Components in `engine-core` are React components that ultimately render PixiJS objects using `@pixi/react`. Performance and mobile adaptability are key design goals. **A core principle is enabling visual customization through composition and props.**
 
+*   **`basic/ManagedSprite.tsx`, `basic/ManagedContainer.tsx` (etc.):** Consider providing thin wrappers around base `@pixi/react` components. These can enforce engine conventions, potentially add default performance optimizations (like auto-updating transforms only when needed), simplify common prop patterns, or integrate with engine-specific contexts more easily than using the raw primitives everywhere.
 *   **`layout/GameContainer.tsx`**: The top-level component. Receives the main game config. Initializes context, loads assets via `useAssets`, sets up the `@pixi/react` `<Stage>`. Renders core layout sections. Handles base responsiveness. **Props should allow injecting game-specific components like `backgroundComponent`, `introScreenComponent`, `uiOverlayComponent`.**
 *   **`layout/ScaledContainer.tsx`**: Handles responsive scaling.
 *   **`reels/ReelContainer.tsx`**: Arranges reels based on config. Selects reel strip component (`StandardReelStrip`, `MegawaysReelStrip` etc.) based on config. **Crucially, passes down a `renderSymbol` prop to the chosen reel strip component.**
 *   **`reels/standard/StandardReelStrip.tsx`**: Renders a standard reel. Handles symbol masking/swapping. Contains standard spin animation logic (GSAP). **Uses the `renderSymbol` prop received from `ReelContainer` to render each symbol instance.**
 *   **`reels/common/BaseSymbol.tsx`**: **The default symbol renderer.** Renders a `<Sprite>`. Handles basic state (`isWinning`, `isDimmed`) and basic animations. Used if a game doesn't provide a custom `renderSymbol` function.
-*   **`ui/Button.tsx`**: Reusable button. Must be performant, handle touch. Visuals potentially customizable via props (texture keys, style objects).
+*   **`ui/Button.tsx`**: Reusable button. Must be performant and handle touch events reliably. Visual states should be optimized. **Should support basic keyboard interaction (focus, Enter/Space key activation).**
 *   **`ui/TextDisplay.tsx`**: Renders text. Consider performance.
 *   **`effects/WinningLinesOverlay.tsx`**: Renders winning lines via `<Graphics>`. **Could potentially accept a `renderLineGraphic?: (graphics: PIXI.Graphics, lineData: LineInfo) => void` prop for custom line drawing styles.**
 *   **`effects/ParticleEmitterWrapper.tsx`**: Wrapper for `pixi-particles`.
 *   **`effects/AnimatedSprite.tsx`**: Wrapper for `PIXI.AnimatedSprite`.
 *   **Other UI/Layout Components (`Panel`, `Meter`, `UIOverlay`):** Should be designed composably, potentially accepting `children` or specific component props to allow games to customize content and layout.
+*   **Error Display Component (New Suggestion):** Consider a generic `<ErrorOverlay>` component in `engine-core/src/components/ui/` to display critical errors (e.g., failed game load, server communication issues) based on global error state.
 
 ## 3. Core Hooks (`src/hooks/`)
 
@@ -83,7 +85,7 @@ Hooks encapsulate reusable logic, state access, and side effects.
 *   **Technology:** Zustand.
 *   **`store.ts`**: Defines the main store using `create()`. Includes state properties and actions that modify the state.
 *   **`initialState.ts`**: Defines the default values for the state slices.
-*   **Structure:** Organize the state logically (e.g., `gameState`, `playerState`, `reelState`, `featureState`).
+*   **Structure:** Organize the state logically. **Include slices for global error state (e.g., `errorType`, `errorMessage`) and potentially accessibility announcements.**
 *   **Actions (`actions/` or inline):** Functions that encapsulate state update logic (`setState`). Should be the *only* way mutable state is changed.
 *   **Selectors (`selectors/` or inline with `useGameState`):** Functions used in `useStore` calls to select specific, memoized pieces of state, ensuring components only re-render when necessary.
 *   **Middleware:** Zustand middleware (like `devtools`, `subscribeWithSelector`, `persist`) can be used for debugging, reacting to state changes outside of components, or persistence if needed.
@@ -118,3 +120,21 @@ This directory contains the logic for core, reusable game systems or phases.
 *   **Entry Point:** The top-level `<GameContainer>` receives the full, typed game configuration object from the specific `games/*` package.
 *   **Distribution:** Config values passed via props. **This includes passing game-specific rendering functions (like `renderSymbol`) or component types (like `backgroundComponent`) down the component tree.**
 *   **Type Safety:** TypeScript ensures that components and hooks receive configuration matching the interfaces defined in `game-configs`.
+
+## 8. Error Handling Strategy (New Section)
+
+*   **React Error Boundaries:** Wrap major sections of the application (e.g., `<GameContainer>`) with React Error Boundaries to catch rendering errors within components, log them, and display a fallback UI (potentially the `<ErrorOverlay>`).
+*   **API Errors:** `ApiService` should catch network/server errors and translate them into specific error states set via Zustand actions.
+*   **Global Error State (Zustand):** Maintain slices in the store to track the current error status. UI components (like `<ErrorOverlay>`) can subscribe to this state.
+*   **Logging:** Integrate a remote logging service (e.g., Sentry, LogRocket) to capture unhandled exceptions and context, especially in production. Add explicit logging for critical error conditions.
+*   **User Feedback:** Provide clear, user-friendly messages for common errors (e.g., "Connection Lost", "An error occurred, please reload").
+
+## 9. Accessibility (a11y) Implementation Notes (New Section)
+
+While full WCAG compliance is challenging in a Canvas-based application, focus on improving usability for assistive technologies where feasible:
+
+*   **Keyboard Navigation:** Ensure core interactive UI elements (`Button`, potentially bet selectors) are focusable and can be activated using standard keys (Enter, Space).
+*   **Focus Management:** Manage focus programmatically when overlays or modals appear/disappear.
+*   **ARIA Attributes:** Apply `aria-live` regions to relevant container elements in the main HTML (`index.html`) to announce critical state changes read from Zustand (e.g., "Spinning", "Reels Stopped", "Balance: 100", "Free Spins Triggered"). This requires careful coordination between React state and the hosting HTML structure.
+*   **Semantic HTML Shell:** Ensure the surrounding HTML (`index.html`) uses semantic elements appropriately.
+*   **Color Contrast:** Consider sufficient color contrast in UI elements, although graphical elements are primary.

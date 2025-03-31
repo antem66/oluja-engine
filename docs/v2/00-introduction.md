@@ -24,6 +24,7 @@ To achieve these goals, the V2 engine adheres to the following principles:
 *   **Declarative Approach:** Utilize declarative patterns (React components, Zustand state selectors) where possible to manage UI and state, simplifying logic compared to purely imperative approaches.
 *   **Extensibility through Interfaces & Composition:** Design core engine parts anticipating variation. Utilize TypeScript interfaces and potentially strategy patterns or component composition to allow different game mechanics to plug into the engine framework.
 *   **TypeScript First:** Employ TypeScript throughout the monorepo for enhanced type safety, improved refactoring capabilities, and clearer code contracts.
+*   **Accessibility Considerations:** While Canvas-based, strive for basic accessibility best practices where feasible (e.g., keyboard navigation for core controls, ARIA attributes on the host HTML for critical announcements).
 
 ## 3. Technology Stack
 
