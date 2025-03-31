@@ -269,7 +269,7 @@ export class AppInitializer {
 
         // Create the resize function
         const resize = () => {
-            if (!this._app) return; // Guard against app being destroyed
+            if (!this._app || !this._app.stage) return; // Guard against app/stage being destroyed
 
             const screenWidth = window.innerWidth;
             const screenHeight = window.innerHeight;
@@ -295,11 +295,39 @@ export class AppInitializer {
                 posY = (screenHeight - gameHeight * scale) / 2;
             }
 
-            // Apply scale and position to the main stage
-            stage.scale.set(scale);
-            stage.position.set(posX, posY);
+            // --- Apply scaling and positioning to CORE GAME layers --- 
+            const coreLayersToScale = [
+                stage.getChildByName("Layer: Background"),
+                stage.getChildByName("Layer: Reels"),
+                stage.getChildByName("Layer: Win Lines"),
+                stage.getChildByName("Layer: Particles")
+            ].filter(layer => layer); // Filter out nulls if a layer wasn't found
+
+            if (coreLayersToScale.length < 4) {
+                logger.warn('AppInitializer', 'Resize handler could not find all core game layers by name. Scaling might be incomplete.');
+            }
+
+            coreLayersToScale.forEach(layer => {
+                if (layer) { 
+                    layer.scale.set(scale);
+                    layer.position.set(posX, posY);
+                }
+            });
             
-            logger.debug('AppInitializer', `Resized - Screen: ${screenWidth}x${screenHeight}, Scale: ${scale.toFixed(3)}, Pos: (${posX.toFixed(1)}, ${posY.toFixed(1)})`);
+            // --- Ensure UI ROOT container remains unscaled and at top-left --- 
+            const uiRoot = stage.getChildByName("UIRootContainer");
+            if (uiRoot) {
+                uiRoot.scale.set(1); // Reset scale to 1
+                uiRoot.position.set(0, 0); // Reset position to top-left
+            } else {
+                 logger.warn('AppInitializer', 'Resize handler could not find UIRootContainer by name. UI might not position correctly.');
+            }
+
+            // --- Remove direct scaling/positioning of the main stage ---
+            // stage.scale.set(scale);
+            // stage.position.set(posX, posY);
+            
+            logger.debug('AppInitializer', `Resized - Screen: ${screenWidth}x${screenHeight}, Game Scale: ${scale.toFixed(3)}, Game Pos: (${posX.toFixed(1)}, ${posY.toFixed(1)})`);
         };
 
         // Store the bound handler for removal later

@@ -92,6 +92,8 @@ export class Game {
     layerDebug = null;
     /** @type {PIXI.Container | null} */ // New Layer Property
     layerFullScreenEffects = null;
+    /** @type {PIXI.Container | null} */ // Root for UI elements that adapt to screen size
+    uiRootContainer = null;
 
     // Dedicated Sub-containers for overlays
     /** @type {PIXI.Container | null} */
@@ -264,45 +266,80 @@ export class Game {
     }
 
     _createLayers() {
+        // --- 1. Create all individual layer containers ---
         this.layerBackground = this._createLayer("Layer: Background", 0);
         this.layerReels = this._createLayer("Layer: Reels", 10);
         this.layerWinLines = this._createLayer("Layer: Win Lines", 20);
         this.layerUI = this._createLayer("Layer: UI", 30);
         this.layerLogo = this._createLayer("Layer: Logo", 40);
-        this.layerFullScreenEffects = this._createLayer("Layer: Full Screen Effects", 45); // Above Logo, below Overlays
+        this.layerFullScreenEffects = this._createLayer("Layer: Full Screen Effects", 45);
         this.layerOverlays = this._createLayer("Layer: Overlays", 50);
         this.layerParticles = this._createLayer("Layer: Particles", 60);
         this.layerDebug = this._createLayer("Layer: Debug", 100);
-        this.layerDebug.visible = false; // Specific property for Debug layer
+        this.layerDebug.visible = false;
 
+        // --- 2. Create and populate sub-containers (remains the same) ---
         this.fsIndicatorContainer = new PIXI.Container();
         this.fsIndicatorContainer.name = "OverlaySub: FS Indicator";
-
         this.notificationsContainer = new PIXI.Container();
         this.notificationsContainer.name = "OverlaySub: Notifications";
-
         this.winAnnouncementsContainer = new PIXI.Container();
         this.winAnnouncementsContainer.name = "OverlaySub: Win Announcements";
 
         if (this.layerOverlays && this.fsIndicatorContainer && this.notificationsContainer && this.winAnnouncementsContainer) {
-            this.layerOverlays.addChild(this.fsIndicatorContainer);
-            this.layerOverlays.addChild(this.notificationsContainer);
-            this.layerOverlays.addChild(this.winAnnouncementsContainer);
+            // Use addChild with multiple arguments
+            this.layerOverlays.addChild(this.fsIndicatorContainer, this.notificationsContainer, this.winAnnouncementsContainer);
         } else {
             console.error("Game Init Error: Failed to create overlay sub-containers.");
+            // Consider returning or throwing here if critical
         }
 
-        if (this.app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerUI && this.layerLogo && this.layerFullScreenEffects && this.layerOverlays && this.layerParticles && this.layerDebug) {
-            this.app.stage.sortableChildren = true; // Ensure zIndex works
-            this.app.stage.addChild(this.layerBackground, this.layerReels, this.layerWinLines, this.layerUI, this.layerLogo, this.layerFullScreenEffects, this.layerOverlays, this.layerParticles, this.layerDebug);
+        // --- 3. Create the UI Root Container ---
+        this.uiRootContainer = new PIXI.Container();
+        this.uiRootContainer.name = "UIRootContainer";
+        this.uiRootContainer.sortableChildren = true; // Enable zIndex within UI root
+
+        // --- 4. Add UI layers to the UI Root Container ---
+        if (this.uiRootContainer && this.layerUI && this.layerLogo && this.layerFullScreenEffects && this.layerOverlays && this.layerDebug) {
+            // Use addChild with multiple arguments
+            this.uiRootContainer.addChild(
+                this.layerUI,
+                this.layerLogo,
+                this.layerFullScreenEffects,
+                this.layerOverlays,
+                this.layerDebug
+            );
+            // Note: The zIndex values set by _createLayer will work *within* uiRootContainer.
         } else {
-            (this.deps?.logger || console).error("Game Init Error: One or more layers failed to initialize or app stage not available before adding layers.");
+             (this.deps?.logger || console).error("Game Init Error: Failed to add UI layers to uiRootContainer.");
+             // Handle error
         }
 
+        // --- 5. Add Main Game Layers and UI Root Container to the Stage ---
+        if (this.app?.stage && this.layerBackground && this.layerReels && this.layerWinLines && this.layerParticles && this.uiRootContainer) {
+            this.app.stage.sortableChildren = true; // Ensure zIndex works on the main stage
+             // Use addChild with multiple arguments
+            this.app.stage.addChild(
+                this.layerBackground,
+                this.layerReels,
+                this.layerWinLines,
+                this.layerParticles,
+                this.uiRootContainer // Add the container holding all UI layers
+            );
+            // The main stage will now sort: Background(0), Reels(10), WinLines(20), Particles(60), UIRootContainer(undefined zIndex, added last).
+            // If stacking issues arise later, we can add `this.uiRootContainer.zIndex = 70;` here.
+        } else {
+            (this.deps?.logger || console).error("Game Init Error: Failed to add main layers and uiRootContainer to the stage.");
+            // Handle error
+        }
+
+        // --- 6. Position layerWinLines (remains the same) ---
         if (this.layerWinLines) {
             this.layerWinLines.position.set(SETTINGS.reelAreaX, SETTINGS.reelAreaY);
             this.deps?.logger?.debug('Game', `Positioned layerWinLines at (${SETTINGS.reelAreaX}, ${SETTINGS.reelAreaY})`);
         }
+
+        this.deps?.logger?.info('Game', 'Layers created and structured for hybrid scaling.');
     }
 
     _createManagers() {
@@ -325,7 +362,7 @@ export class Game {
         }
         // --- END EDIT ---
 
-        this.backgroundManager = new BackgroundManager(this.layerBackground, logger);
+        this.backgroundManager = new BackgroundManager(this.app, logger);
         this.reelManager = new ReelManager(
             this.layerReels, 
             // --- BEGIN EDIT: Use this.app.ticker ---
@@ -657,6 +694,7 @@ export class Game {
         this.canvasContainer = null;
         this.deps = null;
         this.pluginSystem = null;
+        this.uiRootContainer = null; // <-- Add cleanup for the new container
     }
 }
 

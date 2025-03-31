@@ -7,22 +7,23 @@ import gsap from 'gsap';
 export class BackgroundManager {
     /** @type {PIXI.Sprite | null} */
     backgroundSprite = null;
-    /** @type {PIXI.Container | null} */
-    parentLayer = null;
     /** @type {import('../utils/Logger.js').Logger | null} */
     logger = null;
 
+    /** @type {PIXI.Application | null} */ // Store app reference
+    app = null;
+
     /**
-     * @param {PIXI.Container} parentLayer 
-     * @param {import('../utils/Logger.js').Logger} loggerInstance 
+     * @param {PIXI.Application} appInstance
+     * @param {import('../utils/Logger.js').Logger} loggerInstance
      */
-    constructor(parentLayer, loggerInstance) {
+    constructor(appInstance, loggerInstance) {
         this.logger = loggerInstance;
-        if (!parentLayer) {
-            this.logger?.error('BackgroundManager', 'Parent layer is required!');
+        if (!appInstance) {
+            this.logger?.error('BackgroundManager', 'PIXI App instance is required!');
             return;
         }
-        this.parentLayer = parentLayer;
+        this.app = appInstance;
         this._createSprite();
         this.logger?.info('BackgroundManager', 'Initialized.');
     }
@@ -30,7 +31,7 @@ export class BackgroundManager {
     _createSprite() {
         try {
             // Use the alias defined in the manifest
-            const alias = 'background_default';
+            const alias = 'background_default'; // Make sure this matches your asset manifest
             this.logger?.debug(`BackgroundManager: Attempting to get texture with alias: ${alias}`);
             const texture = PIXI.Assets.get(alias);
             if (!texture) {
@@ -38,19 +39,17 @@ export class BackgroundManager {
             }
             this.backgroundSprite = new PIXI.Sprite(texture);
             this.backgroundSprite.anchor.set(0.5);
-            this.backgroundSprite.x = SETTINGS.GAME_WIDTH / 2;
-            this.backgroundSprite.y = SETTINGS.GAME_HEIGHT / 2;
+            this.backgroundSprite.zIndex = -1; // Ensure it's behind everything
             
-            // Scale to fit
-            const scale = Math.max(SETTINGS.GAME_WIDTH / this.backgroundSprite.width, SETTINGS.GAME_HEIGHT / this.backgroundSprite.height);
-            this.backgroundSprite.scale.set(scale);
-
-            // Explicit null check for parentLayer to satisfy linter
-            if (this.parentLayer) {
-                this.parentLayer.addChild(this.backgroundSprite);
-                this.logger?.debug('BackgroundManager', 'Background sprite created and added.');
+            // Add directly to the main stage
+            if (this.app?.stage) {
+                // Ensure stage sorting is enabled (might be redundant if set elsewhere)
+                this.app.stage.sortableChildren = true;
+                this.app.stage.addChild(this.backgroundSprite);
+                this._applyScreenScaling(); // Apply initial screen-relative scale/position
+                this.logger?.debug('BackgroundManager', 'Background sprite created and added to stage.');
             } else {
-                 this.logger?.error('BackgroundManager', '_createSprite called but parentLayer is unexpectedly null.');
+                this.logger?.error('BackgroundManager', '_createSprite called but app or app.stage is unexpectedly null.');
             }
         } catch (error) {
             this.logger?.error('BackgroundManager', 'Error creating background sprite:', error);
@@ -128,6 +127,13 @@ export class BackgroundManager {
     destroy() {
         this.logger?.info('BackgroundManager', 'Destroying...');
         
+        // Remove resize listener
+        if (this._boundResizeHandler) {
+            window.removeEventListener('resize', this._boundResizeHandler);
+            this._boundResizeHandler = null;
+            this.logger?.debug('BackgroundManager', 'Removed resize listener.');
+        }
+        
         // Destroy background sprite
         if (this.backgroundSprite) {
             this.backgroundSprite.destroy(); // No children expected
@@ -135,8 +141,49 @@ export class BackgroundManager {
         }
         
         // Nullify references
-        this.parentLayer = null;
+        this.app = null;
         this.logger = null;
         this.backgroundSprite = null; // Linter might complain here too
+    }
+
+    /**
+     * Sets up the resize listener.
+     * @private
+     */
+    _setupResizeHandler() {
+        this._boundResizeHandler = this._applyScreenScaling.bind(this);
+        // @ts-ignore - Suppress persistent linter error about listener type mismatch
+        window.addEventListener('resize', this._boundResizeHandler);
+        this.logger?.debug('BackgroundManager', 'Resize handler attached.');
+    }
+
+    /**
+     * Calculates and applies scale/position to cover the screen.
+     * @private
+     */
+    _applyScreenScaling() {
+        if (!this.backgroundSprite || !this.backgroundSprite.texture || !this.backgroundSprite.texture.width || !this.backgroundSprite.texture.height) {
+            this.logger?.warn('BackgroundManager', 'Cannot apply screen scaling: Sprite or texture invalid.');
+            return;
+        }
+
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const textureWidth = this.backgroundSprite.texture.width;
+        const textureHeight = this.backgroundSprite.texture.height;
+
+        // Calculate 'cover' scale based on screen dimensions
+        const scale = Math.max(screenWidth / textureWidth, screenHeight / textureHeight);
+
+        // Apply scale (consider BG_SCALE_FACTOR from settings for slight zoom)
+        const finalScale = scale * (SETTINGS.BG_SCALE_FACTOR || 1);
+        this.backgroundSprite.scale.set(finalScale);
+
+        // Position sprite center at screen center
+        // Offsets from settings can be applied here if needed relative to screen center
+        this.backgroundSprite.x = screenWidth / 2 + (SETTINGS.BG_OFFSET_X || 0);
+        this.backgroundSprite.y = screenHeight / 2 + (SETTINGS.BG_OFFSET_Y || 0);
+
+        this.logger?.debug('BackgroundManager', `Applied screen scaling. Screen: ${screenWidth}x${screenHeight}, Scale: ${finalScale.toFixed(3)}, Pos: (${this.backgroundSprite.x.toFixed(1)}, ${this.backgroundSprite.y.toFixed(1)})`);
     }
 }

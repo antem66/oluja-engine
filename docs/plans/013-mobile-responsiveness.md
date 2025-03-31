@@ -54,16 +54,21 @@ We will adopt a hybrid scaling approach:
 
 **Phase 3: Adapt UI Layout & Elements (`src/ui/UIManager.js`, `src/config/uiPanelLayout.js`)**
 
-*   **Goal:** Make UI elements position and size themselves relative to the window dimensions, independent of the **16:9** game area and specific reel configuration.
+*   **Goal:** Make UI elements position and size themselves relative to the window dimensions, independent of the **16:9** game area and specific reel configuration. **Include logic for specific mobile adaptations.**
 *   **Tasks:**
     *   Modify `UIManager.js`:
         *   Listen for the `ui:resize` event (or access window dimensions directly/via service).
         *   In `init` and potentially a new `_handleResize` method:
             *   Resize the `_backgroundPanel` (gradient sprite) width to `window.innerWidth`.
             *   Recalculate button and text positions based on `window.innerWidth` and `window.innerHeight`, **primarily using screen-edge anchoring logic (e.g., bottom-left, bottom-center, bottom-right) rather than fixed offsets from a logical center.**
+            *   **Implement conditional logic based on screen width breakpoints (e.g., width < 768px) to potentially:**
+                *   **Adjust font sizes for readability.**
+                *   **Increase button sizes (`btnSize`, `spinBtnSize` used in calculations) for better touch targets.**
+                *   **Adjust spacing constants (`buttonSpacing`, `textButtonGap`) if needed.**
     *   Modify `src/config/uiPanelLayout.js`:
         *   Change `position` definitions. Instead of fixed `x`, `y` pixels based on `GAME_WIDTH`, **use descriptive screen-relative anchors** (e.g., `{ anchor: 'bottom-left', xOffset: 20, yOffset: -20 }`, `{ anchor: 'bottom-center', xOffset: 0, yOffset: -20 }`) or percentage-based values if feasible. Ensure calculations no longer depend on `GAME_WIDTH` or specific reel area calculations.
-    *   Modify `UIManager._buildPanelFromConfig` and `_createTextDisplays` to interpret the new layout definitions and calculate actual `x`, `y` based on current window dimensions and anchor points.
+        *   **Consider adding optional mobile-specific layout properties or even a separate mobile layout configuration (`UI_PANEL_LAYOUT_MOBILE`) if simple resizing/repositioning is insufficient.**
+    *   Modify `UIManager._buildPanelFromConfig` and `_createTextDisplays` to interpret the new layout definitions and calculate actual `x`, `y` based on current window dimensions and anchor points, **applying conditional mobile adjustments as needed.**
     *   Implement minimum size checks/scaling limits for text and buttons if necessary, potentially scaling them slightly based on width but clamping the size.
 *   **Status:** TODO
 
@@ -82,9 +87,10 @@ We will adopt a hybrid scaling approach:
 *   **Tasks:**
     *   Test extensively in browsers using developer tools for various device sizes (iPhone, iPad, Android common resolutions, desktop sizes).
     *   Test portrait and landscape orientations.
-    *   Verify button tap target sizes are adequate on small screens.
-    *   Verify text readability across sizes.
+    *   Verify button tap target sizes are adequate on small screens, **including testing any mobile-specific size increases.**
+    *   Verify text readability across sizes, **including testing any mobile-specific font size adjustments.**
     *   Check alignment and positioning on extreme aspect ratios.
+    *   **Verify any conditional mobile layouts are triggered correctly.**
     *   Identify and fix any visual glitches or layout issues.
     *   Consider adding safe area insets for mobile devices.
 *   **Status:** TODO
@@ -95,6 +101,8 @@ We will adopt a hybrid scaling approach:
 *   How should general overlays/notifications (`layerOverlays`) scale? (Suggest UI).
 *   How should fullscreen effects (`layerFullScreenEffects`) scale? (Depends on the effect - likely UI layer is best).
 *   Confirm precise positioning logic/anchoring required for UI elements (e.g., exactly how should spacing adapt based on `window.innerWidth`?).
+*   **Define screen width breakpoints for triggering mobile-specific UI adjustments.**
+*   **Specify the exact size/spacing/layout changes required for the mobile view.**
 *   Need to carefully manage coordinate transformations if interactions need to happen between the scaled game world and the adaptive UI (e.g., clicking on a game element to show UI, **or positioning a UI element precisely next to a specific reel**).
 *   **Revisit Asset Scaling:** Ensure background images and potentially other assets look good with the new 16:9 scaling ('cover' might be more appropriate now, check `BG_SCALE_MODE` in `gameSettings.js`).
 
@@ -103,3 +111,4 @@ We will adopt a hybrid scaling approach:
 *   **[Date]:** Planning phase initiated.
 *   **[Date]:** Updated target aspect ratio to 16:9.
 *   **[Date]:** Plan updated to emphasize UI decoupling from specific reel layouts via screen-relative anchoring.
+*   **[Date]:** Plan updated to include conditional adjustments (sizing, spacing, layout) for mobile breakpoints.

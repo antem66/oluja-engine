@@ -29,7 +29,7 @@ import * as PIXI from 'pixi.js';
 import { GAME_WIDTH, GAME_HEIGHT, CURRENCY } from '../config/gameSettings.js'; 
 import { gsap } from 'gsap';
 import { createButton } from './ButtonFactory.js';
-import { UI_PANEL_LAYOUT } from '../config/uiPanelLayout.js'; // Import the layout config
+import { WIDE_LAYOUT_CONFIG, NARROW_LAYOUT_CONFIG } from '../config/uiPanelLayout.js'; // Import the new layout configs
 // Import types
 import { Logger } from '../utils/Logger.js';
 import { EventBus } from '../utils/EventBus.js';
@@ -53,8 +53,8 @@ export class UIManager {
     buttonFactory = null;
 
     // --- BEGIN EDIT ---
-    /** @type {Map<string, ReturnType<typeof createButton>>} */ // Store buttons by name
-    buttons = new Map();
+    /** @type {Map<string, PIXI.DisplayObject>} */ // Revert to PIXI.DisplayObject
+    uiElements = new Map();
     // --- END EDIT ---
 
     // UI Elements
@@ -95,6 +95,7 @@ export class UIManager {
     _balanceRollupValues = { currentValue: 0 }; // Store tween target
     /** @type {number} */
     _lastKnownBalance = 0; // Track last displayed balance
+    _boundResizeHandler = null; // Store the bound resize handler
 
     /**
      * @param {object} dependencies
@@ -146,18 +147,8 @@ export class UIManager {
         this.internalContainer = new PIXI.Container();
         this.parentLayer.addChild(this.internalContainer);
 
-        // --- Define Sizes and Spacing ---
-        const panelHeight = 140;
-        const panelY = GAME_HEIGHT - panelHeight;
-        const panelCenterY = panelY + panelHeight / 2;
-        const btnSize = 40; // Moved these back here for clarity in text display positioning
-        const spinBtnSize = 85;
-        const sideMargin = 35;
-        const textButtonGap = 30; 
-        // Remove verticalTextGap, we'll use button Y position
-        // const verticalTextGap = 5;
-
         // --- Create Gradient Background Sprite ---
+        const panelHeight = 140; // Assuming fixed height for now
         const gradientTexture = this._createGradientTexture(panelHeight, 'rgba(0,0,0,1)', 'rgba(0,0,0,0)');
         this._backgroundPanel = new PIXI.Sprite(gradientTexture);
         // --- Make gradient very wide and center it horizontally ---
@@ -165,18 +156,20 @@ export class UIManager {
         this._backgroundPanel.width = gradientWidth;
         this._backgroundPanel.height = panelHeight;
         this._backgroundPanel.x = (GAME_WIDTH - gradientWidth) / 2; // Center within logical GAME_WIDTH
-        this._backgroundPanel.y = panelY;
+        this._backgroundPanel.y = GAME_HEIGHT - panelHeight;
         this._backgroundPanel.name = "UIManagerBackgroundPanel";
         this.internalContainer.addChild(this._backgroundPanel); // Add gradient first
         this.logger?.debug("UIManager", "Created centered, wide gradient background panel sprite.");
         // ------------------------------------------
 
-        this._buildPanelFromConfig(); // Build buttons from config (added on top of gradient)
-        this._createTextDisplays(panelCenterY, textButtonGap, initialState); // Add text displays (added on top of gradient)
+        this._createAllUIElements(initialState); // Create ALL elements based on combined configs
         
         // Set initial state visually using initialState
         // Visual state should now be set by listeners/plugins reacting to initial state event
-        this.setButtonsEnabled(initialState); // Keep generic enabled state setting
+        // this.setButtonsEnabled(initialState); // Button state might be handled by plugins now
+
+        // Setup resize handling
+        this._setupLayoutUpdates();
 
         // Subscribe to events
         this._subscribeToEvents();
@@ -195,141 +188,130 @@ export class UIManager {
         this.eventBus?.emit('ui:initialized');
 
         this._lastKnownBalance = initialState.balance; // Initialize tracked balance
-        this.logger?.info("UIManager", `Built UI panel with ${this.buttons.size} buttons from configuration.`);
+        this.logger?.info("UIManager", `Initialized and created ${this.uiElements.size} UI elements.`);
     }
 
-    // --- BEGIN EDIT (Add _buildPanelFromConfig) ---
     /**
-     * Builds the UI button panel based on the UI_PANEL_LAYOUT configuration.
+     * Creates all manageable UI elements based on combined layout configurations.
      * @private
+     * @param {object} initialState
      */
-    _buildPanelFromConfig() {
-        if (!this.internalContainer || !this.buttonFactory || !this.featureManager || !this.eventBus) {
-            this.logger?.error('UIManager', 'Cannot build panel from config: Missing internalContainer, buttonFactory, featureManager, or eventBus.');
+    _createAllUIElements(initialState) {
+        if (!this.internalContainer || !this.buttonFactory || !this.featureManager || !this.eventBus || !this.uiStyles) {
+            this.logger?.error('UIManager', 'Cannot create UI elements: Missing dependencies (internalContainer, factory, featureManager, eventBus, uiStyles).');
             return;
         }
         const factory = this.buttonFactory;
 
-        UI_PANEL_LAYOUT.forEach(buttonConfig => {
-            // Check feature flag if it exists
-            if (buttonConfig.featureFlag && !this.featureManager?.isEnabled(buttonConfig.featureFlag)) {
-                this.logger?.debug('UIManager', `Skipping button "${buttonConfig.name}" due to feature flag "${buttonConfig.featureFlag}".`);
-                return; // Skip this button
+        // Combine configs to get all unique element names
+        const allElementNames = new Set([
+            ...WIDE_LAYOUT_CONFIG.map(e => e.name),
+            ...NARROW_LAYOUT_CONFIG.map(e => e.name)
+        ]);
+
+        allElementNames.forEach(name => {
+            // Find the config (prefer WIDE for creation properties like type, icon, action, size, anchor)
+            const config = WIDE_LAYOUT_CONFIG.find(e => e.name === name) || NARROW_LAYOUT_CONFIG.find(e => e.name === name);
+            if (!config) {
+                this.logger?.warn('UIManager', `Could not find config for element named "${name}" during creation.`);
+                return; // Skip if config missing (should not happen)
             }
 
-            // Define the onClick handler based on config
-            let onClickHandler = () => {};
-            if (buttonConfig.action?.type === 'emitEvent') {
-                onClickHandler = () => {
-                    this.logger?.debug('UIManager', `Button "${buttonConfig.name}" clicked, emitting: ${buttonConfig.action.eventName}`);
-                    this.eventBus?.emit(buttonConfig.action.eventName, buttonConfig.action.payload);
-                };
-            } else {
-                this.logger?.warn('UIManager', `Button "${buttonConfig.name}" has missing or unsupported action type.`);
-                // Default to no-op or potentially log an error
-            }
+            let element = null;
+            try {
+                if (config.type === 'button') {
+                    // Check feature flag before creating button
+                    if (config.featureFlag && !this.featureManager?.isEnabled(config.featureFlag)) {
+                        this.logger?.debug('UIManager', `Skipping button creation "${config.name}" due to feature flag "${config.featureFlag}".`);
+                        return; // Don't create or add to map if feature-flagged out
+                    }
 
-            // Create the button
-            const button = factory(
-                "", // Label text (if any, most buttons use icons)
-                buttonConfig.position.x,
-                buttonConfig.position.y,
-                onClickHandler, // Use the configured handler
-                {}, // Style overrides (optional)
-                this.internalContainer, // Parent container
-                buttonConfig.size.width,
-                buttonConfig.size.height,
-                true, // Assume interactive
-                buttonConfig.icon // Initial icon
-            );
+                    let onClickHandler = () => { };
+                    if (config.action && config.action.type === 'emitEvent') {
+                        onClickHandler = () => {
+                            this.logger?.debug('UIManager', `Button "${config.name}" clicked, emitting: ${config.action.eventName}`);
+                            this.eventBus?.emit(config.action.eventName, config.action.payload);
+                        };
+                    } else {
+                        this.logger?.warn('UIManager', `Button "${config.name}" has missing or unsupported action type.`);
+                    }
 
-            if (button) {
-                button.name = `${buttonConfig.name}Button`; // Set PIXI name for debugging
-                this.buttons.set(buttonConfig.name, button); // Store button instance in the map
-                this.logger?.debug('UIManager', `Created button "${buttonConfig.name}".`);
-            } else {
-                this.logger?.error('UIManager', `Failed to create button "${buttonConfig.name}".`);
+                    element = factory(
+                        "", // text label - not used for icon buttons
+                        0, 0, // Initial position (will be set by layout update)
+                        onClickHandler,
+                        {}, // textStyle
+                        this.internalContainer, // parent
+                        config.size?.width || 50, // Use configured size or default
+                        config.size?.height || 50,
+                        true, // circular
+                        config.icon // icon name
+                    );
+                    if (element) element.name = `${config.name}_Button`; // Set PIXI name
+
+                } else if (config.type === 'text') {
+                    let textStyle = this.uiStyles[config.name] || this.uiStyles['default'] || {}; // Get specific style or default
+                    let initialText = '';
+                    // Determine initial text based on name (can be improved)
+                    if (name === 'balanceValue') initialText = CURRENCY[initialState.currentCurrency]?.format(initialState.balance) || `${initialState.balance.toFixed(2)}`;
+                    if (name === 'winValue') initialText = CURRENCY[initialState.currentCurrency]?.format(0) || '0.00';
+                    if (name === 'betValue') initialText = CURRENCY[initialState.currentCurrency]?.format(initialState.currentTotalBet) || `${initialState.currentTotalBet.toFixed(2)}`;
+                    if (name === 'welcomeText') initialText = 'WELCOME TO HEAVENS TEMPLE'; // Example
+                    if (name === 'winRollupText') initialText = ''; // Starts empty
+
+                    element = new PIXI.Text({ text: initialText, style: textStyle });
+                    element.name = `${config.name}_Text`;
+                    // Assign to legacy properties if needed, but use map primarily
+                    if (name === 'balanceValue') this.balanceText = element;
+                    if (name === 'winValue') this.winText = element;
+                    if (name === 'betValue') this.betText = element;
+                    if (name === 'winRollupText') this.winRollupText = element;
+                    // Add other text elements (e.g., welcomeText) if needed
+
+                } else if (config.type === 'decoration') {
+                    // Example: Create a simple sprite or container for decorations
+                    // This part needs specific logic based on what 'tvScreen' or 'bigWinBanner' are
+                    if (name === 'tvScreen') {
+                        // element = new PIXI.Sprite(PIXI.Texture.WHITE); // Placeholder
+                        // element.tint = 0x333333;
+                        // TODO: Replace with actual asset/graphic loading for TV
+                        element = new PIXI.Graphics().rect(0, 0, 100, 80).fill(0x111111); // TEMP Placeholder graphic
+                    } else if (name === 'bigWinBanner') {
+                        element = new PIXI.Container(); // Example: Container for banner elements
+                        // element.addChild(new PIXI.Sprite(PIXI.Assets.get('bigWinBg'))); // Example
+                        // element.addChild(new PIXI.Text('BIG WIN!')); // Example
+                    }
+                    if (element) element.name = `${config.name}_Decoration`;
+                } else {
+                    this.logger?.warn('UIManager', `Unrecognized UI element type "${config.type}" for element "${name}".`);
+                    return; // Skip unknown types
+                }
+
+                if (element) {
+                    // Set anchor/pivot based on config (only if property exists in config)
+                    if (config.anchor && (element instanceof PIXI.Text || element instanceof PIXI.Sprite)) {
+                        element.anchor.set(config.anchor.x ?? 0.5, config.anchor.y ?? 0.5);
+                    }
+                    // Note: Button pivot is handled internally by ButtonFactory
+
+                    // Initially hide elements that might depend on layout visibility
+                    element.visible = false;
+                    if (element) {
+                        this.internalContainer.addChild(element);
+                        this.uiElements.set(name, element);
+                        this.logger?.debug('UIManager', `Created UI element "${name}" of type "${config.type}".`);
+                    } else {
+                        this.logger?.warn('UIManager', `Skipping add/store for null element "${name}".`);
+                    }
+                } else {
+                    this.logger?.warn('UIManager', `Failed to create PIXI object for UI element "${name}".`);
+                }
+
+            } catch (error) {
+                this.logger?.error('UIManager', `Error creating UI element "${name}":`, error);
             }
         });
-
-        this.logger?.info('UIManager', `Built UI panel with ${this.buttons.size} buttons from configuration.`);
     }
-    // --- END EDIT ---
-
-    // --- BEGIN EDIT: Rewritten Text Display Creation/Positioning ---
-    // Accept standardButtonY for vertical alignment reference
-    _createTextDisplays(standardButtonY, textButtonGap, initialState) {
-        if (!this.internalContainer || !this.uiStyles || !initialState) { 
-            this.logger?.error("UIManager", "Cannot create text displays - internalContainer, uiStyles, or initialState missing.");
-            return;
-        }
-        
-        const btnSize = 40; 
-        const spinBtnSize = 85; // Need spinBtnSize as well
-
-        // Get button instances from the map
-        const betDecreaseButton = this.buttons.get('betDecrease');
-        const betIncreaseButton = this.buttons.get('betIncrease');
-        const autoplayButton = this.buttons.get('autoplay');
-        const spinButton = this.buttons.get('spin');
-
-        // Check if all required buttons exist before proceeding
-        if (!betDecreaseButton || !betIncreaseButton || !autoplayButton || !spinButton) {
-            this.logger?.error("UIManager", "One or more required buttons (bet+/-, autoplay, spin) not found in map. Cannot accurately position text displays.");
-            return; 
-        }
-
-        // --- Bet Display (Centered between +/- buttons) ---
-        const betAreaCenterX = (betDecreaseButton.x + betIncreaseButton.x) / 2;
-        const buttonCenterY = standardButtonY + btnSize / 2; 
-        // Position label centered with button, value below label
-        const labelY = buttonCenterY;
-        const valueY = labelY + 20; // Gap between label center and value center
-
-        this.betLabel = this._createText("TOTAL BET", this.uiStyles.label, betAreaCenterX, labelY);
-        const initialBetFormatted = this._formatMoney(initialState.currentTotalBet, initialState.currentCurrency);
-        this.betText = this._createText(initialBetFormatted, this.uiStyles.betValue, betAreaCenterX, valueY);
-
-        // --- Balance Display (Position relative to Autoplay button) ---
-        const balanceX = autoplayButton.x + btnSize / 2 + textButtonGap;
-        this.balanceLabel = this._createText("BALANCE", this.uiStyles.label, balanceX, labelY, 0); // Anchor Left
-        const initialBalanceFormatted = this._formatMoney(initialState.balance, initialState.currentCurrency);
-        this.balanceText = this._createText(initialBalanceFormatted, this.uiStyles.balanceValue, balanceX, valueY, 0); // Anchor Left
-
-        // --- Win Display (Centered Horizontally) ---
-        const winX = GAME_WIDTH / 2; // Center on the screen
-        this.winLabel = this._createText("WIN", this.uiStyles.label, winX, labelY, 0.5); // Use same labelY
-        const initialWinFormatted = this._formatMoney(0, initialState.currentCurrency); // Start win at 0
-        this.winText = this._createText(initialWinFormatted, this.uiStyles.winValue, winX, valueY, 0.5); // Use same valueY
-
-        // Hide win display initially
-        if (this.winLabel) this.winLabel.visible = false;
-        if (this.winText) this.winText.visible = false;
-    }
-    // --- END EDIT ---
-    
-    // --- Helper Methods --- 
-    /**
-     * Creates and adds a PIXI Text object.
-     * @param {string} text - The text content.
-     * @param {PIXI.TextStyle} style - The text style.
-     * @param {number} x - X position.
-     * @param {number} y - Y position.
-     * @param {number} [anchorX=0.5] - Horizontal anchor (0=left, 0.5=center, 1=right).
-     * @param {number} [anchorY=0.5] - Vertical anchor.
-     * @returns {PIXI.Text | null}
-     * @private
-     */
-    _createText(text, style, x, y, anchorX = 0.5, anchorY = 0.5) {
-        if (!this.internalContainer) return null;
-        const pixiText = new PIXI.Text({ text, style });
-        pixiText.anchor.set(anchorX, anchorY);
-        pixiText.x = x;
-        pixiText.y = y;
-        this.internalContainer.addChild(pixiText);
-        return pixiText;
-    }
-    // --- End Helper Methods ---
 
     /**
      * Formats a number as currency based on the current state.
@@ -366,13 +348,21 @@ export class UIManager {
     destroy() {
         this.logger?.info('UIManager', 'Destroying...');
 
+        // Remove resize listener
+        if (this._boundResizeHandler) {
+            // @ts-ignore - Suppress persistent linter error about listener type mismatch
+            window.removeEventListener('resize', this._boundResizeHandler);
+            this._boundResizeHandler = null;
+            this.logger?.debug('UIManager', 'Removed resize listener.');
+        }
+
         // Kill tweens
         if (this._winRollupTween) {
             this._winRollupTween.kill();
             this._winRollupTween = null;
         }
         gsap.killTweensOf(this._balanceRollupValues); 
-        const spinButton = this.buttons.get('spin'); // Kill spin button tween
+        const spinButton = this.uiElements.get('spin'); // Kill spin button tween
         if (spinButton?.buttonIcon) {
             gsap.killTweensOf(spinButton.buttonIcon);
         }
@@ -396,8 +386,12 @@ export class UIManager {
         this._backgroundPanel = null;
 
         // Destroy buttons
-        this.buttons.forEach(button => button.destroy());
-        this.buttons.clear();
+        this.uiElements.forEach(element => {
+            if (element instanceof PIXI.Container) {
+                element.destroy({ children: true });
+            }
+        });
+        this.uiElements.clear();
 
         // Destroy the internal container and its children (text elements)
         this.internalContainer?.destroy({ children: true }); 
@@ -542,20 +536,20 @@ export class UIManager {
         const buttonsToToggle = [
             // Remove spin button from this list
             // this.buttons.get('spin'), 
-            this.buttons.get('betDecrease'),
-            this.buttons.get('betIncrease'),
+            this.uiElements.get('betDecrease'),
+            this.uiElements.get('betIncrease'),
         ];
         // --- END EDIT: Early Stop - Keep Spin button enabled during spin ---
 
         // Keep Autoplay & Turbo always interactive 
         // --- BEGIN EDIT (Add checks for buttons from map) ---\
-        const autoplayButtonRef = this.buttons.get('autoplay');
+        const autoplayButtonRef = this.uiElements.get('autoplay');
         if (autoplayButtonRef) {
             autoplayButtonRef.eventMode = 'static';
             autoplayButtonRef.alpha = 1.0;
             autoplayButtonRef.cursor = 'pointer';
         }
-        const turboButtonRef = this.buttons.get('turbo');
+        const turboButtonRef = this.uiElements.get('turbo');
         if (turboButtonRef) {
             turboButtonRef.eventMode = 'static';
             turboButtonRef.alpha = 1.0;
@@ -566,7 +560,7 @@ export class UIManager {
         buttonsToToggle.forEach(button => {
             if (!button) return; // Already checks if the button itself exists in the array
             // --- BEGIN EDIT (Add checks for buttons from map for comparison) ---
-            const isBetButton = button === this.buttons.get('betDecrease') || button === this.buttons.get('betIncrease');
+            const isBetButton = button === this.uiElements.get('betDecrease') || button === this.uiElements.get('betIncrease');
             // --- END EDIT ---
             // Disable bet buttons during FS and Autoplay, otherwise use general 'enabled' state
             // --- BEGIN EDIT: Early Stop - Use generalEnabled ---
@@ -579,7 +573,7 @@ export class UIManager {
         });
         
         // --- BEGIN EDIT: Early Stop - Handle Spin button separately ---
-        const spinButtonRef = this.buttons.get('spin');
+        const spinButtonRef = this.uiElements.get('spin');
         if (spinButtonRef) {
             // Spin button is enabled if game is not transitioning, regardless of spinning state
             const spinEnabled = generalEnabled; 
@@ -592,7 +586,7 @@ export class UIManager {
 
     animateSpinButtonRotation() {
         // --- BEGIN EDIT (Add checks for button from map) ---
-        const spinButtonRef = this.buttons.get('spin');
+        const spinButtonRef = this.uiElements.get('spin');
         if (!spinButtonRef || !spinButtonRef.buttonIcon) {
         // --- END EDIT ---
             this.logger?.warn('UIManager', 'Cannot animate spin button - button or icon missing.');
@@ -608,7 +602,7 @@ export class UIManager {
 
     stopSpinButtonRotation() {
         // --- BEGIN EDIT (Add checks for button from map) ---
-        const spinButtonRef = this.buttons.get('spin');
+        const spinButtonRef = this.uiElements.get('spin');
         if (!spinButtonRef || !spinButtonRef.buttonIcon) {
         // --- END EDIT ---
             this.logger?.warn('UIManager', 'Cannot stop spin button animation - button or icon missing.');
@@ -721,7 +715,7 @@ export class UIManager {
      */
     getButton(buttonName) {
         // --- BEGIN EDIT (Use map) ---
-        const button = this.buttons.get(buttonName);
+        const button = this.uiElements.get(buttonName);
         if (!button) {
             this.logger?.warn('UIManager', `getButton called for unknown button: ${buttonName}`);
             return null;
@@ -852,4 +846,122 @@ export class UIManager {
         return PIXI.Texture.from(canvas);
     }
     // ---------------------------------
+
+    /**
+     * Sets up the window resize listener and triggers initial layout update.
+     * @private
+     */
+    _setupLayoutUpdates() {
+        if (!this._updateUILayout) { // Check for the renamed method
+            this.logger?.error('UIManager', 'Cannot setup layout updates: _updateUILayout method missing.');
+            return;
+        }
+        this._boundResizeHandler = this._updateUILayout.bind(this); // Bind the renamed method
+        if (this._boundResizeHandler) {
+            window.addEventListener('resize', this._boundResizeHandler);
+        } else {
+            this.logger?.error('UIManager', 'Failed to bind resize handler, cannot add listener.');
+            return;
+        }
+
+        // Initial layout calculation and application
+        this._updateUILayout();
+        this.logger?.info('UIManager', 'Layout update handler attached and initial layout applied.');
+    }
+
+    /**
+     * Handles window resize by selecting the appropriate layout config and applying it.
+     * @private
+     */
+    _updateUILayout() {
+        if (!this.uiElements || this.uiElements.size === 0) {
+            // No elements created yet, or called during destruction
+            return;
+        }
+        this.logger?.debug('UIManager', 'Updating UI layout...');
+
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+
+        // Determine breakpoint and select config
+        const isPortrait = screenHeight > screenWidth;
+        const activeLayoutConfig = isPortrait ? NARROW_LAYOUT_CONFIG : WIDE_LAYOUT_CONFIG;
+        const activeLayoutName = isPortrait ? 'Narrow' : 'Wide';
+        this.logger?.debug('UIManager', `Applying layout: ${activeLayoutName}`);
+
+        const processedElements = new Set();
+
+        // Apply positions/visibility based on the active layout
+        activeLayoutConfig.forEach(elementConfig => {
+            const elementName = elementConfig.name;
+            const element = this.uiElements.get(elementName);
+            processedElements.add(elementName); // Mark as processed
+
+            if (!element) {
+                this.logger?.warn('UIManager', `_updateUILayout: Could not find managed UI element "${elementName}" for layout ${activeLayoutName}.`);
+                return;
+            }
+
+            // 1. Apply Visibility
+            let isVisible = true; // Default to visible
+            if (typeof elementConfig.visible === 'function') {
+                isVisible = elementConfig.visible(isPortrait);
+            } else if (typeof elementConfig.visible === 'boolean') {
+                isVisible = elementConfig.visible;
+            }
+            element.visible = isVisible;
+
+            // 2. Apply Position, Scale, Anchor (if visible)
+            if (isVisible) {
+                // Position
+                if (typeof elementConfig.position === 'function') {
+                    const pos = elementConfig.position(screenWidth, screenHeight);
+
+                    // Apply position considering pivot/anchor
+                    if (element instanceof PIXI.Text || (element instanceof PIXI.Sprite && elementConfig.anchor)) {
+                        // For Text or Sprites with defined anchor
+                        if (elementConfig.anchor) {
+                            element.anchor.set(elementConfig.anchor.x ?? 0.5, elementConfig.anchor.y ?? 0.5);
+                        }
+                        element.x = pos.x;
+                        element.y = pos.y;
+                    } else if (element.pivot && typeof element.pivot.x === 'number') {
+                        // For elements with a pivot (like our Buttons)
+                        // ButtonFactory sets pivot to center (radius, radius)
+                        // Config position is top-left, so add pivot offset
+                        element.x = pos.x + element.pivot.x;
+                        element.y = pos.y + element.pivot.y;
+                    } else {
+                        // Default for elements with no specific anchor/pivot rule
+                        element.x = pos.x;
+                        element.y = pos.y;
+                    }
+                    // this.logger?.debug('UIManager', `Element "${elementName}" positioned to x=${element.x.toFixed(1)}, y=${element.y.toFixed(1)}`);
+
+                } else {
+                    this.logger?.warn('UIManager', `Position config for element "${elementName}" is not a function in ${activeLayoutName} layout.`);
+                }
+
+                // Scale (Optional)
+                if (elementConfig.scale && (element instanceof PIXI.Container || element instanceof PIXI.Sprite || element instanceof PIXI.Text)) {
+                    let scaleVal = { x: 1, y: 1 };
+                    if (typeof elementConfig.scale === 'function') {
+                        scaleVal = elementConfig.scale(screenWidth, screenHeight, {}, isPortrait); // Pass relevant args
+                    } else {
+                        scaleVal = elementConfig.scale; // Assume static object {x, y}
+                    }
+                    element.scale.set(scaleVal.x, scaleVal.y);
+                    // this.logger?.debug('UIManager', `Element "${elementName}" scaled to x=${scaleVal.x}, y=${scaleVal.y}`);
+                }
+            }
+        });
+
+        // Hide elements that are managed but NOT in the active layout config
+        this.uiElements.forEach((element, name) => {
+            if (!processedElements.has(name)) {
+                element.visible = false;
+                // this.logger?.debug('UIManager', `Hiding element "${name}" as it's not in ${activeLayoutName} layout.`);
+            }
+        });
+    }
 }
