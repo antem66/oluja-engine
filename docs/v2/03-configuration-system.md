@@ -15,7 +15,7 @@ The configuration system is the cornerstone of the V2 engine's flexibility and e
 
 ## 3. Core Configuration Interfaces (Examples - Needs Full Definition)
 
-The following are examples of key interfaces expected within `packages/game-configs/src/types.ts`. These need to be fully fleshed out during development.
+The following are examples of key interfaces expected within `packages/game-configs/src/types.ts`. These need to be fully fleshed out during development. **Note:** Some configuration might reference external assets (like texture IDs), while others might conceptually link to game-specific code components (though the config itself wouldn't directly import code).
 
 ```typescript
 // packages/game-configs/src/types.ts (Illustrative Snippets)
@@ -56,6 +56,9 @@ export interface GameSettings {
     assets: AssetManifest;
     soundConfig?: SoundConfig;
     animationTimings?: AnimationTimings;
+    // ★ Reference potentially game-specific visual components (by convention/name? TBD)
+    // backgroundComponentKey?: string;
+    // symbolComponentKey?: string;
     // Add RTP, volatility info etc. as needed
 }
 
@@ -76,6 +79,10 @@ export interface SymbolDefinition {
     payouts?: PayoutEntry[]; // For line/ways/cluster wins
     scatterPaysValue?: number; // For scatter wins (value per symbol)
     moneyValue?: number | number[]; // Fixed or range of values for money symbols
+    // ★ Reference specific animation sequences for this symbol
+    // idleAnimationKey?: string;
+    // winAnimationKey?: string; 
+    // spineAnimation?: { skin: string; idleAnim: string; winAnim: string };
     // Add other properties: isExpanding, animation keys, Spine skin name, etc.
 }
 
@@ -145,6 +152,9 @@ export interface AnimationTimings {
     reelStopDelayBetween?: number; // Stagger
     winPresentationDelay?: number;
     symbolWinAnimation?: { duration: number; ease?: string };
+    // ★ Define keys for complex game-specific sequences?
+    // featureEnterTransitionKey?: string;
+    // bigWinCelebrationKey?: string;
     // Add timings for features, transitions, turbo mode variations
 }
 
@@ -155,6 +165,9 @@ export interface FreeSpinsParameters {
     minTriggerCount: number;
     spinsAwarded: number[] | Record<number, number>; // Spins per trigger count
     retriggerPossible?: boolean;
+    // ★ Reference custom transition animations?
+    // entryTransitionKey?: string;
+    // exitTransitionKey?: string;
     // Add configs for multipliers, special symbols, collection mechanics etc.
 }
 
@@ -180,6 +193,12 @@ export interface GameConfiguration {
     paylines?: PaylineSet; // Optional if not a line game
     // Add other top-level configs (ways, cluster definitions)
     featureParameters?: FeatureParameters;
+    // ★ Potentially add a section for game-specific component/animation mappings
+    // visualOverrides?: {
+    //     symbolComponent?: string; // Key referencing the game's custom symbol component
+    //     backgroundComponent?: string;
+    //     animations?: Record<string, any>; // Game-specific animation definitions?
+    // };
 }
 
 // --- Strategy Interfaces (Example) ---
@@ -205,7 +224,7 @@ export interface ISpinReactor {
 *   Each game package (e.g., `packages/games/my-awesome-game/`) will have a `src/config/` directory.
 *   Inside this directory, files like `settings.ts`, `symbols.ts`, `reels.ts`, `paylines.ts`, `assets.ts`, `sounds.ts`, `features.ts` will export objects that **implement the corresponding interfaces** defined in `game-configs`.
 *   A main `src/config/index.ts` file typically imports all these specific configurations and exports a single `gameConfiguration: GameConfiguration` object.
-*   This `gameConfiguration` object is what gets passed to the `engine-core`'s main `<GameContainer>` component.
+*   This `gameConfiguration` object is what gets passed to the `engine-core`'s main `<GameContainer>` component. **The engine interprets keys within the config (like `textureId` or potentially `symbolComponentKey`) to load assets or select appropriate rendering logic/components.**
 
 ## 5. Extensibility via Configuration
 
@@ -216,5 +235,7 @@ The engine achieves extensibility primarily through these configuration points:
 *   **Asset Definitions:** By defining all assets (textures, sounds, etc.) externally, each game has complete control over its visual and auditory theme.
 *   **Animation Timings:** Allows tuning the pace and feel of each game without changing engine code.
 *   **(Advanced) Strategy Injection:** If using the strategy pattern, the game config could potentially specify which implementation of `IWinEvaluator` or `ISpinReactor` to use, allowing for fundamentally different core behaviors defined partly or wholly within the game package itself.
+*   **Component Injection Keys (Conceptual):** While direct code references aren't ideal in JSON-like config, conventions can be used. Config might specify a `symbolComponentKey: 'MyGameSpecialSymbol'`. The game's entry point (`main.tsx`) would then import its actual `<MyGameSpecialSymbol>` component and pass it via prop (like `renderSymbol`) to the engine, potentially based on this key. This keeps config data-oriented but enables custom code injection.
+*   **Animation Definitions:** Similarly, keys like `winAnimationKey` in the config can map to specific GSAP timelines defined within the game package's code, which are then triggered by the engine or game-specific components.
 
-This configuration-driven approach ensures that `engine-core` remains generic and reusable, while individual games have deep control over their specific implementation and characteristics.
+This configuration-driven approach, **combined with component composition and injection points designed into the engine components**, ensures that `engine-core` remains generic and reusable, while individual games have deep control over their specific implementation, characteristics, **and visual presentation/animations**.

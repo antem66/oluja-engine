@@ -54,18 +54,19 @@ packages/engine-core/src/
 
 ## 2. Core Components (`src/components/`)
 
-Components in `engine-core` are React components that ultimately render PixiJS objects using `@pixi/react` components (`<Stage>`, `<Container>`, `<Sprite>`, `<Graphics>`, `<Text>`, etc.). **Performance and mobile adaptability are key design goals.**
+Components in `engine-core` are React components that ultimately render PixiJS objects using `@pixi/react`. Performance and mobile adaptability are key design goals. **A core principle is enabling visual customization through composition and props.**
 
-*   **`layout/GameContainer.tsx`**: The top-level component rendered by the game entry point. Receives the main game config. Initializes context, loads assets via `useAssets`, sets up the `@pixi/react` `<Stage>`, and renders core layout sections (reels area, UI overlay, feature overlays). **Handles base responsiveness setup.**
-*   **`layout/ScaledContainer.tsx`**: (Optional but Recommended) A helper component for handling **responsive scaling** of game elements (e.g., scaling down the main game area while preserving aspect ratio on smaller/different ratio screens).
-*   **`reels/ReelContainer.tsx`**: Responsible for arranging the individual reels based on game config. Performance consideration: efficiently manages reel component rendering.
-*   **`reels/standard/StandardReelStrip.tsx`**: Renders a standard fixed-height reel. **Must efficiently handle symbol swapping/masking during spins.**
-*   **`reels/common/BaseSymbol.tsx`**: Renders a single symbol using `<Sprite>`. **Minimize component overhead.** Simple state changes (like `isWinning`) should ideally translate to minimal prop changes.
-*   **`ui/Button.tsx`**: A reusable button component. **Must be performant and handle touch events reliably.** Visual states should be optimized (e.g., texture swapping vs. filters).
-*   **`ui/TextDisplay.tsx`**: Renders dynamic text using `@pixi/react` `<Text>`. **Consider performance implications of frequent updates** or complex text formatting. BitmapText might be an alternative for performance-critical static labels.
-*   **`effects/WinningLinesOverlay.tsx`**: Renders winning paylines using `<Graphics>`. **Optimize drawing logic.** Avoid unnecessary redraws. Consider clearing/redrawing vs. managing multiple Graphics objects.
-*   **`effects/ParticleEmitterWrapper.tsx`**: **Performance is critical.** Ensure particle counts and emitter settings are configurable and reasonable for mobile targets. Efficiently manages emitter updates via `useTick`.
-*   **`effects/AnimatedSprite.tsx`**: Optimize texture swapping for frame-by-frame animations.
+*   **`layout/GameContainer.tsx`**: The top-level component. Receives the main game config. Initializes context, loads assets via `useAssets`, sets up the `@pixi/react` `<Stage>`. Renders core layout sections. Handles base responsiveness. **Props should allow injecting game-specific components like `backgroundComponent`, `introScreenComponent`, `uiOverlayComponent`.**
+*   **`layout/ScaledContainer.tsx`**: Handles responsive scaling.
+*   **`reels/ReelContainer.tsx`**: Arranges reels based on config. Selects reel strip component (`StandardReelStrip`, `MegawaysReelStrip` etc.) based on config. **Crucially, passes down a `renderSymbol` prop to the chosen reel strip component.**
+*   **`reels/standard/StandardReelStrip.tsx`**: Renders a standard reel. Handles symbol masking/swapping. Contains standard spin animation logic (GSAP). **Uses the `renderSymbol` prop received from `ReelContainer` to render each symbol instance.**
+*   **`reels/common/BaseSymbol.tsx`**: **The default symbol renderer.** Renders a `<Sprite>`. Handles basic state (`isWinning`, `isDimmed`) and basic animations. Used if a game doesn't provide a custom `renderSymbol` function.
+*   **`ui/Button.tsx`**: Reusable button. Must be performant, handle touch. Visuals potentially customizable via props (texture keys, style objects).
+*   **`ui/TextDisplay.tsx`**: Renders text. Consider performance.
+*   **`effects/WinningLinesOverlay.tsx`**: Renders winning lines via `<Graphics>`. **Could potentially accept a `renderLineGraphic?: (graphics: PIXI.Graphics, lineData: LineInfo) => void` prop for custom line drawing styles.**
+*   **`effects/ParticleEmitterWrapper.tsx`**: Wrapper for `pixi-particles`.
+*   **`effects/AnimatedSprite.tsx`**: Wrapper for `PIXI.AnimatedSprite`.
+*   **Other UI/Layout Components (`Panel`, `Meter`, `UIOverlay`):** Should be designed composably, potentially accepting `children` or specific component props to allow games to customize content and layout.
 
 ## 3. Core Hooks (`src/hooks/`)
 
@@ -74,9 +75,7 @@ Hooks encapsulate reusable logic, state access, and side effects.
 *   **`useGameState.ts`**: **Crucial for performance.** Emphasize use of narrow selectors to prevent unnecessary component re-renders.
 *   **`useAssets.ts`**: **Handle efficient loading and unloading** of assets. Support for texture atlases is essential for performance.
 *   **`useGameLoop.ts`**: **Logic within callbacks must be highly optimized** to avoid impacting frame rate, especially on mobile.
-*   **`useAnimation.ts`**: Could be a collection of hooks or a single hook providing utilities for common GSAP animations. Examples:
-    *   `useSimpleTween(targetRef, props, condition)`: Hook to run a simple GSAP tween when a condition is met.
-    *   May contain reusable timeline definitions for things like symbol pulses, fades, etc.
+*   **`useAnimation.ts`**: Provides utilities. **May include hooks designed to work with game-specific animation definitions passed via config or props.**
 *   **`useSound.ts`**: Provides functions like `playSound(soundId)`, `stopSound(soundId)`, `setMusic(musicId)`. Manages loading (via `useAssets`) and playback using a sound library integrated in `services/SoundManager.ts`.
 
 ## 4. State Management (`src/state/`)
@@ -99,6 +98,7 @@ This directory contains the logic for core, reusable game systems or phases.
 *   **`win-evaluation/`**: Contains the logic for calculating wins based on `reelResults` state and game config. Designed to be pluggable (e.g., selecting `line-evaluator` or `ways-evaluator` based on config).
 *   **`win-presentation/`**: Orchestrates the sequence of displaying wins after evaluation (e.g., showing lines, animating symbols, rolling up win amount). Often involves complex GSAP timelines triggered by `winningLinesInfo` state changes.
 *   **`free-spins/`**: Contains the hook (`useFreeSpinsController`?) that manages the state specific to Free Spins mode (remaining spins, accumulated win, potentially feature-specific modifiers like multipliers or symbol collection progress). Handles automatic triggering of spins within the mode.
+*   **Extensibility Points:** Hooks controlling features (like `useFreeSpinsController` or `useWinPresentation`) should be designed to accept optional props containing **custom animation functions or React components** provided by the game package. Example: `useFreeSpinsController({ onEnterTransition?: () => Promise<void>, onExitTransition?: () => Promise<void> })` allowing the game to define its own GSAP sequences for entering/exiting the mode.
 
 ## 6. Animation System (GSAP Integration)
 
@@ -108,9 +108,13 @@ This directory contains the logic for core, reusable game systems or phases.
 *   **Timelines:** Use `gsap.timeline()` extensively for sequencing complex animations (reel stops, win presentations, feature transitions).
 *   **Control:** Store timeline instances if needed for pausing, resuming, or killing animations. Ensure proper cleanup in `useEffect` return functions.
 *   **Configuration:** GSAP durations, delays, and eases should be driven by `AnimationTimings` configuration passed down as props or accessed from state.
+*   **Game-Specific Animations:** Complex, unique animations (especially for symbols or feature transitions) are implemented primarily:
+    *   Within **custom symbol components** provided by the game package (using the `renderSymbol` prop pattern).
+    *   Within **game-specific feature components** (e.g., bonus screens).
+    *   Via **custom animation functions/components** passed as props to engine hooks/components designed with extensibility points.
 
 ## 7. Configuration Consumption
 
 *   **Entry Point:** The top-level `<GameContainer>` receives the full, typed game configuration object from the specific `games/*` package.
-*   **Distribution:** Configuration values are passed down through props to relevant components and hooks. Alternatively, frequently needed global settings (like `isTurboMode` derived from config + state) might be accessed via `useGameState` selectors.
+*   **Distribution:** Config values passed via props. **This includes passing game-specific rendering functions (like `renderSymbol`) or component types (like `backgroundComponent`) down the component tree.**
 *   **Type Safety:** TypeScript ensures that components and hooks receive configuration matching the interfaces defined in `game-configs`.
