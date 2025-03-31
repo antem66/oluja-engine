@@ -47,32 +47,33 @@ packages/engine-core/src/
 
 **Philosophy:**
 *   **Maximize Reusability:** Components and hooks should be generic enough to serve multiple games, driven by configuration.
+*   **Mobile-First Performance:** Design components and logic with mobile performance (CPU, GPU, memory) as a primary consideration.
 *   **Encapsulation:** Components encapsulate specific pieces of UI or visual representation. Hooks encapsulate specific logic or side effects.
 *   **Configuration Driven:** Avoid hardcoding game-specific values. Rely on props passed down from the game package, originating from the game's configuration files.
 *   **State Management:** Use the central Zustand store (`useGameState`) for all shared application state. Avoid local React state (`useState`) for data needed across different components or features.
 
 ## 2. Core Components (`src/components/`)
 
-Components in `engine-core` are React components that ultimately render PixiJS objects using `@pixi/react` components (`<Stage>`, `<Container>`, `<Sprite>`, `<Graphics>`, `<Text>`, etc.).
+Components in `engine-core` are React components that ultimately render PixiJS objects using `@pixi/react` components (`<Stage>`, `<Container>`, `<Sprite>`, `<Graphics>`, `<Text>`, etc.). **Performance and mobile adaptability are key design goals.**
 
-*   **`layout/GameContainer.tsx`**: The top-level component rendered by the game entry point. Receives the main game config. Initializes context, loads assets via `useAssets`, sets up the `@pixi/react` `<Stage>`, and renders core layout sections (reels area, UI overlay, feature overlays).
-*   **`layout/ScaledContainer.tsx`**: (Optional) A helper component for handling responsive scaling of game elements relative to the stage size.
-*   **`reels/ReelContainer.tsx`**: Responsible for arranging the individual reels based on game config (number of reels, positions). Selects and renders the appropriate reel strip component (e.g., `StandardReelStrip`) based on `gameSettings.reelType`.
-*   **`reels/standard/StandardReelStrip.tsx`**: Renders a standard fixed-height reel. Manages the vertical arrangement and masking of symbols. Contains the primary GSAP logic for standard reel spin/stop animations. Uses `BaseSymbol` for rendering individual symbols.
-*   **`reels/common/BaseSymbol.tsx`**: Renders a single symbol using `<Sprite>`. Receives texture, position, and state (e.g., `isWinning`, `isDimmed`) as props. May contain basic state-driven animations (e.g., simple win pulse via `useEffect` and GSAP).
-*   **`ui/Button.tsx`**: A reusable button component. Handles interaction (pointer events), visual states (idle, hover, down), and triggers actions (usually via callback props or Zustand actions).
-*   **`ui/TextDisplay.tsx`**: Renders dynamic text using `@pixi/react` `<Text>`. Handles formatting (fonts, colors, alignment via Pixi properties passed as props) and updates based on state.
-*   **`effects/WinningLinesOverlay.tsx`**: Renders winning paylines using `<Graphics>` based on `winningLinesInfo` from the state store.
-*   **`effects/ParticleEmitterWrapper.tsx`**: (If using `pixi-particles`) A component wrapping the imperative `pixi-particles` Emitter setup within React's lifecycle (`useEffect`, `useRef`, `useTick`), controlled by props.
-*   **`effects/AnimatedSprite.tsx`**: A component wrapping `PIXI.AnimatedSprite` logic for playing frame-by-frame animations from sprite sheets, controlled by props.
+*   **`layout/GameContainer.tsx`**: The top-level component rendered by the game entry point. Receives the main game config. Initializes context, loads assets via `useAssets`, sets up the `@pixi/react` `<Stage>`, and renders core layout sections (reels area, UI overlay, feature overlays). **Handles base responsiveness setup.**
+*   **`layout/ScaledContainer.tsx`**: (Optional but Recommended) A helper component for handling **responsive scaling** of game elements (e.g., scaling down the main game area while preserving aspect ratio on smaller/different ratio screens).
+*   **`reels/ReelContainer.tsx`**: Responsible for arranging the individual reels based on game config. Performance consideration: efficiently manages reel component rendering.
+*   **`reels/standard/StandardReelStrip.tsx`**: Renders a standard fixed-height reel. **Must efficiently handle symbol swapping/masking during spins.**
+*   **`reels/common/BaseSymbol.tsx`**: Renders a single symbol using `<Sprite>`. **Minimize component overhead.** Simple state changes (like `isWinning`) should ideally translate to minimal prop changes.
+*   **`ui/Button.tsx`**: A reusable button component. **Must be performant and handle touch events reliably.** Visual states should be optimized (e.g., texture swapping vs. filters).
+*   **`ui/TextDisplay.tsx`**: Renders dynamic text using `@pixi/react` `<Text>`. **Consider performance implications of frequent updates** or complex text formatting. BitmapText might be an alternative for performance-critical static labels.
+*   **`effects/WinningLinesOverlay.tsx`**: Renders winning paylines using `<Graphics>`. **Optimize drawing logic.** Avoid unnecessary redraws. Consider clearing/redrawing vs. managing multiple Graphics objects.
+*   **`effects/ParticleEmitterWrapper.tsx`**: **Performance is critical.** Ensure particle counts and emitter settings are configurable and reasonable for mobile targets. Efficiently manages emitter updates via `useTick`.
+*   **`effects/AnimatedSprite.tsx`**: Optimize texture swapping for frame-by-frame animations.
 
 ## 3. Core Hooks (`src/hooks/`)
 
 Hooks encapsulate reusable logic, state access, and side effects.
 
-*   **`useGameState.ts`**: The primary interface to the Zustand store. Exports typed hooks for accessing specific state slices using selectors (e.g., `useBalance()`, `useIsSpinning()`, `useWinningLines()`). This promotes efficient re-renders.
-*   **`useAssets.ts`**: Handles loading asset bundles (textures, sounds, Spine data) defined in the game config using `PIXI.Assets`. Provides loading status and access to the loaded assets/textures.
-*   **`useGameLoop.ts`**: A thin wrapper around `@pixi/react`'s `useTick` hook. Provides a convenient way to register callbacks that need to run on every frame, passing the delta time.
+*   **`useGameState.ts`**: **Crucial for performance.** Emphasize use of narrow selectors to prevent unnecessary component re-renders.
+*   **`useAssets.ts`**: **Handle efficient loading and unloading** of assets. Support for texture atlases is essential for performance.
+*   **`useGameLoop.ts`**: **Logic within callbacks must be highly optimized** to avoid impacting frame rate, especially on mobile.
 *   **`useAnimation.ts`**: Could be a collection of hooks or a single hook providing utilities for common GSAP animations. Examples:
     *   `useSimpleTween(targetRef, props, condition)`: Hook to run a simple GSAP tween when a condition is met.
     *   May contain reusable timeline definitions for things like symbol pulses, fades, etc.

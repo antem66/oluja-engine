@@ -2,13 +2,13 @@
 
 ## 1. Monorepo Structure
 
-The engine utilizes a monorepo structure managed by pnpm workspaces (with optional Turborepo for enhanced build orchestration and caching). This facilitates code sharing, dependency management, and consistent tooling across different parts of the system.
+The engine utilizes a monorepo structure managed by pnpm workspaces and **Turborepo**. Turborepo provides intelligent build caching, task orchestration, and simplified commands across packages, significantly improving development velocity and CI/CD efficiency.
 
 ```
 /your-monorepo-root/
 ├── package.json            # Root config, defines workspaces
 ├── pnpm-workspace.yaml     # pnpm config
-├── turbo.json              # (Optional) Turborepo config
+├── turbo.json              # ★ Turborepo configuration ★
 ├── tsconfig.base.json      # Shared TS config
 ├── .eslintrc.js            # Root ESLint config
 ├── .prettierrc.js          # Root Prettier config
@@ -99,4 +99,11 @@ The engine utilizes a monorepo structure managed by pnpm workspaces (with option
     *   `ApiService` sends requests to the `game-server`.
     *   Responses from the `game-server` (containing RNG results, new balance, etc.) trigger Zustand actions to update the client's state, driving the visual presentation of the outcome.
 
-This architecture provides a clear flow where configuration dictates setup, Zustand manages state, React declaratively builds the scene via `@pixi/react`, GSAP handles complex animations, and the `game-server` provides authoritative results.
+**Mobile & Performance Considerations in Flow:**
+*   **Asset Loading:** Optimized asset bundles (e.g., texture atlases) are crucial for mobile loading times and memory usage. `useAssets` should handle this efficiently.
+*   **Rendering:** Engine components must be mindful of draw calls and GPU cost. Techniques like sprite batching (often handled automatically by PixiJS/React-Pixi to some extent) and minimizing complex filters are important.
+*   **Responsiveness:** Layout components (`GameContainer`, `ScaledContainer`) need to adapt the presentation to different screen aspect ratios and resolutions typical of mobile devices. Input handling must prioritize touch events.
+*   **State Updates:** Efficient state selection (Zustand selectors) minimizes unnecessary React re-renders, crucial for conserving battery and CPU on mobile.
+*   **Game Loop:** Logic within `useGameLoop` must be lean to avoid draining CPU.
+
+This architecture provides a clear flow where configuration dictates setup, Zustand manages state, React declaratively builds the scene via `@pixi/react`, GSAP handles complex animations, and the `game-server` provides authoritative results, with performance and mobile considerations integrated throughout the implementation.
